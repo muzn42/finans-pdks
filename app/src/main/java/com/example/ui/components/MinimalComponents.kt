@@ -1258,6 +1258,7 @@ fun exportFormattedExcelReport(
     val sheetRows = mutableListOf<String>()
     val merges = mutableListOf<String>()
     var rNum = 0
+    var headerRowNum = 0
 
     fun addMergedBannerRow(text: String, styleIdx: Int, heightPt: Int) {
         rNum++
@@ -1284,30 +1285,38 @@ fun exportFormattedExcelReport(
     addMergedBannerRow("ALBAYRAK FİNANS — $title", 1, 28)
     addMergedBannerRow("$subtitle  |  Rapor Tarihi: $stamp  |  30m Şube Geofence Doğrulamalı", 2, 22)
 
-    // 2. Yönetici KPI Özeti
+    // 2. Yönetici KPI Özeti (A4 yazdırmada sayfa genişliğine dengeli dağıtım)
     if (kpis.isNotEmpty()) {
         addBlankRow(10)
         addMergedBannerRow("YÖNETİCİ ÖZETİ METRİKLERİ (KPI)", 11, 20)
 
-        rNum++
-        val lblSb = StringBuilder()
-        for (c in 0 until colCount) {
-            val k = kpis.getOrNull(c)
-            val txt = k?.label?.uppercase(Locale("tr", "TR")) ?: ""
-            lblSb.append("""<c r="${xlsxColRef(c)}$rNum" s="3" t="s"><v>${getSstIdx(txt)}</v></c>""")
-        }
-        sheetRows.add("""<row r="$rNum" ht="18" customHeight="1">$lblSb</row>""")
+        val kpiItems = kpis.take(4)
+        val cardCols = maxOf(1, colCount / maxOf(1, kpiItems.size))
 
-        rNum++
-        val valSb = StringBuilder()
-        for (c in 0 until colCount) {
-            val k = kpis.getOrNull(c)
-            val txt = if (k != null) {
-                if (k.sub.isNotBlank()) "${k.value} (${k.sub})" else k.value
-            } else ""
-            valSb.append("""<c r="${xlsxColRef(c)}$rNum" s="4" t="s"><v>${getSstIdx(txt)}</v></c>""")
+        fun addKpiStrip(styleIdx: Int, heightPt: Int, textOf: (ReportKpiItem) -> String) {
+            rNum++
+            val sb = StringBuilder()
+            kpiItems.forEachIndexed { idx, kpi ->
+                val c1 = idx * cardCols
+                val c2 = minOf(colCount - 1, c1 + cardCols - 1)
+                val ref1 = "${xlsxColRef(c1)}$rNum"
+                val ref2 = "${xlsxColRef(c2)}$rNum"
+                sb.append("""<c r="$ref1" s="$styleIdx" t="s"><v>${getSstIdx(textOf(kpi))}</v></c>""")
+                for (cc in (c1 + 1)..c2) {
+                    sb.append("""<c r="${xlsxColRef(cc)}$rNum" s="$styleIdx"/>""")
+                }
+                if (c2 > c1) merges.add("$ref1:$ref2")
+            }
+            for (c in (kpiItems.size * cardCols) until colCount) {
+                sb.append("""<c r="${xlsxColRef(c)}$rNum" s="$styleIdx"/>""")
+            }
+            sheetRows.add("""<row r="$rNum" ht="$heightPt" customHeight="1">$sb</row>""")
         }
-        sheetRows.add("""<row r="$rNum" ht="24" customHeight="1">$valSb</row>""")
+
+        // KPI Başlık Şeridi
+        addKpiStrip(3, 18) { kpi -> kpi.label.uppercase(Locale("tr", "TR")) }
+        // KPI Değer Şeridi
+        addKpiStrip(4, 26) { kpi -> if (kpi.sub.isNotBlank()) "${kpi.value} (${kpi.sub})" else kpi.value }
     }
 
     // 3. Ana Veri Tablosu
@@ -1316,6 +1325,7 @@ fun exportFormattedExcelReport(
 
     if (headers.isNotEmpty()) {
         rNum++
+        headerRowNum = rNum
         val hdrSb = StringBuilder()
         headers.forEachIndexed { ci, h ->
             hdrSb.append("""<c r="${xlsxColRef(ci)}$rNum" s="5" t="s"><v>${getSstIdx(h)}</v></c>""")
@@ -1344,10 +1354,14 @@ fun exportFormattedExcelReport(
     val colsXml = buildString {
         append("<cols>")
         for (c in 1..colCount) {
-            val w = when (c) {
-                1 -> 18
-                2, 3 -> 26
-                else -> 22
+            // A4 yatay yazdırma için sütun genişlikleri içeriğe göre daraltıldı
+            val w = when {
+                c == 1 -> 12
+                c == 2 -> 21
+                c == 3 || c == 4 -> 15
+                c <= 9 -> 11
+                c <= 11 -> 16
+                else -> 12
             }
             append("""<col min="$c" max="$c" width="$w" customWidth="1"/>""")
         }
@@ -1361,10 +1375,15 @@ fun exportFormattedExcelReport(
     val sheetXml = """
         <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
         <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-          <sheetViews><sheetView tabSelected="1" workbookViewId="0" showGridLines="1"/></sheetViews>
+          <sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>
+          <sheetViews><sheetView tabSelected="1" workbookViewId="0" showGridLines="0"/></sheetViews>
           $colsXml
           <sheetData>${sheetRows.joinToString("")}</sheetData>
           $mergeXml
+          <printOptions horizontalCentered="1"/>
+          <pageMargins left="0.25" right="0.25" top="0.55" bottom="0.7" header="0.3" footer="0.3"/>
+          <pageSetup paperSize="9" scale="100" orientation="landscape" fitToWidth="1" fitToHeight="0" horizontalDpi="600" verticalDpi="600"/>
+          <headerFooter><oddFooter>&amp;L Albayrak Finans PDKS&amp;C Sayfa &amp;P / &amp;N&amp;R &amp;D &amp;T</oddFooter></headerFooter>
         </worksheet>
     """.trimIndent()
 
@@ -1466,12 +1485,21 @@ fun exportFormattedExcelReport(
         </Relationships>
     """.trimIndent()
 
+    val printTitlesXml = if (headerRowNum > 0) {
+        "<definedNames>" +
+            "<definedName name=\"_xlnm.Print_Titles\" localSheetId=\"0\">" +
+            "'Albayrak PDKS Raporu'!\$$headerRowNum:\$$headerRowNum" +
+            "</definedName>" +
+            "</definedNames>"
+    } else ""
+
     val workbookXml = """
         <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
         <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
           <sheets>
             <sheet name="Albayrak PDKS Raporu" sheetId="1" r:id="rId1"/>
           </sheets>
+          $printTitlesXml
         </workbook>
     """.trimIndent()
 

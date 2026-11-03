@@ -1450,7 +1450,7 @@
                 STATUS[e.status][0]
             ])
         });
-        A.toast('Power BI Yönetici Kokpitli Puantaj Excel (.xlsx) indirildi');
+        A.toast('Puantaj Excel (.xlsx) raporu indirildi (A4 yazdırmaya hazır)');
     }
 
     function exportLeaderboardsExcel() {
@@ -1481,7 +1481,7 @@
                 a.netBalanceMin >= 0 ? 'Zamanında / Pozitif Bakiye' : 'Geç / Negatif Bakiye'
             ])
         });
-        A.toast('Power BI Kokpitli Mesai ve Net Bakiye Ligi (.xlsx) indirildi');
+        A.toast('Mesai ve Net Bakiye Ligi (.xlsx) raporu indirildi (A4 yazdırmaya hazır)');
     }
 
     function exportAnalyticsExcel() {
@@ -1516,7 +1516,7 @@
                 x.onTime >= 0.92 ? 'Zamanında (Hedef Üstü)' : 'Geç (İzlenmeli)'
             ])
         });
-        A.toast('Power BI Yönetici Analitik Raporu (.xlsx) indirildi');
+        A.toast('İK Analitik Raporu (.xlsx) indirildi (A4 yazdırmaya hazır)');
     }
 
     function exportLateExcel() {
@@ -1583,7 +1583,7 @@
                 return ['AL-' + a.id, a.ago + ' önce', e.sicil, e.name, brName(a.branch), D.ALERT_TYPES[a.type], a.sev === 'HIGH' ? 'Yüksek' : a.sev === 'MED' ? 'Orta' : 'Düşük', a.resolved ? 'Çözüldü' : 'Bekliyor'];
             })
         });
-        A.toast('Power BI BT Siber Güvenlik ve Denetim Raporu (.xlsx) indirildi');
+        A.toast('BT Güvenlik ve Denetim Raporu (.xlsx) indirildi (A4 yazdırmaya hazır)');
     }
 
     /* ======================= Etkinlikler ======================= */

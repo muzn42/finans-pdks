@@ -583,7 +583,7 @@
             return idx;
         };
 
-        /* ================= SHEET 1: YÖNETİCİ KOKPİTİ (POWER BI) ================= */
+        /* ================= SHEET 1: RAPOR ÖZETİ ================= */
         const sheet1Rows = [];
         const merges1 = [];
         let r1 = 0;
@@ -608,69 +608,62 @@
             sheet1Rows.push(`<row r="${r1}" ht="${heightPt}" customHeight="1"/>`);
         };
 
-        // 1. Üst Kurumsal Antet (Power BI Banner)
+        // 1. Üst Kurumsal Antet
         addMergedBanner1('ALBAYRAK TASARRUF FİNANSMAN A.Ş. — ' + title, 1, 30);
         const metaText = `${subtitle}  |  Rapor Üretim Tarihi: ${nowStr}  |  30m Şube Geofence Doğrulamalı`;
         addMergedBanner1(metaText, 2, 22);
 
         if (meta.length) {
-            const metaJoined = meta.map(m => `${m[0]}: ${m[1]}`).join('  ·  ') + '  ·  Sistem: Albayrak PDKS Power BI v8.3';
+            const metaJoined = meta.map(m => `${m[0]}: ${m[1]}`).join('  ·  ') + '  ·  Sistem: Albayrak PDKS v8.3';
             addMergedBanner1(metaJoined, 3, 20);
         }
 
-        // 2. Power BI KPI Kartları Bloğu
+        // 2. KPI Kartları Bloğu
         if (kpis.length) {
             addBlank1(10);
-            addMergedBanner1('YÖNETİCİ GÖSTERGELERİ (POWER BI KPI KOKPİTİ)', 4, 22);
+            addMergedBanner1('YÖNETİCİ ÖZETİ METRİKLERİ (KPI)', 4, 22);
 
-            // 4 veya 5 KPI kartını 2'şer kolon birleştirerek yan yana yerleştir
+            // KPI kartlarını sayfa genişliğine eşit dağıt (A4 yazdırmada dengeli sütun birleştirme)
             const kpiItems = kpis.slice(0, 4);
-            
+            const kpiCardCols = Math.max(1, Math.floor(colCount1 / Math.max(1, kpiItems.length)));
+
+            const addKpiRow = (styleOf, textOf, heightPt, emptyStyle) => {
+                r1++;
+                let cells = '';
+                kpiItems.forEach((k, idx) => {
+                    const c1 = idx * kpiCardCols;
+                    const c2 = c1 + kpiCardCols - 1;
+                    const ref1 = colRef(c1) + r1;
+                    const ref2 = colRef(c2) + r1;
+                    const st = styleOf(k);
+                    cells += `<c r="${ref1}" s="${st}" t="s"><v>${getSstIdx(textOf(k))}</v></c>`;
+                    for (let cc = c1 + 1; cc <= c2; cc++) {
+                        cells += `<c r="${colRef(cc)}${r1}" s="${st}"/>`;
+                    }
+                    if (c2 > c1) merges1.push(`${ref1}:${ref2}`);
+                });
+                for (let c = kpiItems.length * kpiCardCols; c < colCount1; c++) {
+                    cells += `<c r="${colRef(c)}${r1}" s="${emptyStyle}"/>`;
+                }
+                sheet1Rows.push(`<row r="${r1}" ht="${heightPt}" customHeight="1">${cells}</row>`);
+            };
+
             // KPI Başlık Satırı
-            r1++;
-            let kpiLblCells = '';
-            kpiItems.forEach((k, idx) => {
-                const c1 = idx * 2, c2 = c1 + 1;
-                const ref1 = colRef(c1) + r1, ref2 = colRef(c2) + r1;
-                kpiLblCells += `<c r="${ref1}" s="11" t="s"><v>${getSstIdx(String(k.label || '').toUpperCase())}</v></c><c r="${ref2}" s="11"/>`;
-                merges1.push(`${ref1}:${ref2}`);
-            });
-            // Kalan kolonları doldur
-            for (let c = kpiItems.length * 2; c < colCount1; c++) {
-                kpiLblCells += `<c r="${colRef(c)}${r1}" s="11"/>`;
-            }
-            sheet1Rows.push(`<row r="${r1}" ht="18" customHeight="1">${kpiLblCells}</row>`);
+            addKpiRow(() => 11, k => String(k.label || '').toUpperCase(), 18, 11);
 
             // KPI Değer Satırı (Büyük Puntolar)
-            r1++;
-            let kpiValCells = '';
-            kpiItems.forEach((k, idx) => {
-                const c1 = idx * 2, c2 = c1 + 1;
-                const ref1 = colRef(c1) + r1, ref2 = colRef(c2) + r1;
-                const valStr = String(k.value || '0');
-                const valStyle = valStr.includes('+') || valStr.includes('%') ? 12 : (valStr.includes('-') ? 15 : 13);
-                kpiValCells += `<c r="${ref1}" s="${valStyle}" t="s"><v>${getSstIdx(valStr)}</v></c><c r="${ref2}" s="${valStyle}"/>`;
-                merges1.push(`${ref1}:${ref2}`);
-            });
-            for (let c = kpiItems.length * 2; c < colCount1; c++) {
-                kpiValCells += `<c r="${colRef(c)}${r1}" s="13"/>`;
-            }
-            sheet1Rows.push(`<row r="${r1}" ht="28" customHeight="1">${kpiValCells}</row>`);
+            addKpiRow(
+                k => {
+                    const v = String(k.value || '0');
+                    return (v.includes('+') || v.includes('%')) ? 12 : (v.includes('-') ? 15 : 13);
+                },
+                k => String(k.value || '0'),
+                28,
+                13
+            );
 
             // KPI Alt Açıklama / Trend Satırı
-            r1++;
-            let kpiSubCells = '';
-            kpiItems.forEach((k, idx) => {
-                const c1 = idx * 2, c2 = c1 + 1;
-                const ref1 = colRef(c1) + r1, ref2 = colRef(c2) + r1;
-                const subStr = k.sub ? String(k.sub) : 'Güncel Metrik';
-                kpiSubCells += `<c r="${ref1}" s="16" t="s"><v>${getSstIdx(subStr)}</v></c><c r="${ref2}" s="16"/>`;
-                merges1.push(`${ref1}:${ref2}`);
-            });
-            for (let c = kpiItems.length * 2; c < colCount1; c++) {
-                kpiSubCells += `<c r="${colRef(c)}${r1}" s="16"/>`;
-            }
-            sheet1Rows.push(`<row r="${r1}" ht="18" customHeight="1">${kpiSubCells}</row>`);
+            addKpiRow(() => 16, k => (k.sub ? String(k.sub) : 'Güncel Metrik'), 18, 16);
         }
 
         // 3. Departman / Birim Özet Matrisi
@@ -710,14 +703,15 @@
             });
         }
 
-        // 4. Navigasyon & Excel İçi Canlı Veritabanı Yönlendirmesi
+        // 4. Navigasyon & Detay Sekmesi Yönlendirmesi
         addBlank1(12);
-        const navBannerText = `💡 POWER BI VERİTABANI: Tüm personellerin günlük giriş-çıkış, gecikme ve 30m Geofence kayıtları "Puantaj Veritabani" sekmesindedir. Excel Otomatik Filtreleme (AutoFilter) hazır açıktır (${rows.length} kayıt).`;
+        const navBannerText = `💡 DETAY VERİLERİ: Tüm personellerin günlük giriş-çıkış, gecikme ve 30m Geofence kayıtları "Puantaj Detay" sekmesindedir. Excel Otomatik Filtreleme (AutoFilter) hazır açıktır (${rows.length} kayıt).`;
         addMergedBanner1(navBannerText, 17, 26);
 
         let cols1Xml = '<cols>';
         for (let c = 1; c <= colCount1; c++) {
-            const w = c === 1 ? 22 : (c === 2 ? 26 : (c === colCount1 ? 24 : 18));
+            // A4 yatay yazdırma için toplam genişlik ~146 karakter birimi ile sınırlandı
+            const w = c === 1 ? 20 : (c === 2 ? 24 : (c === colCount1 ? 22 : 16));
             cols1Xml += `<col min="${c}" max="${c}" width="${w}" customWidth="1"/>`;
         }
         cols1Xml += '</cols>';
@@ -728,13 +722,18 @@
 
         const sheet1Xml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-  <sheetViews><sheetView tabSelected="1" workbookViewId="0" showGridLines="1"/></sheetViews>
+  <sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>
+  <sheetViews><sheetView tabSelected="1" workbookViewId="0" showGridLines="0"/></sheetViews>
   ${cols1Xml}
   <sheetData>${sheet1Rows.join('')}</sheetData>
   ${merge1Xml}
+  <printOptions horizontalCentered="1"/>
+  <pageMargins left="0.35" right="0.35" top="0.5" bottom="0.7" header="0.3" footer="0.3"/>
+  <pageSetup paperSize="9" scale="100" orientation="landscape" fitToWidth="1" fitToHeight="0" horizontalDpi="600" verticalDpi="600"/>
+  <headerFooter><oddFooter>&amp;L Albayrak Finans PDKS&amp;C Sayfa &amp;P / &amp;N&amp;R &amp;D &amp;T</oddFooter></headerFooter>
 </worksheet>`;
 
-        /* ================= SHEET 2: DETAYLI PUANTAJ VERİTABANI ================= */
+        /* ================= SHEET 2: DETAYLI PUANTAJ TABLOSU ================= */
         const sheet2Rows = [];
         const colCount2 = headers.length || 1;
 
@@ -766,7 +765,13 @@
 
         let cols2Xml = '<cols>';
         for (let c = 1; c <= colCount2; c++) {
-            const w = (c === 1 || c === 5 || c === 6 || c === 7 || c === 8) ? 16 : (c === 2 || c === 4 ? 26 : 20);
+            // A4 yatay yazdırma için sütun genişlikleri içeriğe göre daraltıldı (~162 birim)
+            const w = c === 1 ? 12
+                : c === 2 ? 21
+                : (c === 3 || c === 4) ? 15
+                : c <= 9 ? 11
+                : c <= 11 ? 16
+                : 12;
             cols2Xml += `<col min="${c}" max="${c}" width="${w}" customWidth="1"/>`;
         }
         cols2Xml += '</cols>';
@@ -778,14 +783,19 @@
 
         const sheet2Xml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>
   <sheetViews>
-    <sheetView tabSelected="0" workbookViewId="0" showGridLines="1">
+    <sheetView tabSelected="0" workbookViewId="0" showGridLines="0">
       <pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>
     </sheetView>
   </sheetViews>
   ${cols2Xml}
   <sheetData>${sheet2Rows.join('')}</sheetData>
   ${autoFilterXml}
+  <printOptions horizontalCentered="1"/>
+  <pageMargins left="0.25" right="0.25" top="0.55" bottom="0.7" header="0.3" footer="0.3"/>
+  <pageSetup paperSize="9" scale="100" orientation="landscape" fitToWidth="1" fitToHeight="0" horizontalDpi="600" verticalDpi="600"/>
+  <headerFooter><oddFooter>&amp;L Albayrak Finans PDKS&amp;C Sayfa &amp;P / &amp;N&amp;R &amp;D &amp;T</oddFooter></headerFooter>
 </worksheet>`;
 
         /* ================= PAYLAŞILAN STILLER & PAKET ================= */
@@ -916,9 +926,12 @@
         const workbookXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <sheets>
-    <sheet name="Yonetici Kokpiti" sheetId="1" r:id="rId1"/>
-    <sheet name="Puantaj Veritabani" sheetId="2" r:id="rId4"/>
+    <sheet name="Rapor Ozeti" sheetId="1" r:id="rId1"/>
+    <sheet name="Puantaj Detay" sheetId="2" r:id="rId4"/>
   </sheets>
+  <definedNames>
+    <definedName name="_xlnm.Print_Titles" localSheetId="1">'Puantaj Detay'!$1:$1</definedName>
+  </definedNames>
 </workbook>`;
 
         const workbookRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
