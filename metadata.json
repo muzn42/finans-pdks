@@ -1,0 +1,6 @@
+{
+  "name": "Finans PDKS",
+  "description": "Finans kurumu şube personeli için 5 metre toleranslı konum tabanlı işe giriş-çıkış takibi, İK vardiya raporlaması ve IT güvenlik denetim sistemi.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

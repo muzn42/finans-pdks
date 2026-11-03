@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Finans PDKS - Proje İndirme Merkezi</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+        body {
+            background: linear-gradient(135deg, #0A192F 0%, #0F2744 50%, #172A45 100%);
+            color: #FFFFFF;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 24px;
+            padding: 40px;
+            max-width: 580px;
+            width: 100%;
+            text-align: center;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+        }
+        .badge {
+            display: inline-block;
+            background: rgba(0, 210, 255, 0.15);
+            color: #00D2FF;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            margin-bottom: 16px;
+            border: 1px solid rgba(0, 210, 255, 0.3);
+        }
+        h1 {
+            font-size: 28px;
+            font-weight: 900;
+            margin-bottom: 8px;
+            letter-spacing: 0.5px;
+        }
+        p.subtitle {
+            color: #94A3B8;
+            font-size: 14px;
+            margin-bottom: 30px;
+            line-height: 1.5;
+        }
+        .btn-group {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            margin-bottom: 30px;
+        }
+        .btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            padding: 16px 24px;
+            border-radius: 14px;
+            font-size: 16px;
+            font-weight: 700;
+            text-decoration: none;
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #1E40AF 0%, #3B82F6 100%);
+            color: #FFFFFF;
+            box-shadow: 0 8px 20px rgba(30, 64, 175, 0.35);
+        }
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 25px rgba(30, 64, 175, 0.5);
+        }
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: #FFFFFF;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.15);
+            transform: translateY(-2px);
+        }
+        .info-box {
+            background: rgba(0, 0, 0, 0.25);
+            border-radius: 12px;
+            padding: 18px;
+            text-align: left;
+            font-size: 13px;
+            color: #CBD5E1;
+            line-height: 1.6;
+            border-left: 3px solid #00D2FF;
+        }
+        .info-box strong {
+            color: #FFFFFF;
+        }
+        .icon {
+            font-size: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="badge">FİNANS KURUMSAL PDKS</div>
+        <h1>Proje Kaynak Kodu & İndirme</h1>
+        <p class="subtitle">Antigravity ve Android Studio için hazır tam Kotlin & Jetpack Compose projesi.</p>
+
+        <div class="btn-group">
+            <a href="/finans_pdks_app.zip" class="btn btn-primary" download>
+                <span class="icon">📦</span>
+                <span>Projeyi ZIP Olarak İndir (.ZIP)</span>
+            </a>
+            <a href="/finans_pdks_app.apk" class="btn btn-secondary" download>
+                <span class="icon">📱</span>
+                <span>Derlenmiş APK İndir (.APK)</span>
+            </a>
+        </div>
+
+        <div class="info-box">
+            <strong>Antigravity / Android Studio Kurulumu:</strong><br>
+            1. İndirdiğiniz <code>finans_pdks_app.zip</code> dosyasını istediğiniz bir dizine çıkartın.<br>
+            2. Android Studio veya Antigravity içerisinden <strong>"Open"</strong> diyerek klasörü seçin.<br>
+            3. Gradle senkronizasyonu tamamlandıktan sonra doğrudan Run veya Build alabilirsiniz.
+        </div>
+    </div>
+</body>
+</html>

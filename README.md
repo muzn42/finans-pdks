@@ -1,0 +1,136 @@
+﻿# Albayrak Finans PDKS (Personel Devam Kontrol Sistemi)
+
+Albayrak Finans (Albayrak Tasarruf Finansman A.Ş.) şube personeli ve genel müdürlük birimleri için geliştirilmiş; **30 metre konum doğrulamalı (geofence) mobil yoklama**, kurumsal **Web Yönetim Dashboard'u**, derin personel performans analitiği, fazla mesai & net süre bakiyesi ligi ve BT güvenlik denetimi sağlayan yeni nesil PDKS çözümüdür.
+
+> [!NOTE]
+> **Mimari:** Sistem tamamen çevrimdışı ve yerel analiz motoruyla çalışabilen, harici yapay zeka anahtarı (Gemini API vb.) gerektirmeyen bağımsız ve güvenli bir yapıya sahiptir.
+
+---
+
+## 1. Temel Yetenekler & Özellikler
+
+### 📱 Android Mobil Uygulama (Jetpack Compose)
+* **30 Metre Konum (Geofence) Doğrulaması:** Personel, atandığı şubenin merkez koordinatına 30 metre yarıçap içerisinde olduğunda işe giriş/çıkış yapabilir. Şube dışındaki denemeler engellenir ve güvenlik kaydı oluşturulur.
+* **Derin Personel Profil Analizi:**
+  * **En Çok Geç Kaldığı Gün:** Personelin haftanın hangi gününde en sık geç kaldığı (gün adı, toplam dakika, gecikme sayısı, zirve gecikme günü).
+  * **En Çok Ek Mesai Yaptığı Gün:** Fazla mesainin en yoğun olduğu gün, toplam süre ve zirve mesai kaydı.
+  * **Net Mesai Bakiyesi:** `Ek Mesai − Gecikme Dakikası` formülüyle üretilen net süre bakiyesi (`+X sa Y dk` veya `−X dk`) ve görsel terazi ayrım barı.
+  * **Haftalık Detay Kırılımı:** Pazartesi–Cuma gün bazlı katılım, ortalama giriş/çıkış saatleri ve net süre tablosu.
+* **Mesai ve Net Bakiye Ligi:**
+  1. *En Çok Mesai Yapanlar*
+  2. *Net Süre Bakiyesi En İyiler (+)*
+  3. *Net Süre Bakiyesi En Kötüler (−)*
+* **Dönem ve Tarih Filtreleme:** `Bugün`, `7 Gün`, `30 Gün`, `60 Gün` ve takvim üzerinden istenen başlangıç/bitiş tarih aralığını seçebilme.
+* **Hata Vermeyen Excel (.xlsx) Raporlama:** Android ve bilgisayar ortamlarında uyumsuzluk hatası vermeyen, biçimlendirilmiş kurumsal OpenXML `.xlsx` rapor çıktısı.
+* **Animasyonlu İndirme Butonları & Ses Efektleri:** Akıcı mikro etkileşimler, ilerleme çubukları ve kurumsal ses/haptic geri bildirimleri.
+* **Sahte Konum (Mock GPS) & Tek Cihaz Eşleme Koruması:** Sahte konum uygulamalarını algılama ve her personeli yalnızca kendi onaylı cihazına bağlama.
+
+---
+
+### 💻 Kurumsal Web Yönetim Dashboard'u (`web-dashboard/`)
+* **3D Scroll-Driven Anahtar Teslim & Giriş Sahnesi (`landing.css`, `landing.js`):**
+  * **Sahne 1 (Şube Önü & Kadife Kutu):** Albayrak Finans şubesi önünde temsilcinin kırmızı kadife kutudan 3D akıllı araç kumandasını çıkarması ve kurumsal tasarruf finansmanı karşılaması.
+  * **Sahne 2 (3D Dönen Anahtar İnişi):** Sayfa aşağı kaydırıldıkça 3D anahtarın havada dönerek alt sahneye süzülmesi ve mimari bilgi kartları.
+  * **Sahne 3 (Müşterinin Eliyle Yakalaması & Kumandayla Farların Yanıp Sönmesi):** Alt sahneye geçerken erkek müşterinin elinin uzanıp anahtarı yakalaması, eşi kırmızı Chevrolet Suburban SUV yanında beklerken kumandaya basılmış gibi aracın LED farlarının iki kez çakması (`suvUnlockFlash`).
+  * **Sahne 4 (Çift Arabanın Yanında & Yönetim Giriş Ekranı):** Erkek müşterinin eşinin yanına geçip sarılarak sağa (arabaya ve sağdaki yönetim giriş formuna) bakması.
+  * **Sahne 5 (Etkileşimli Parola Gizlilik Animasyonu — `#togglePass`):** Giriş formunda **"Parolayı Göster"** göz butonuna basıldığında çiftin animasyonla arabanın diğer tarafına geçip arkalarını dönerek şifreye bakmıyor gibi durması; parola gizlendiğinde tekrar eski yerlerine dönmesi.
+* **İK Portalı:**
+  * **Genel Bakış:** Canlı katılım yüzdesi, bugün geç kalanlar, izin talepleri, haftalık trend grafikleri ve özet lig tabloları.
+  * **Personel & Yoklama:** Arama, departman filtresi, durum filtreleri, sayfalama ve personel çekmecesi (`drawer`).
+  * **İzin Talepleri:** Mazeret ve yıllık izin onay/red iş akışı.
+  * **Analitik & Lig Tabloları:** 3 sütunlu tam lig matrisi, kök neden dağılımları ve yönetici Excel raporlama.
+* **BT Güvenlik Portalı:**
+  * **Gelişmiş Güvenlik Radarı:** 30m geofence ihlalleri, mock GPS uyarıları, anormal mesai saatleri ve IP ihlalleri.
+  * **Cihaz Eşlemeleri:** Personel cihaz modelleri, OS sürümleri ve tek cihaz sıfırlama/engelleme yönetimi.
+  * **Şube & 30m Simülatörü:** 50 şubenin koordinatları ve etkileşimli mesafe kaydırıcılı canlı test motoru.
+* **Özel Temalı Şube Seçici (`.cselect`):** İşletim sisteminin varsayılan beyaz kutularından arındırılmış, kurumsal temayla uyumlu şube açılır menüsü.
+* **Sürükle-Bırak (Drag & Drop) Panel Düzenleme:** Yöneticilerin kartları kendi isteklerine göre serbestçe dizip kaydedebildiği modüler arayüz.
+
+---
+
+## 2. Hızlı Başlangıç
+
+### Mobil Uygulamayı Çalıştırma
+1. **Android Studio** → **Open** → Proje klasörünü seçin.
+2. Derleme için ek bir API anahtarı veya yapılandırma gerekmez.
+3. Bir emülatör veya gerçek cihaz seçip **Run** ▶ butonuna basın.
+
+#### Test Hesapları (Şifre: `123`)
+Giriş ekranında yer alan hazır çiplerle tek dokunuşla giriş yapılabilir:
+| Sicil | Ad Soyad | Rol | İlk Açılan Ekran |
+|---|---|---|---|
+| FN-1048 | Ahmet Yılmaz | PERSONNEL | Giriş / Çıkış & Profil |
+| FN-2091 | Zeynep Kaya | PERSONNEL | Giriş / Çıkış & Profil |
+| FN-4002 | Elif Demir | HR | İK Yönetim Portalı |
+| FN-5055 | Murat Akın | IT | BT Siber Güvenlik Portalı |
+
+---
+
+### Web Dashboard'u Çalıştırma
+Herhangi bir kurulum veya build adımı gerektirmez:
+* [`web-dashboard/index.html`](web-dashboard/index.html) dosyasını doğrudan Google Chrome veya modern bir tarayıcıda açın.
+* **Demo Girişleri:**
+  * **İK Direktörü:** `ik@albayrakfinans.com.tr` / `Ik!2026demo`
+  * **BT Müdürü:** `bt@albayrakfinans.com.tr` / `Bt!2026demo`
+
+---
+
+## 3. Teknoloji Mimarisi
+
+| Katman | Teknoloji | Açıklama |
+|---|---|---|
+| **Mobil Dil & UI** | Kotlin 2.2, Jetpack Compose, Material 3 | XML içermeyen, modern reaktif arayüz |
+| **Mobil Mimari** | MVVM + Repository Pattern | `MainViewModel`, StateFlow ve Coroutines |
+| **Yerel Veritabanı** | Room (SQLite) v8 | 500 çalışan ve zengin devam geçmişi seed verisi |
+| **Konum & Radar** | Google Play Services Fused Location | Haversine mesafe algoritması ve 30m geofence |
+| **Excel Motoru** | Özel OpenXML ZIP/XML Üretici | Harici ağır kütüphane gerektirmeyen native `.xlsx` motoru |
+| **Ses & Haptic** | Android SoundPool & Vibrator | Kurumsal onay/red tınıları ve dokunsal geri bildirim |
+| **Web Dashboard** | Vanilla ES6+, CSS3 Custom Properties, SVG | Çerçevesiz, hafif, ultra hızlı kurumsal gösterge paneli |
+| **Test Sunucusu** | Python FastAPI / HTTP Server | `server/mock_server.py` (isteğe bağlı REST API) |
+
+---
+
+## 4. Klasör Yapısı
+
+```
+finans-pdks/
+├── app/                              # Android Mobil Uygulama Kaynak Kodları
+│   └── src/main/java/com/example/
+│       ├── ai/                       # Kural tabanlı yerel İK ve BT analiz servisleri
+│       │   └── PdksAnalysisService.kt
+│       ├── data/                     # Room SQLite veritabanı, DAO ve Entity tanımları
+│       │   ├── local/
+│       │   └── repository/
+│       ├── location/                 # Fused Location GPS ve mesafe hesaplayıcı
+│       ├── notification/             # Sistem ve durum çubuğu bildirimleri
+│       ├── util/                     # Excel .xlsx üretici, ses efektleri ve ses yardımcıları
+│       └── ui/                       # Jetpack Compose ekranları, temalar ve bileşenler
+│           ├── components/MinimalComponents.kt   # Kartlar, ligler, analiz bileşenleri
+│           ├── screens/              # PersonnelScreen, HrScreen, ProfileScreen vb.
+│           └── theme/                # Albayrak Finans kurumsal renk paleti
+├── web-dashboard/                    # Kurumsal Web Yönetim Paneli
+│   ├── index.html                    # Dashboard ana yapısı ve modal pencereler
+│   ├── styles.css                    # Tema değişkenleri, dark mode ve animasyonlar
+│   ├── data.js                       # 50 şube, 500 çalışan ve 60 günlük analiz motoru
+│   ├── core.js                       # Grafik çiziciler, drag&drop ve OpenXML xlsx üretici
+│   └── app.js                        # İK & BT portal mantığı, derin profil çekmecesi ve ligler
+├── branding/                         # Albayrak Finans resmi vektör logoları
+├── server/                           # Python yerel test sunucusu ve şube scraper
+└── README.md                         # Proje dokümantasyonu
+```
+
+---
+
+## 5. Değişiklik Günlüğü (Changelog)
+
+| Tarih | Açıklama |
+|---|---|
+| **2026-11-03** | **`NaN%` Hata Ayıklaması ve Sayısal Dayanıklılık Katmanı (`app.js`, `core.js`):** Departman bazlı "zamanında gelme" oranları `NaN%` gösteriyordu. Kök neden: `deptStats()` fonksiyonu var olmayan `analytics.onTimeDays` alanını topluyordu (doğru alan `presentDays`). Alan düzeltildi. Ayrıca tüm panelde benzer hataların tekrar etmemesi için `ATF.clamp` NaN/Infinity güvenli hale getirildi, `ATF.pctText()` / `ATF.numText()` / `ATF.num()` yardımcıları eklendi ve yüzde/süre biçimlendirmeleri (departman ve şube sıralamaları, KPI alt metinleri, donut merkezi, Excel rapor özet satırları, uygulama sürüm dağılımı çubukları) bu güvenli yardımcılara taşındı. Geçersiz değerler artık `NaN` yerine `—` olarak gösterilir. |
+| **2026-10-30** | **Excel İçi Yerel Power BI Yönetici Kokpiti Mimarisi (Çift Sekmeli `.xlsx` Motoru):** Şirket çalışanlarının hiçbir harici eklenti (`add-in`) kurmasına veya Power BI Pro bulut lisansına gerek kalmadan doğrudan Excel içinde Power BI deneyimi yaşaması sağlandı. 1. Sekme (`Yonetici Kokpiti`): Koyu antrasit kurumsal antet, yan yana dizilmiş büyük puntolu 4 KPI kartı (`Zamanında Katılım`, `Toplam Ek Mesai`, `Net Süre Bakiyesi`, `30m Geofence Uyum Oranı`), renkli durum rozetleriyle departman bazlı performans matrisi ve filtreleme yönlendirme çağrısı. 2. Sekme (`Puantaj Veritabani`): Üst satırı dondurulmuş (`freeze panes`) ve Excel otomatik filtreleme (`AutoFilter`) devrede ham veri listesi içeren native OOXML yapısı `core.js` üzerinde devreye alındı. |
+| **2026-10-29** | **#FFFFFF Saf Beyaz 1080p 3D Scroll-Scrubbing & Parola Gizlilik Giriş Mimarisi (`landing.css`, `landing.js`, `scroll_frames/`, `privacy_frames/`):** OpenCV/NumPy White-Point Normalizasyonu ile 200 karelik `scroll_frames/` (kutunun bırakılması $\rightarrow$ 3D Albayrak anahtarının çıkıp dönmesi $\rightarrow$ sağdan uzanan ele konması $\rightarrow$ adamın kırmızı SUV ve eşinin yanına yürümesi + son 15 karede kesintisiz crossfade) ve 95 karelik `privacy_frames/` (çiftin 180 derece arkasını dönüp kırmızı SUV'ye bakması) `#FFFFFF` saf beyaz zemine normalize edildi. Sahne 0'da ortada büyük başlayan Albayrak Finans logosunun spring fiziğiyle (`stiffness: 260, damping: 28`) sol üste yerleşmesi, Sahne 5'te sağ yarıya "Yönetim Portalına Giriş" kartının süzülmesi ve **Parolayı Göster (`#togglePass`)** tetiklendiğinde çiftin sıçramasız şekilde arkasını dönmesi sağlandı. |
+| **2026-10-28** | **Web Dashboard 3D Scroll-Driven Anahtar Teslim & Parola Gizlilik Etkileşimli Giriş Ekranı (`landing.css`, `landing.js`):** Şube önünde kadife kutudan çıkan 3D Albayrak anahtarının kaydırma (scroll) ile dönerek aşağı süzülmesi, erkek müşterinin anahtarı yakalayıp kırmızı Chevrolet Suburban SUV farlarının yanıp sönmesi, çiftin arabanın solunda sarılarak sağdaki giriş ekranına bakması ve **Parolayı Göster (`#togglePass`)** butonuna tıklandığında çiftin arabanın diğer tarafına geçip şifreye bakmıyor gibi arkasını dönmesi animasyonu 1080p sahnelerle entegre edildi. |
+| **2026-10-21** | **Derin Personel Analizi, Net Mesai Terazisi, Lig Tabloları, Web Dashboard, OpenXML Excel ve Harici API Bağımsızlığı:**<br>1) **Derin Personel Analizi:** Profil detayına personelin en çok geç kaldığı gün, en çok ek mesai yaptığı gün, ortalama ve zirve gecikme/mesai saatleri, gün gün Pazartesi-Cuma devam tablosu eklendi.<br>2) **Net Mesai Bakiyesi:** `Ek Mesai − Gecikme` formülüyle görsel terazi split barı ve pozitif/negatif renk kodlu rozetler entegre edildi.<br>3) **Mesai ve Net Bakiye Ligi:** Web ve Mobil ekranlara 3 sütunlu lig tablosu (En çok mesai yapanlar, Net bakiye en iyiler, Net bakiye en kötüler) eklendi.<br>4) **Üst Süre ve Tarih Filtresi:** `Bugün`, `7 Gün`, `30 Gün`, `60 Gün` ve özel tarih seçici filtreleri kuruldu.<br>5) **Web Dashboard & Şube Seçicisi:** Web paneline İK ve BT yönetim portalları, sürükle-bırak kartlar ve temayla tam uyumlu özel `.cselect` şube açılır menüsü entegre edildi.<br>6) **OpenXML Excel Motoru:** Mobil ve webde hata vermeden açılan biçimlendirilmiş kurumsal `.xlsx` raporlayıcı geliştirildi.<br>7) **Harici API Bağımsızlığı:** Gemini API çağrıları ve API key gereksinimi tamamen kaldırılarak sistem %100 yerel, hızlı ve kural tabanlı `PdksAnalysisService` motoruna geçirildi. |
+| **2026-10-15** | **500 Kişilik Mock Personel & Devam Kayıtları:** Room veritabanı v8'e yükseltilerek `MockDataGenerator.kt` devreye alındı. 500 benzersiz çalışan ve 30 günlük gerçekçi giriş-çıkış geçmişi oluşturuldu. |
+| **2026-10-15** | **İK Yönetici Dashboard'u & Görsel Grafikler:** Dakiklik madalyası donut halkası, çan eğrisi ve departman bazlı karşılaştırma çubukları eklendi. |
+| **2026-10-15** | **30 Metre Geofence & Güvenlik Bildirimi İzolasyonu:** Radar doğrulama mesafesi mobil GPS hassasiyetine uygun olarak 30 metreye güncellendi. |
+| **2026-10-14** | **Albayrak Finans Kurumsal Kimlik & Vektör Logoları:** Kurumsal kırmızı `#E31E24`, antrasit `#2B2D30` renk paleti ve amblem/ikonlar entegre edildi. |
