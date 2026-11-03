@@ -68,7 +68,17 @@ Giriş ekranında yer alan hazır çiplerle tek dokunuşla giriş yapılabilir:
 
 ### Web Dashboard'u Çalıştırma
 Herhangi bir kurulum veya build adımı gerektirmez:
+
+**Yöntem 1 — Yerel sunucu (önerilen, Excel indirmeyi test etmek için):**
+```powershell
+# Proje kökünde:
+python -m http.server 8000 --directory web-dashboard --bind 127.0.0.1
+```
+Ardından **http://127.0.0.1:8000/index.html** adresini Chrome'da açın. `file://` ile açmak yerine bu yöntem kullanılmalıdır; aksi halde bazı tarayıcılar `.xlsx` indirmesini engelleyebilir.
+
+**Yöntem 2 — Doğrudan dosya:**
 * [`web-dashboard/index.html`](web-dashboard/index.html) dosyasını doğrudan Google Chrome veya modern bir tarayıcıda açın.
+
 * **Demo Girişleri:**
   * **İK Direktörü:** `ik@albayrakfinans.com.tr` / `Ik!2026demo`
   * **BT Müdürü:** `bt@albayrakfinans.com.tr` / `Bt!2026demo`
