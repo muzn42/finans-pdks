@@ -1,4 +1,4 @@
-﻿*.iml
+*.iml
 .gradle
 .kotlin
 /local.properties
@@ -16,6 +16,21 @@
 local.properties
 .env
 debug.keystore
-scratch/
+
+# Imza anahtarlari
+*.jks
+*.keystore
+
+# Derleme ciktilari ve paket arsivleri
+/app/release
 *.apk
 *.aab
+*.zip
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Gecici calisma dosyalari
+scratch/

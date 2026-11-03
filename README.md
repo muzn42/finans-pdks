@@ -121,10 +121,31 @@ finans-pdks/
 
 ---
 
-## 5. Değişiklik Günlüğü (Changelog)
+## 5. Geliştirme Akışı (Git Branch Stratejisi)
+
+- **`main`:** Korunan ana hat. Yalnızca kullanıcı onay verdiğinde `dev` branch'inden merge edilir; doğrudan commit atılmaz.
+- **`dev`:** Tüm geliştirme, düzeltme ve deneme çalışmalarının yürütüldüğü çalışma branch'i.
+- AI asistanlar geliştirmeleri **`dev`** branch'inde commit eder. `main`'e aktarım için kullanıcıdan onay istenir ve onay yoksa `dev` üzerinde çalışmaya devam edilir.
+
+```bash
+git switch dev                              # çalışma hattına geç
+git add -A && git commit -m "feat: ..."     # dev üzerinde commit
+
+# Kullanıcı onayı sonrası main'e aktarım
+git switch main && git merge --no-ff dev
+git switch dev
+```
+
+> [!NOTE]
+> Derleme çıktıları (`*.apk`, `*.aab`, `*.zip`), imza anahtarları (`*.jks`, `*.keystore`), `.env` ve Python önbellekleri sürüm kontrolü dışındadır.
+
+---
+
+## 6. Değişiklik Günlüğü (Changelog)
 
 | Tarih | Açıklama |
 |---|---|
+| **2026-11-04** | **Git Sürüm Kontrolü & Branch Akışı (`.gitignore`, `README.md`):** Proje git deposuna alındı; `main` korunan ana hat, geliştirmeler onaylı `dev` çalışma branch'inde yürütülüyor. `.gitignore`'a `*.apk`, `*.aab`, `*.zip`, `*.jks`, `*.keystore`, `__pycache__/`, `*.pyc`, `.venv/` kuralları eklenerek derleme çıktıları, paket arşivleri ve imza anahtarları sürüm kontrolü dışına alındı; daha önce izlenen `finans_pdks_app.zip` deposundan çıkarıldı. README'ye "Geliştirme Akışı (Git Branch Stratejisi)" bölümü eklendi. |
 | **2026-11-03** | **`NaN%` Hata Ayıklaması ve Sayısal Dayanıklılık Katmanı (`app.js`, `core.js`):** Departman bazlı "zamanında gelme" oranları `NaN%` gösteriyordu. Kök neden: `deptStats()` fonksiyonu var olmayan `analytics.onTimeDays` alanını topluyordu (doğru alan `presentDays`). Alan düzeltildi. Ayrıca tüm panelde benzer hataların tekrar etmemesi için `ATF.clamp` NaN/Infinity güvenli hale getirildi, `ATF.pctText()` / `ATF.numText()` / `ATF.num()` yardımcıları eklendi ve yüzde/süre biçimlendirmeleri (departman ve şube sıralamaları, KPI alt metinleri, donut merkezi, Excel rapor özet satırları, uygulama sürüm dağılımı çubukları) bu güvenli yardımcılara taşındı. Geçersiz değerler artık `NaN` yerine `—` olarak gösterilir. |
 | **2026-10-30** | **Excel İçi Yerel Power BI Yönetici Kokpiti Mimarisi (Çift Sekmeli `.xlsx` Motoru):** Şirket çalışanlarının hiçbir harici eklenti (`add-in`) kurmasına veya Power BI Pro bulut lisansına gerek kalmadan doğrudan Excel içinde Power BI deneyimi yaşaması sağlandı. 1. Sekme (`Yonetici Kokpiti`): Koyu antrasit kurumsal antet, yan yana dizilmiş büyük puntolu 4 KPI kartı (`Zamanında Katılım`, `Toplam Ek Mesai`, `Net Süre Bakiyesi`, `30m Geofence Uyum Oranı`), renkli durum rozetleriyle departman bazlı performans matrisi ve filtreleme yönlendirme çağrısı. 2. Sekme (`Puantaj Veritabani`): Üst satırı dondurulmuş (`freeze panes`) ve Excel otomatik filtreleme (`AutoFilter`) devrede ham veri listesi içeren native OOXML yapısı `core.js` üzerinde devreye alındı. |
 | **2026-10-29** | **#FFFFFF Saf Beyaz 1080p 3D Scroll-Scrubbing & Parola Gizlilik Giriş Mimarisi (`landing.css`, `landing.js`, `scroll_frames/`, `privacy_frames/`):** OpenCV/NumPy White-Point Normalizasyonu ile 200 karelik `scroll_frames/` (kutunun bırakılması $\rightarrow$ 3D Albayrak anahtarının çıkıp dönmesi $\rightarrow$ sağdan uzanan ele konması $\rightarrow$ adamın kırmızı SUV ve eşinin yanına yürümesi + son 15 karede kesintisiz crossfade) ve 95 karelik `privacy_frames/` (çiftin 180 derece arkasını dönüp kırmızı SUV'ye bakması) `#FFFFFF` saf beyaz zemine normalize edildi. Sahne 0'da ortada büyük başlayan Albayrak Finans logosunun spring fiziğiyle (`stiffness: 260, damping: 28`) sol üste yerleşmesi, Sahne 5'te sağ yarıya "Yönetim Portalına Giriş" kartının süzülmesi ve **Parolayı Göster (`#togglePass`)** tetiklendiğinde çiftin sıçramasız şekilde arkasını dönmesi sağlandı. |
