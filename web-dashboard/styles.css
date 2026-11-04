@@ -991,6 +991,24 @@ tr.emp-row:hover { background: var(--surface-2); }
 tr.emp-row.is-open { background: var(--red-soft); }
 tr.emp-row.is-open td { border-bottom-color: transparent; }
 
+.list-item.clickable { cursor: pointer; }
+.list-item.clickable:hover { background: var(--surface-2); }
+
+/* Klavye odagi: satirin tamami net bir cerceveyle isaretlenir */
+tr.emp-row:focus-visible {
+    outline: 2px solid var(--red);
+    outline-offset: -2px;
+    background: var(--red-soft);
+}
+
+/* Diger tiklanabilir list-item'lar icin de klavye odagi */
+.list-item.clickable:focus-visible,
+.hi-card:focus-visible {
+    outline: 2px solid var(--red);
+    outline-offset: 2px;
+    border-radius: 10px;
+}
+
 tr.detail-row > td {
     padding: 0 !important;
     border-bottom: 1px solid var(--line);

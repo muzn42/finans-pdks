@@ -263,7 +263,7 @@
                 <section class="card flush">
                     ${cardHead('En çok ek mesai yapanlar', rangeLabel() + ' · toplam fazla mesai liderleri', dlBtn('export-leaderboards', 'Lig Excel', { cls: 'btn-soft btn-sm' }))}
                     <div class="list" style="margin-top:4px">
-                        ${lb.topOvertime.slice(0, 5).map((a, idx) => `<div class="list-item clickable" data-act="emp-open" data-id="${a.emp.id}" style="cursor:pointer">
+                        ${lb.topOvertime.slice(0, 5).map((a, idx) => `<div class="list-item clickable" data-act="emp-open" data-id="${a.emp.id}" tabindex="0" role="button">
                             <span class="rank-badge r${idx + 1}">${idx + 1}</span>
                             ${avatar(a.emp, 'sm')}
                             <div class="grow">
@@ -285,7 +285,7 @@
                         chips([{ v: 'best', l: 'En İyiler (+)' }, { v: 'worst', l: 'En Kötüler (−)' }], S.ui.ovLb, 'ov-lb-tab')
                     )}
                     <div class="list" style="margin-top:4px">
-                        ${netList.map((a, idx) => `<div class="list-item clickable" data-act="emp-open" data-id="${a.emp.id}" style="cursor:pointer">
+                        ${netList.map((a, idx) => `<div class="list-item clickable" data-act="emp-open" data-id="${a.emp.id}" tabindex="0" role="button">
                             <span class="rank-badge ${S.ui.ovLb === 'best' ? 'r' + (idx + 1) : ''}">${idx + 1}</span>
                             ${avatar(a.emp, 'sm')}
                             <div class="grow">
@@ -303,7 +303,7 @@
                 <section class="card flush">
                     ${cardHead('En çok geç kalanlar', rangeLabel() + ' · gecikme süresi ve en sık gecikilen gün', dlBtn('export-late', 'Excel İndir', { cls: 'btn-soft btn-sm' }))}
                     <div class="list" style="margin-top:4px">
-                        ${lb.mostLate.slice(0, 5).map((a, idx) => `<div class="list-item clickable" data-act="emp-open" data-id="${a.emp.id}" style="cursor:pointer">
+                        ${lb.mostLate.slice(0, 5).map((a, idx) => `<div class="list-item clickable" data-act="emp-open" data-id="${a.emp.id}" tabindex="0" role="button">
                             <span class="rank-badge">${idx + 1}</span>
                             ${avatar(a.emp, 'sm')}
                             <div class="grow">
@@ -455,7 +455,7 @@
             </tr></thead>
             <tbody>${rows.length ? rows.map(({ e, an }, i) => {
                 const acik = u.openId === e.id;
-                return `<tr class="emp-row${acik ? ' is-open' : ''}" style="--r:${i}" data-act="emp-expand" data-id="${e.id}" aria-expanded="${acik}">
+                return `<tr class="emp-row${acik ? ' is-open' : ''}" style="--r:${i}" data-act="emp-expand" data-id="${e.id}" tabindex="0" role="button" aria-expanded="${acik}" aria-label="${esc(e.name)} detaylarını ${acik ? 'kapat' : 'aç'}">
                 <td><div class="cell-user">${avatar(e)}<div><b>${esc(e.name)}</b><small class="mono">${e.sicil} · ${esc(brName(e.branch))}</small></div></div></td>
                 <td>${esc(e.dept)}</td>
                 <td class="mono">${an.avgCheckIn} <span class="muted">→ ${an.avgCheckOut}</span></td>
@@ -559,7 +559,7 @@
                 <section class="card flush">
                     ${cardHead('Son İşe Başlayan & Yeni Eklenen Personeller', 'Satıra tıklayarak personelin PDKS profil karnesini açabilirsiniz', `<button class="btn btn-soft btn-sm" data-go="employees">Tüm Liste</button>`)}
                     <div class="list" style="margin-top:4px">
-                        ${newHires.map(e => `<div class="list-item clickable" data-act="emp-open" data-id="${e.id}" style="cursor:pointer">
+                        ${newHires.map(e => `<div class="list-item clickable" data-act="emp-open" data-id="${e.id}" tabindex="0" role="button">
                             ${avatar(e)}
                             <div class="grow">
                                 <b>${esc(e.name)} ${e.isNewHire ? pill('Yeni Kayıt', 'ok') : ''}</b>
@@ -615,7 +615,7 @@
                 <section class="card flush">
                     ${cardHead('1. En çok ek mesai yapanlar', rangeLabel() + ' · fazla mesai şampiyonları', dlBtn('export-leaderboards', 'Excel', { cls: 'btn-soft btn-sm' }))}
                     <div class="list" style="margin-top:4px">
-                        ${lb.topOvertime.slice(0, 7).map((a, i) => `<div class="list-item clickable" data-act="emp-open" data-id="${a.emp.id}" style="cursor:pointer">
+                        ${lb.topOvertime.slice(0, 7).map((a, i) => `<div class="list-item clickable" data-act="emp-open" data-id="${a.emp.id}" tabindex="0" role="button">
                             <span class="rank-badge r${i + 1}">${i + 1}</span>
                             ${avatar(a.emp, 'sm')}
                             <div class="grow">
@@ -633,7 +633,7 @@
                 <section class="card flush">
                     ${cardHead('2. Net bakiye en iyiler (Mesai − Geç)', 'Ek mesaiden gecikme çıkınca kalan sürede zirvedekiler')}
                     <div class="list" style="margin-top:4px">
-                        ${lb.bestNet.slice(0, 7).map((a, i) => `<div class="list-item clickable" data-act="emp-open" data-id="${a.emp.id}" style="cursor:pointer">
+                        ${lb.bestNet.slice(0, 7).map((a, i) => `<div class="list-item clickable" data-act="emp-open" data-id="${a.emp.id}" tabindex="0" role="button">
                             <span class="rank-badge r${i + 1}">${i + 1}</span>
                             ${avatar(a.emp, 'sm')}
                             <div class="grow">
@@ -651,7 +651,7 @@
                 <section class="card flush">
                     ${cardHead('3. Net bakiye en kötüler (Mesai − Geç)', 'Gecikme süresi ek mesaisini aşan / en düşük net süreliler')}
                     <div class="list" style="margin-top:4px">
-                        ${lb.worstNet.slice(0, 7).map((a, i) => `<div class="list-item clickable" data-act="emp-open" data-id="${a.emp.id}" style="cursor:pointer">
+                        ${lb.worstNet.slice(0, 7).map((a, i) => `<div class="list-item clickable" data-act="emp-open" data-id="${a.emp.id}" tabindex="0" role="button">
                             <span class="rank-badge">${i + 1}</span>
                             ${avatar(a.emp, 'sm')}
                             <div class="grow">
@@ -1262,7 +1262,7 @@
                                 <div class="list" style="border:1px solid var(--line);border-radius:12px;overflow:hidden">
                                     ${availPerms.map(pm => {
                                         const checked = u.perms.includes(pm.k);
-                                        return `<div class="list-item" style="cursor:pointer;padding:10px 14px;background:${checked ? 'var(--surface)' : 'var(--bg)'}" data-act="adm-perm-toggle" data-k="${esc(pm.k)}">
+                                        return `<div class="list-item clickable" style="padding:10px 14px;background:${checked ? 'var(--surface)' : 'var(--bg)'}" data-act="adm-perm-toggle" data-k="${esc(pm.k)}" tabindex="0" role="button" aria-pressed="${checked}">
                                             <span class="ico-sq ${checked ? 'ok' : ''}" style="width:28px;height:28px;border-radius:8px">${ic(checked ? 'check' : 'lock')}</span>
                                             <div class="grow">
                                                 <b style="font-size:13px">${esc(pm.l)}</b>
@@ -2142,7 +2142,7 @@
                 <div class="list" style="border:1px solid var(--line);border-radius:12px;overflow:hidden">
                     ${cat.map(pm => {
                         const has = (acc.perms || []).includes(pm.k);
-                        return `<div class="list-item" style="cursor:pointer;padding:10px 14px" data-act="adm-perm-modal-toggle" data-email="${esc(acc.email)}" data-k="${esc(pm.k)}">
+                        return `<div class="list-item clickable" style="padding:10px 14px" data-act="adm-perm-modal-toggle" data-email="${esc(acc.email)}" data-k="${esc(pm.k)}" tabindex="0" role="button">
                             <span class="ico-sq ${has ? 'ok' : ''}" style="width:28px;height:28px;border-radius:8px">${ic(has ? 'check' : 'lock')}</span>
                             <div class="grow"><b>${esc(pm.l)}</b><small style="display:block;color:var(--muted)">${esc(pm.d)}</small></div>
                             <button type="button" class="switch ${has ? 'on' : ''}"><span></span></button>
@@ -2294,7 +2294,7 @@
         $('#kvkkBtn').onclick = kvkkModal;
         $('#logoutBtn').onclick = () => logout('Oturum kapatıldı.');
         $('#userBtn').onclick = () => openModal('Hesap', `<div class="profile"><span class="avatar lg">${esc(A.initials(S.user.name))}</span><div><h4>${esc(S.user.name)}</h4><span class="muted">${esc(S.user.title)}</span></div></div><div class="kv"><div><small>E-posta</small><b>${esc(S.user.email)}</b></div><div><small>Yetki</small><b>${esc(ROLE_FULL_NAME[S.user.role] || S.user.role)}</b></div></div><p class="muted" style="font-size:12px">Oturum 15 dakika hareketsizlikte otomatik kapanır.</p>`, '<button class="btn btn-soft" data-act="modal-close">Kapat</button>');
-        $('#bellBtn').onclick = () => { const items = S.user.role === 'HR' ? [[`${D.LEAVES.filter(l => l.status === 'pending').length} izin talebi onay bekliyor`, 'leaves'], [`Bugün ${D.EMPLOYEES.filter(e => e.status === 'LATE').length} kişi geç kaldı`, 'employees']] : S.user.role === 'ADMIN' ? [[`${ACCOUNTS.length} portal kullanıcısı aktif`, 'overview'], [`RBAC rol ve yetki matrisi güncel`, 'permissions']] : [[`${openAlerts().length} açık güvenlik uyarısı`, 'security'], [`${openTickets().length} destek talebi bekliyor`, 'support']]; openDrawer('Bildirimler', `<div class="list">${items.map(i => `<div class="list-item" style="cursor:pointer" data-go="${i[1]}"><span class="ico-sq red">${ic('bell')}</span><div class="grow"><b>${i[0]}</b><small>Şimdi</small></div>${ic('chevron')}</div>`).join('')}</div>`, false); };
+        $('#bellBtn').onclick = () => { const items = S.user.role === 'HR' ? [[`${D.LEAVES.filter(l => l.status === 'pending').length} izin talebi onay bekliyor`, 'leaves'], [`Bugün ${D.EMPLOYEES.filter(e => e.status === 'LATE').length} kişi geç kaldı`, 'employees']] : S.user.role === 'ADMIN' ? [[`${ACCOUNTS.length} portal kullanıcısı aktif`, 'overview'], [`RBAC rol ve yetki matrisi güncel`, 'permissions']] : [[`${openAlerts().length} açık güvenlik uyarısı`, 'security'], [`${openTickets().length} destek talebi bekliyor`, 'support']]; openDrawer('Bildirimler', `<div class="list">${items.map(i => `<div class="list-item" data-go="${i[1]}" tabindex="0" role="button"><span class="ico-sq red">${ic('bell')}</span><div class="grow"><b>${i[0]}</b><small>Şimdi</small></div>${ic('chevron')}</div>`).join('')}</div>`, false); };
         $('#menuBtn').onclick = () => { $('#side').classList.add('on'); $('#scrim').classList.add('on'); };
         $('#scrim').onclick = closeSide;
         $('#drawerClose').onclick = closeDrawer; $('#modalClose').onclick = closeModal;
@@ -2329,6 +2329,30 @@
                 }
             }
             if (e.key === 'Escape') { closeAllCustomSelects(); closeModal(); closeDrawer(); closeSide(); }
+
+            /* Klavye ile erisilebilir tiklanabilir ogeler:
+               tabindex="0" + role="button" olan [data-act] / [data-go] elemanlari
+               Enter veya Space ile calisir (AGENTS.md erisilebilirlik standardi). */
+            if (e.key === 'Enter' || e.key === ' ') {
+                const aktif = document.activeElement;
+                if (aktif && aktif !== document.body && !aktif.closest('.cselect.is-open')) {
+                    const isButton = aktif.getAttribute('role') === 'button' || aktif.getAttribute('role') === 'link';
+                    const etiket = aktif.tagName;
+                    const dogalButon = etiket === 'BUTTON' || etiket === 'A';
+                    if (isButton && !dogalButon) {
+                        if (aktif.hasAttribute('data-go')) {
+                            e.preventDefault();
+                            go(aktif.getAttribute('data-go'));
+                            return;
+                        }
+                        if (aktif.dataset.act && acts[aktif.dataset.act]) {
+                            e.preventDefault();
+                            acts[aktif.dataset.act](aktif);
+                            return;
+                        }
+                    }
+                }
+            }
             if (S.user) armIdle();
         });
         ['pointerdown', 'scroll'].forEach(ev => addEventListener(ev, () => { if (S.user) armIdle(); }, { passive: true }));
