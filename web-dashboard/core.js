@@ -448,7 +448,8 @@
         const enc = new TextEncoder();
         const entries = files.map(f => {
             const nameBytes = enc.encode(f.name);
-            const dataBytes = enc.encode(f.content);
+            // content: string (XML) veya Uint8Array (PNG gibi ikili dosyalar)
+            const dataBytes = (f.content instanceof Uint8Array) ? f.content : enc.encode(f.content);
             const crc = crc32Bytes(dataBytes);
             return { nameBytes, dataBytes, crc, offset: 0 };
         });
@@ -531,6 +532,60 @@
         return s;
     }
 
+    /* Kurumsal logo (xlsx gömme icin PNG baytlari). Tek sefer yuklenir, hata olursa null. */
+    const LOGO_ASSET = 'assets/branding/albayrak_pdks_logo.png';
+    const LOGO_ASPECT = 129 / 153; // yukseklik / genislik
+    let logoBytesPromise = null;
+    function loadLogoBytes() {
+        if (!logoBytesPromise) {
+            if (typeof fetch !== 'function') { logoBytesPromise = Promise.resolve(null); return logoBytesPromise; }
+            logoBytesPromise = fetch(LOGO_ASSET)
+                .then(r => (r.ok ? r.arrayBuffer() : null))
+                .then(buf => (buf ? new Uint8Array(buf) : null))
+                .catch(() => null);
+        }
+        return logoBytesPromise;
+    }
+
+    /* Logo cizim parcasi (drawing1.xml) */
+    function logoDrawingXml(widthPx) {
+        const emu = px => Math.round(px * 9525);
+        const cx = emu(widthPx);
+        const cy = emu(Math.round(widthPx * LOGO_ASPECT));
+        return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+  <xdr:oneCellAnchor>
+    <xdr:from><xdr:col>0</xdr:col><xdr:colOff>76200</xdr:colOff><xdr:row>1</xdr:row><xdr:rowOff>28575</xdr:rowOff></xdr:from>
+    <xdr:ext cx="${cx}" cy="${cy}"/>
+    <xdr:pic>
+      <xdr:nvPicPr>
+        <xdr:cNvPr id="2" name="Albayrak Finans Logosu" descr="Albayrak Tasarruf Finansman A.Ş. kurumsal logosu"/>
+        <xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr>
+      </xdr:nvPicPr>
+      <xdr:blipFill>
+        <a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="rId1"/>
+        <a:stretch><a:fillRect/></a:stretch>
+      </xdr:blipFill>
+      <xdr:spPr>
+        <a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>
+        <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+      </xdr:spPr>
+    </xdr:pic>
+    <xdr:clientData/>
+  </xdr:oneCellAnchor>
+</xdr:wsDr>`;
+    }
+
+    const drawingRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image1.png"/>
+</Relationships>`;
+
+    const sheet1RelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/>
+</Relationships>`;
+
     function xmlEsc(v) {
         let s = String(v == null ? '' : v);
         if (/^[=+\-@]/.test(s)) s = "'" + s;
@@ -542,7 +597,7 @@
             .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
     }
 
-    ATF.excelReport = function (opts) {
+    ATF.excelReport = async function (opts) {
         const o = opts || {};
         const fileName = (o.fileName || 'albayrak-pdks-rapor').replace(/\.(csv|xls|xlsx)$/i, '') + '.xlsx';
         const title = o.title || 'ALBAYRAK FİNANS KURUMSAL PDKS RAPORU';
@@ -554,7 +609,14 @@
         const summaryRows = o.summaryRows || [];
         const headers = o.headers || [];
         const rows = o.rows || [];
-        const nowStr = new Date().toLocaleString('tr-TR');
+        const notes = o.notes || [];
+        const preparedBy = o.preparedBy || '';
+        const approvedBy = o.approvedBy || 'İnsan Kaynakları Müdürlüğü';
+        const nowDate = new Date();
+        const nowStr = nowDate.toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+        const reportNo = o.reportNo || `PDKS-${nowDate.getFullYear()}-${String(nowDate.getMonth() + 1).padStart(2, '0')}${String(nowDate.getDate()).padStart(2, '0')}-${String(Math.floor(Math.random() * 9000) + 1000)}`;
+        const logoBytes = await loadLogoBytes();
+        const hasLogo = !!(logoBytes && logoBytes.length);
 
         const detectStatusStyleIdx = (val, rowIdx) => {
             const s = String(val || '').toLocaleLowerCase('tr-TR');
@@ -603,34 +665,62 @@
             merges1.push(`A${r1}:${colRef(colCount1 - 1)}${r1}`);
         };
 
+        /* Belirli sütundan başlayıp son sütuna kadar birleşik satır (logo yanındaki unvan blokları) */
+        const addSideBanner1 = (text, styleIdx, heightPt, startCol) => {
+            r1++;
+            let cells = '';
+            const sstIdx = getSstIdx(text);
+            for (let c = 0; c < colCount1; c++) {
+                const ref = colRef(c) + r1;
+                if (c < startCol) cells += `<c r="${ref}" s="0"/>`;
+                else if (c === startCol) cells += `<c r="${ref}" s="${styleIdx}" t="s"><v>${sstIdx}</v></c>`;
+                else cells += `<c r="${ref}" s="${styleIdx}"/>`;
+            }
+            sheet1Rows.push(`<row r="${r1}" ht="${heightPt}" customHeight="1">${cells}</row>`);
+            if (colCount1 - 1 > startCol) merges1.push(`${colRef(startCol)}${r1}:${colRef(colCount1 - 1)}${r1}`);
+        };
+
+        /* Numaralı bölüm başlığı (ör. "1. YÖNETİCİ ÖZETİ") */
+        let sectionNo = 0;
+        const addSectionHeader1 = (text) => {
+            sectionNo++;
+            addBlank1(12);
+            addMergedBanner1(`${sectionNo}. ${String(text).toLocaleUpperCase('tr-TR')}`, 4, 20);
+        };
+
         const addBlank1 = (heightPt = 10) => {
             r1++;
             sheet1Rows.push(`<row r="${r1}" ht="${heightPt}" customHeight="1"/>`);
         };
 
-        // 1. Üst Kurumsal Antet
-        addMergedBanner1('ALBAYRAK TASARRUF FİNANSMAN A.Ş. — ' + title, 1, 30);
-        const metaText = `${subtitle}  |  Rapor Üretim Tarihi: ${nowStr}  |  30m Şube Geofence Doğrulamalı`;
-        addMergedBanner1(metaText, 2, 22);
+        // ============ 1. KURUMSAL ANTET (logo + unvan + rapor künyesi) ============
+        addBlank1(8);                                                                        // 1. boşluk
+        addSideBanner1('ALBAYRAK TASARRUF FİNANSMAN A.Ş.', 18, 22, 1);                       // 2. unvan (logo hizası)
+        addSideBanner1('Personel Devam Kontrol Sistemi (PDKS) · İnsan Kaynakları Müdürlüğü', 19, 15, 1); // 3. birim
+        addSideBanner1(`Rapor No: ${reportNo}    ·    Üretim Tarihi: ${nowStr}`, 19, 13, 1);  // 4. künye
+        addBlank1(6);                                                                        // 5. boşluk
+        addMergedBanner1('', 20, 4);                                                          // 6. kırmızı ayraç
+        addBlank1(10);                                                                        // 7. boşluk
+        addMergedBanner1(title, 21, 26);                                                      // 8. rapor başlığı (bant)
+        addMergedBanner1(subtitle, 22, 17);                                                   // 9. alt başlık (bant)
 
         if (meta.length) {
-            const metaJoined = meta.map(m => `${m[0]}: ${m[1]}`).join('  ·  ') + '  ·  Sistem: Albayrak PDKS v8.3';
-            addMergedBanner1(metaJoined, 3, 20);
+            const metaJoined = meta.map(m => `${m[0]}: ${m[1]}`).join('    ·    ');
+            addMergedBanner1(metaJoined, 3, 18);                                              // 10. filtre künyesi
         }
 
-        // 2. KPI Kartları Bloğu
+        // ============ 2. YÖNETİCİ ÖZETİ GÖSTERGELERİ (KPI KARTLARI) ============
         if (kpis.length) {
-            addBlank1(10);
-            addMergedBanner1('YÖNETİCİ ÖZETİ METRİKLERİ (KPI)', 4, 22);
+            addSectionHeader1('Yönetici Özeti Göstergeleri');
 
-            // KPI kartlarını sayfa genişliğine eşit dağıt (A4 yazdırmada dengeli sütun birleştirme)
-            const kpiItems = kpis.slice(0, 4);
-            const kpiCardCols = Math.max(1, Math.floor(colCount1 / Math.max(1, kpiItems.length)));
+            const kpiItems = kpis.slice(0, 6);
+            const perRow = kpiItems.length <= 4 ? kpiItems.length : 3;
+            const kpiCardCols = Math.max(1, Math.floor(colCount1 / perRow));
 
-            const addKpiRow = (styleOf, textOf, heightPt, emptyStyle) => {
+            const addKpiStrip = (chunk, styleOf, textOf, heightPt, emptyStyle) => {
                 r1++;
                 let cells = '';
-                kpiItems.forEach((k, idx) => {
+                chunk.forEach((k, idx) => {
                     const c1 = idx * kpiCardCols;
                     const c2 = c1 + kpiCardCols - 1;
                     const ref1 = colRef(c1) + r1;
@@ -642,34 +732,38 @@
                     }
                     if (c2 > c1) merges1.push(`${ref1}:${ref2}`);
                 });
-                for (let c = kpiItems.length * kpiCardCols; c < colCount1; c++) {
+                for (let c = chunk.length * kpiCardCols; c < colCount1; c++) {
                     cells += `<c r="${colRef(c)}${r1}" s="${emptyStyle}"/>`;
                 }
                 sheet1Rows.push(`<row r="${r1}" ht="${heightPt}" customHeight="1">${cells}</row>`);
             };
 
-            // KPI Başlık Satırı
-            addKpiRow(() => 11, k => String(k.label || '').toUpperCase(), 18, 11);
-
-            // KPI Değer Satırı (Büyük Puntolar)
-            addKpiRow(
-                k => {
-                    const v = String(k.value || '0');
-                    return (v.includes('+') || v.includes('%')) ? 12 : (v.includes('-') ? 15 : 13);
-                },
-                k => String(k.value || '0'),
-                28,
-                13
-            );
-
-            // KPI Alt Açıklama / Trend Satırı
-            addKpiRow(() => 16, k => (k.sub ? String(k.sub) : 'Güncel Metrik'), 18, 16);
+            for (let i = 0; i < kpiItems.length; i += perRow) {
+                const chunk = kpiItems.slice(i, i + perRow);
+                if (i > 0) addBlank1(8);
+                // Etiket
+                addKpiStrip(chunk, () => 11, k => String(k.label || '').toLocaleUpperCase('tr-TR'), 16, 11);
+                // Değer
+                addKpiStrip(
+                    chunk,
+                    k => {
+                        const v = String(k.value || '0');
+                        if (v.includes('+') || v.includes('%')) return 12;
+                        if (v.includes('-') || v.includes('−')) return 15;
+                        return k.tone === 'warn' ? 14 : 13;
+                    },
+                    k => String(k.value || '0'),
+                    24,
+                    13
+                );
+                // Alt açıklama
+                addKpiStrip(chunk, () => 16, k => (k.sub ? String(k.sub) : '—'), 15, 16);
+            }
         }
 
-        // 3. Departman / Birim Özet Matrisi
+        // ============ 3. DEPARTMAN / BİRİM ÖZET MATRİSİ ============
         if (summaryHeaders.length && summaryRows.length) {
-            addBlank1(12);
-            addMergedBanner1(summaryTitle, 4, 22);
+            addSectionHeader1(summaryTitle);
 
             r1++;
             let sHdrCells = '';
@@ -703,10 +797,47 @@
             });
         }
 
-        // 4. Navigasyon & Detay Sekmesi Yönlendirmesi
+        /* İki eşit sütuna bölünmüş satır (imza bloğu için) */
+        const addTwoColRow1 = (leftText, rightText, styleIdx, heightPt) => {
+            r1++;
+            const half = Math.floor(colCount1 / 2);
+            let cells = '';
+            for (let c = 0; c < colCount1; c++) {
+                if (c === 0) cells += `<c r="${colRef(c)}${r1}" s="${styleIdx}" t="s"><v>${getSstIdx(leftText)}</v></c>`;
+                else if (c === half) cells += `<c r="${colRef(c)}${r1}" s="${styleIdx}" t="s"><v>${getSstIdx(rightText)}</v></c>`;
+                else cells += `<c r="${colRef(c)}${r1}" s="${styleIdx}"/>`;
+            }
+            sheet1Rows.push(`<row r="${r1}" ht="${heightPt}" customHeight="1">${cells}</row>`);
+            if (half - 1 > 0) merges1.push(`A${r1}:${colRef(half - 1)}${r1}`);
+            if (colCount1 - 1 > half) merges1.push(`${colRef(half)}${r1}:${colRef(colCount1 - 1)}${r1}`);
+        };
+
+        // ============ 4. DEĞERLENDİRME VE METODOLOJİ NOTU ============
+        addSectionHeader1('Değerlendirme ve Metodoloji Notu');
+
+        const defaultNotes = [
+            'Gecikme süresi, vardiya başlangıç saatine göre hesaplanan pozitif sapmadır.',
+            'Ek mesai süresi, vardiya bitişinden sonra gerçekleşen onaylı çalışma süresidir.',
+            'Net süre bakiyesi = Toplam ek mesai − Toplam gecikme. Negatif bakiye kayıp süreyi gösterir.',
+            'Konum doğrulaması şube merkezine 30 metre yarıçapla sınırlıdır; sahte konum (mock GPS) tespiti blokajla sonuçlanır.',
+            `Ham kayıtların tamamı "Puantaj Detay" sekmesinde yer alır (${rows.length} satır · AutoFilter açık · başlık satırı her sayfada tekrar eder).`
+        ];
+        (notes.length ? notes : defaultNotes).forEach((n, i) => {
+            addMergedBanner1(`${i + 1})  ${n}`, 26, 15);
+        });
+
+        // ============ 5. ONAY VE İMZA BLOĞU ============
+        addBlank1(22);
+        addTwoColRow1('', '', 25, 22);
+        addTwoColRow1('Hazırlayan', 'Onaylayan', 24, 13);
+        addTwoColRow1(preparedBy || 'İnsan Kaynakları Yönetimi', approvedBy, 25, 13);
+
         addBlank1(12);
-        const navBannerText = `💡 DETAY VERİLERİ: Tüm personellerin günlük giriş-çıkış, gecikme ve 30m Geofence kayıtları "Puantaj Detay" sekmesindedir. Excel Otomatik Filtreleme (AutoFilter) hazır açıktır (${rows.length} kayıt).`;
-        addMergedBanner1(navBannerText, 17, 26);
+        addMergedBanner1(
+            'Bu belge Albayrak Tasarruf Finansman A.Ş. Personel Devam Kontrol Sistemi tarafından otomatik üretilmiştir. Yetkisiz kopyalanması ve dağıtılması yasaktır.',
+            26,
+            14
+        );
 
         let cols1Xml = '<cols>';
         for (let c = 1; c <= colCount1; c++) {
@@ -721,32 +852,48 @@
             : '';
 
         const sheet1Xml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>
   <sheetViews><sheetView tabSelected="1" workbookViewId="0" showGridLines="0"/></sheetViews>
   ${cols1Xml}
   <sheetData>${sheet1Rows.join('')}</sheetData>
   ${merge1Xml}
   <printOptions horizontalCentered="1"/>
-  <pageMargins left="0.35" right="0.35" top="0.5" bottom="0.7" header="0.3" footer="0.3"/>
+  <pageMargins left="0.3" right="0.3" top="0.45" bottom="0.65" header="0.25" footer="0.25"/>
   <pageSetup paperSize="9" scale="100" orientation="landscape" fitToWidth="1" fitToHeight="0" horizontalDpi="600" verticalDpi="600"/>
-  <headerFooter><oddFooter>&amp;L Albayrak Finans PDKS&amp;C Sayfa &amp;P / &amp;N&amp;R &amp;D &amp;T</oddFooter></headerFooter>
+  <headerFooter><oddFooter>&amp;L Albayrak Tasarruf Finansman A.Ş. · PDKS&amp;C Rapor No: ${xmlEsc(reportNo)}&amp;R Sayfa &amp;P / &amp;N</oddFooter></headerFooter>
+  ${logoBytes ? '<drawing r:id="rId1"/>' : ''}
 </worksheet>`;
 
-        /* ================= SHEET 2: DETAYLI PUANTAJ TABLOSU ================= */
+        /* ================= SHEET 2: DETAYLI KAYIT TABLOSU (EK-1) ================= */
         const sheet2Rows = [];
+        const sheet2Merges = [];
         const colCount2 = headers.length || 1;
+
+        // 1. satır: ek başlık bandı (her sayfada tekrarlanır)
+        {
+            const ekTitle = `EK-1 · DETAY KAYIT LİSTESİ (${rows.length} KAYIT) — ${title}`;
+            let tCells = '';
+            for (let c = 0; c < colCount2; c++) {
+                const ref = colRef(c) + '1';
+                tCells += (c === 0)
+                    ? `<c r="${ref}" s="23" t="s"><v>${getSstIdx(ekTitle)}</v></c>`
+                    : `<c r="${ref}" s="23"/>`;
+            }
+            sheet2Rows.push(`<row r="1" ht="24" customHeight="1">${tCells}</row>`);
+            sheet2Merges.push(`A1:${colRef(colCount2 - 1)}1`);
+        }
 
         if (headers.length) {
             let hCells = '';
             headers.forEach((h, ci) => {
-                hCells += `<c r="${colRef(ci)}1" s="5" t="s"><v>${getSstIdx(h)}</v></c>`;
+                hCells += `<c r="${colRef(ci)}2" s="5" t="s"><v>${getSstIdx(h)}</v></c>`;
             });
-            sheet2Rows.push(`<row r="1" ht="25" customHeight="1">${hCells}</row>`);
+            sheet2Rows.push(`<row r="2" ht="26" customHeight="1">${hCells}</row>`);
         }
 
         rows.forEach((r, ri) => {
-            const rNum = ri + 2;
+            const rNum = ri + 3;
             let rCells = '';
             r.forEach((val, ci) => {
                 let st = (ri % 2 === 1) ? 7 : 6;
@@ -778,7 +925,11 @@
 
         const lastColRef2 = colRef(Math.max(0, colCount2 - 1));
         const autoFilterXml = headers.length
-            ? `<autoFilter ref="A1:${lastColRef2}${Math.max(2, rows.length + 1)}"/>`
+            ? `<autoFilter ref="A2:${lastColRef2}${Math.max(3, rows.length + 2)}"/>`
+            : '';
+
+        const merge2Xml = sheet2Merges.length
+            ? `<mergeCells count="${sheet2Merges.length}">${sheet2Merges.map(m => `<mergeCell ref="${m}"/>`).join('')}</mergeCells>`
             : '';
 
         const sheet2Xml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -786,22 +937,23 @@
   <sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>
   <sheetViews>
     <sheetView tabSelected="0" workbookViewId="0" showGridLines="0">
-      <pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>
+      <pane ySplit="2" topLeftCell="A3" activePane="bottomLeft" state="frozen"/>
     </sheetView>
   </sheetViews>
   ${cols2Xml}
   <sheetData>${sheet2Rows.join('')}</sheetData>
+  ${merge2Xml}
   ${autoFilterXml}
   <printOptions horizontalCentered="1"/>
-  <pageMargins left="0.25" right="0.25" top="0.55" bottom="0.7" header="0.3" footer="0.3"/>
+  <pageMargins left="0.2" right="0.2" top="0.5" bottom="0.65" header="0.25" footer="0.25"/>
   <pageSetup paperSize="9" scale="100" orientation="landscape" fitToWidth="1" fitToHeight="0" horizontalDpi="600" verticalDpi="600"/>
-  <headerFooter><oddFooter>&amp;L Albayrak Finans PDKS&amp;C Sayfa &amp;P / &amp;N&amp;R &amp;D &amp;T</oddFooter></headerFooter>
+  <headerFooter><oddFooter>&amp;L Albayrak Tasarruf Finansman A.Ş. · PDKS — EK-1&amp;C Rapor No: ${xmlEsc(reportNo)}&amp;R Sayfa &amp;P / &amp;N</oddFooter></headerFooter>
 </worksheet>`;
 
         /* ================= PAYLAŞILAN STILLER & PAKET ================= */
         const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-  <fonts count="12">
+  <fonts count="17">
     <font><sz val="10"/><color rgb="FF141517"/><name val="Calibri"/></font>
     <font><b/><sz val="13"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>
     <font><sz val="9.5"/><color rgb="FFE5E7EB"/><name val="Calibri"/></font>
@@ -814,8 +966,13 @@
     <font><b/><sz val="8.5"/><color rgb="FF64748B"/><name val="Calibri"/></font>
     <font><b/><sz val="16"/><color rgb="FF0B7A53"/><name val="Calibri"/></font>
     <font><sz val="9.5"/><color rgb="FF0B7A53"/><name val="Calibri"/></font>
+    <font><b/><sz val="16"/><color rgb="FF141517"/><name val="Calibri"/></font>
+    <font><b/><sz val="15"/><color rgb="FF141517"/><name val="Calibri"/></font>
+    <font><sz val="9"/><color rgb="FF6E737D"/><name val="Calibri"/></font>
+    <font><b/><sz val="9.5"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>
+    <font><sz val="10"/><color rgb="FF141517"/><name val="Calibri"/></font>
   </fonts>
-  <fills count="10">
+  <fills count="11">
     <fill><patternFill patternType="none"/></fill>
     <fill><patternFill patternType="gray125"/></fill>
     <fill><patternFill patternType="solid"><fgColor rgb="FF141517"/><bgColor indexed="64"/></patternFill></fill>
@@ -826,8 +983,9 @@
     <fill><patternFill patternType="solid"><fgColor rgb="FFFEF5E7"/><bgColor indexed="64"/></patternFill></fill>
     <fill><patternFill patternType="solid"><fgColor rgb="FFFDECEC"/><bgColor indexed="64"/></patternFill></fill>
     <fill><patternFill patternType="solid"><fgColor rgb="FFEDFDF5"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFE31E24"/><bgColor indexed="64"/></patternFill></fill>
   </fills>
-  <borders count="5">
+  <borders count="6">
     <border><left/><right/><top/><bottom/><diagonal/></border>
     <border>
       <left style="thin"><color rgb="FFE2E5EC"/></left>
@@ -855,47 +1013,70 @@
       <bottom style="thin"><color rgb="FFB9E6D3"/></bottom>
       <diagonal/>
     </border>
+    <border>
+      <left/><right/><top/>
+      <bottom style="thin"><color rgb="FF94A3B8"/></bottom>
+      <diagonal/>
+    </border>
   </borders>
   <cellStyleXfs count="1">
     <xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>
   </cellStyleXfs>
-  <cellXfs count="18">
+  <cellXfs count="27">
     <!-- 0: Normal -->
     <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
-    <!-- 1: Title Banner -->
+    <!-- 1: Başlık bandı (eski) -->
     <xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment vertical="center"/></xf>
-    <!-- 2: Subtitle Banner -->
+    <!-- 2: Alt başlık bandı (eski) -->
     <xf numFmtId="0" fontId="2" fillId="3" borderId="2" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>
-    <!-- 3: Meta Info -->
-    <xf numFmtId="0" fontId="3" fillId="4" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>
-    <!-- 4: Section Header -->
-    <xf numFmtId="0" fontId="4" fillId="3" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment vertical="center"/></xf>
-    <!-- 5: Table Header -->
-    <xf numFmtId="0" fontId="5" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-    <!-- 6: Table Cell Regular -->
-    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>
-    <!-- 7: Table Cell Zebra -->
-    <xf numFmtId="0" fontId="0" fillId="4" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>
-    <!-- 8: Status OK (Yeşil Rozet) -->
+    <!-- 3: Künye / meta satırı -->
+    <xf numFmtId="0" fontId="3" fillId="4" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" indent="1"/></xf>
+    <!-- 4: Bölüm başlığı -->
+    <xf numFmtId="0" fontId="4" fillId="3" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment vertical="center" indent="1"/></xf>
+    <!-- 5: Tablo başlığı -->
+    <xf numFmtId="0" fontId="5" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
+    <!-- 6: Tablo hücresi -->
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" indent="1"/></xf>
+    <!-- 7: Tablo hücresi (zebra) -->
+    <xf numFmtId="0" fontId="0" fillId="4" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" indent="1"/></xf>
+    <!-- 8: Durum OK (yeşil) -->
     <xf numFmtId="0" fontId="6" fillId="6" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-    <!-- 9: Status WARN (Kehribar Rozet) -->
+    <!-- 9: Durum UYARI (kehribar) -->
     <xf numFmtId="0" fontId="7" fillId="7" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-    <!-- 10: Status BAD (Kırmızı Rozet) -->
+    <!-- 10: Durum KRİTİK (kırmızı) -->
     <xf numFmtId="0" fontId="8" fillId="8" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-    <!-- 11: KPI Card Label -->
-    <xf numFmtId="0" fontId="9" fillId="5" borderId="3" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-    <!-- 12: KPI Card Value Green -->
+    <!-- 11: KPI etiketi -->
+    <xf numFmtId="0" fontId="9" fillId="5" borderId="3" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
+    <!-- 12: KPI değeri (pozitif / yüzde) -->
     <xf numFmtId="0" fontId="10" fillId="0" borderId="3" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-    <!-- 13: KPI Card Value Neutral -->
-    <xf numFmtId="0" fontId="1" fillId="0" borderId="3" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-    <!-- 14: KPI Card Value Warn -->
+    <!-- 13: KPI değeri (nötr, KOYU) -->
+    <xf numFmtId="0" fontId="12" fillId="0" borderId="3" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+    <!-- 14: KPI değeri (uyarı) -->
     <xf numFmtId="0" fontId="7" fillId="0" borderId="3" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-    <!-- 15: KPI Card Value Red -->
+    <!-- 15: KPI değeri (kritik) -->
     <xf numFmtId="0" fontId="8" fillId="0" borderId="3" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-    <!-- 16: KPI Card Sub -->
-    <xf numFmtId="0" fontId="3" fillId="4" borderId="3" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-    <!-- 17: Callout Box -->
-    <xf numFmtId="0" fontId="11" fillId="9" borderId="4" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>
+    <!-- 16: KPI alt açıklama -->
+    <xf numFmtId="0" fontId="3" fillId="4" borderId="3" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
+    <!-- 17: Bilgi kutusu -->
+    <xf numFmtId="0" fontId="11" fillId="9" borderId="4" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" indent="1"/></xf>
+    <!-- 18: Şirket unvanı -->
+    <xf numFmtId="0" fontId="13" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment vertical="center" indent="1"/></xf>
+    <!-- 19: Şirket alt bilgisi -->
+    <xf numFmtId="0" fontId="14" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment vertical="center" indent="1"/></xf>
+    <!-- 20: Kırmızı ayraç -->
+    <xf numFmtId="0" fontId="0" fillId="10" borderId="0" xfId="0" applyFill="1"/>
+    <!-- 21: Rapor başlık bandı -->
+    <xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment vertical="center" indent="1"/></xf>
+    <!-- 22: Rapor alt başlık bandı -->
+    <xf numFmtId="0" fontId="14" fillId="4" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment vertical="center" indent="1"/></xf>
+    <!-- 23: EK sekme başlık bandı -->
+    <xf numFmtId="0" fontId="15" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment vertical="center" indent="1"/></xf>
+    <!-- 24: İmza etiketi -->
+    <xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment vertical="center"/></xf>
+    <!-- 25: İmza çizgisi / ad soyad -->
+    <xf numFmtId="0" fontId="16" fillId="0" borderId="5" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" horizontal="center"/></xf>
+    <!-- 26: Dipnot -->
+    <xf numFmtId="0" fontId="14" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment vertical="center" indent="1"/></xf>
   </cellXfs>
   <cellStyles count="1">
     <cellStyle name="Normal" xfId="0" builtinId="0"/>
@@ -916,6 +1097,7 @@
   <Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
   <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
   <Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>
+  ${hasLogo ? '<Default Extension="png" ContentType="image/png"/>\n  <Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>' : ''}
 </Types>`;
 
         const rootRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -930,7 +1112,7 @@
     <sheet name="Puantaj Detay" sheetId="2" r:id="rId4"/>
   </sheets>
   <definedNames>
-    <definedName name="_xlnm.Print_Titles" localSheetId="1">'Puantaj Detay'!$1:$1</definedName>
+    <definedName name="_xlnm.Print_Titles" localSheetId="1">'Puantaj Detay'!$1:$2</definedName>
   </definedNames>
 </workbook>`;
 
@@ -942,7 +1124,7 @@
   <Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>
 </Relationships>`;
 
-        const blob = createZipBlob([
+        const zipEntries = [
             { name: '[Content_Types].xml', content: contentTypesXml },
             { name: '_rels/.rels', content: rootRelsXml },
             { name: 'xl/workbook.xml', content: workbookXml },
@@ -951,7 +1133,19 @@
             { name: 'xl/sharedStrings.xml', content: sstXml },
             { name: 'xl/worksheets/sheet1.xml', content: sheet1Xml },
             { name: 'xl/worksheets/sheet2.xml', content: sheet2Xml }
-        ]);
+        ];
+
+        // Kurumsal logo gömme (Excel çizim + medya parçaları)
+        if (hasLogo) {
+            zipEntries.push(
+                { name: 'xl/worksheets/_rels/sheet1.xml.rels', content: sheet1RelsXml },
+                { name: 'xl/drawings/drawing1.xml', content: logoDrawingXml(104) },
+                { name: 'xl/drawings/_rels/drawing1.xml.rels', content: drawingRelsXml },
+                { name: 'xl/media/image1.png', content: logoBytes }
+            );
+        }
+
+        const blob = createZipBlob(zipEntries);
 
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);

@@ -728,17 +728,117 @@
     };
 
     HR.reports = {
-        title: 'Kurumsal Raporlar', sub: () => 'Bordro, üst yönetim ve denetim için biçimlendirilmiş resmi OpenXML Excel (.xlsx) raporları · ' + rangeLabel(), tools: { range: 1, branch: 1 }, icon: 'file',
+        title: 'Kurumsal Raporlar', sub: () => 'Bordro, üst yönetim ve denetim için resmi OpenXML Excel (.xlsx) raporları · ' + rangeLabel(), tools: { range: 1, branch: 1 }, icon: 'file',
         render() {
-            const items = [
-                ['export-leaderboards', 'Ek Mesai & Net Süre Bakiyesi (Mesai − Gecikme) Lig Raporu (.xlsx)', 'En çok ek mesai yapanlar, net süre bakiyesinde en iyiler/en kötüler ve en sık gecikilen gün analizleri.'],
-                ['export-emps', 'Kurumsal Bordro, Puantaj & Konum Doğrulama Raporu (.xlsx)', 'Yönetici KPI özeti, departman tablosu ve renk kodlu personel giriş-çıkış / net bakiye / 30m konum tablosu.'],
-                ['export-analytics', 'İK Performans & Departman Analitik Raporu (.xlsx)', 'Departman bazlı zamanında katılım, fazla mesai yükü, net bakiye ve gecikme kök neden analizi.'],
-                ['export-late', 'Gecikme & Devamsızlık Denetim Raporu (.xlsx)', 'Seçili dönemde geç kalan veya devamsız personeller, en çok geciktikleri gün ve şube kırılımı.'],
-                ['export-leaves', 'İzin & Mazeret Yönetim Raporu (.xlsx)', 'Tüm izin taleplerinin onay durumu, izin türü, gün sayısı ve açıklama detayı.']
+            const st = stats(), ds = deptStats(), days = activeDays();
+            const p2 = n => String(n).padStart(2, '0');
+            const now = new Date();
+            const stamp = `${p2(now.getDate())}.${p2(now.getMonth() + 1)}.${now.getFullYear()} ${p2(now.getHours())}:${p2(now.getMinutes())}`;
+            const reportNo = `PDKS-${now.getFullYear()}-${p2(now.getMonth() + 1)}${p2(now.getDate())}`;
+            const hazirlayan = S.user ? S.user.name + ' — ' + S.user.title : 'İnsan Kaynakları Yönetimi';
+            const subeAdi = S.branch === 'ALL' ? 'Tüm Şubeler (6 Lokasyon)' : brName(S.branch);
+
+            const kpiCards = [
+                { l: 'Toplam Personel', v: String(st.N), s: 'Aktif kadro', tone: '' },
+                { l: 'Zamanında Giriş', v: '%' + A.pctText(st.onTimePct), s: st.onTime + ' personel zamanında', tone: 'ok' },
+                { l: 'Toplam Gecikme', v: fmtMinDur(st.totalLateMin), s: st.late + ' personel geç kaldı', tone: 'bad' },
+                { l: 'Toplam Ek Mesai', v: A.numText(st.totalOvertimeH) + ' sa', s: 'Onaylı fazla çalışma', tone: 'ok' },
+                { l: 'Net Süre Bakiyesi', v: fmtMinSigned(st.netBalanceMin), s: 'Ek mesai − gecikme', tone: 'info' },
+                { l: 'Geç Kalan / Devamsız', v: st.late + ' / ' + st.absent, s: 'Ort. ' + Math.round(st.avgLate) + ' dk gecikme', tone: 'warn' }
             ];
-            return `<section class="card flush">${cardHead('Biçimlendirilmiş Kurumsal Excel Raporları (.xlsx)', 'Seçili tarih aralığı (' + rangeLabel() + ') için gerçek OpenXML (.xlsx) formatında üretilir; masaüstü ve mobil Office uygulamalarında hatasız açılır')}<div class="list" style="margin-top:8px">${items.map(i => `<div class="list-item"><span class="ico-sq red">${ic('file')}</span><div class="grow"><b>${i[1]}</b><small>${i[2]}</small></div>${dlBtn(i[0], 'Excel Rapor İndir', { cls: 'btn-dark btn-sm' })}</div>`).join('')}</div></section>
-            <section class="card mt">${cardHead('Veri saklama', 'KVKK kapsamında')}<p class="muted" style="max-width:70ch">Giriş-çıkış ve konum doğrulama kayıtları yalnızca puantaj ve iş hukuku yükümlülükleri için işlenir. Saklama süresi sonunda kayıtlar silinir veya anonimleştirilir. Ayrıntılar için üst çubuktaki kilit simgesine tıklayın.</p></section>`;
+
+            const catalog = [
+                ['export-emps', 'Kurumsal Puantaj ve Devam Raporu', 'Yönetici özeti, departman matrisi ve personel bazlı giriş-çıkış, gecikme, ek mesai ve net bakiye tablosu.', 'Ana belge'],
+                ['export-leaderboards', 'Ek Mesai ve Net Süre Bakiyesi Ligi', 'En çok ek mesai yapanlar; net süre bakiyesinde en iyiler ve en kötüler sıralaması.', 'Sıralama'],
+                ['export-analytics', 'İK Performans ve Departman Analitiği', 'Departman bazlı katılım, fazla mesai yükü ve günlük eğilim kırılımı.', 'Analitik'],
+                ['export-late', 'Gecikme ve Devamsızlık Denetim Raporu', 'Geç kalan personel, gecikme günü ve şube kırılımı; disiplin süreci için.', 'Denetim'],
+                ['export-leaves', 'İzin ve Mazeret Yönetim Raporu', 'İzin taleplerinin tür, süre ve onay durumu dökümü.', 'İK kayıt']
+            ];
+
+            const rowsHtml = ds.map(x => `<tr>
+                    <td class="rpt-td-name">${esc(x.d)}</td>
+                    <td class="num">${x.n}</td>
+                    <td class="num">${esc(x.avgIn)}</td>
+                    <td class="num ok">+${fmtMinDur(x.totalOvertimeMin)}</td>
+                    <td class="num bad">−${fmtMinDur(x.totalLateMin)}</td>
+                    <td>${netPill(x.netMin)}</td>
+                    <td class="num">%${A.pctText(x.pct)}</td>
+                </tr>`).join('');
+            return `<div class="rpt-shell">
+              <article class="rpt-doc">
+                <header class="rpt-head">
+                  <img class="rpt-logo" src="assets/branding/albayrak_pdks_logo.svg" alt="Albayrak Finans kurumsal logosu" width="62" height="52">
+                  <div class="rpt-head-txt">
+                    <h2>ALBAYRAK TASARRUF FİNANSMAN A.Ş.</h2>
+                    <p>Personel Devam Kontrol Sistemi (PDKS) · İnsan Kaynakları Müdürlüğü</p>
+                    <p class="rpt-kunye"><span>Rapor No: <b>${esc(reportNo)}</b></span><span>Üretim: ${esc(stamp)}</span><span>Nüsha: Orijinal</span></p>
+                  </div>
+                </header>
+                <div class="rpt-rule"></div>
+                <div class="rpt-title">
+                  <h1>PERSONEL PUANTAJ, DEVAM VE PERFORMANS RAPORU</h1>
+                  <p>Gecikme, fazla mesai, net süre bakiyesi ve 30 m şube geofence doğrulama özeti</p>
+                </div>
+                <dl class="rpt-meta">
+                  <div><dt>Rapor Dönemi</dt><dd>${esc(rangeLabel())}</dd></div>
+                  <div><dt>Şube Kapsamı</dt><dd>${esc(subeAdi)}</dd></div>
+                  <div><dt>İş Günü Sayısı</dt><dd>${days.length} iş günü</dd></div>
+                  <div><dt>Hazırlayan</dt><dd>${esc(hazirlayan)}</dd></div>
+                </dl>
+
+                <h3 class="rpt-sec"><span>1</span> Yönetici Özeti Göstergeleri</h3>
+                <div class="rpt-kpis">${kpiCards.map(k => `<div class="rpt-kpi ${k.tone}"><span>${esc(k.l)}</span><b>${esc(k.v)}</b><small>${esc(k.s)}</small></div>`).join('')}</div>
+
+                <h3 class="rpt-sec"><span>2</span> Departman Bazlı Performans Özeti</h3>
+                <div class="rpt-tablewrap"><table class="rpt-table">
+                  <thead><tr><th>Departman</th><th>Personel</th><th>Ort. Giriş</th><th>Top. Ek Mesai</th><th>Top. Gecikme</th><th>Net Bakiye</th><th>Uyum</th></tr></thead>
+                  <tbody>${rowsHtml}</tbody>
+                </table></div>
+
+                <h3 class="rpt-sec"><span>3</span> Rapor Kataloğu ve İndirme</h3>
+                <p class="rpt-lead">Aşağıdaki belgeler seçili dönem ve şube kapsamı için <b>A4 yatay</b> yazdırmaya hazır, kurumsal antetli ve logolu <b>.xlsx</b> biçiminde üretilir. Her belgede rapor numarası, hazırlayan / onaylayan imza bloğu, tekrarlanan tablo başlığı ve sayfa numarası bulunur.</p>
+                <div class="rpt-catalog">${catalog.map((c, i) => `<div class="rpt-doc-row">
+                    <span class="rpt-doc-no">${String(i + 1).padStart(2, '0')}</span>
+                    <div class="rpt-doc-txt"><b>${esc(c[1])}</b><small>${esc(c[2])}</small></div>
+                    <span class="rpt-tag">${esc(c[3])}</span>
+                    ${dlBtn(c[0], 'İndir (.xlsx)', { cls: 'btn-dark btn-sm' })}
+                  </div>`).join('')}</div>
+
+                <h3 class="rpt-sec"><span>4</span> Değerlendirme ve Metodoloji Notu</h3>
+                <ol class="rpt-notes">
+                  <li>Gecikme süresi, vardiya başlangıç saatine göre hesaplanan pozitif sapmadır.</li>
+                  <li>Ek mesai süresi, vardiya bitişinden sonra gerçekleşen onaylı çalışma süresidir.</li>
+                  <li>Net süre bakiyesi = <b>Toplam ek mesai − Toplam gecikme</b>. Negatif bakiye kayıp süreyi gösterir.</li>
+                  <li>Konum doğrulaması şube merkezine 30 metre yarıçapla sınırlıdır; sahte konum (mock GPS) tespiti blokajla sonuçlanır.</li>
+                  <li>Kayıtlar KVKK kapsamında yalnızca puantaj ve iş hukuku yükümlülükleri için işlenir.</li>
+                </ol>
+
+                <footer class="rpt-sign">
+                  <div class="rpt-sign-col"><span>Hazırlayan</span><b>${esc(hazirlayan)}</b></div>
+                  <div class="rpt-sign-col"><span>Onaylayan</span><b>İnsan Kaynakları Müdürlüğü</b></div>
+                </footer>
+                <p class="rpt-foot">Bu belge Albayrak Tasarruf Finansman A.Ş. PDKS sistemi tarafından otomatik üretilmiştir. Yetkisiz kopyalanması ve dağıtılması yasaktır.</p>
+              </article>
+
+              <aside class="rpt-side">
+                <section class="card flush">
+                  ${cardHead('Belge ayarları', 'Tüm çıktılar için geçerli')}
+                  <div class="rpt-spec">
+                    <div><span>Kağıt</span><b>A4 · Yatay</b></div>
+                    <div><span>Ölçek</span><b>1 sayfa genişliği</b></div>
+                    <div><span>Başlık tekrarı</span><b>Her sayfada</b></div>
+                    <div><span>Alt bilgi</span><b>Rapor no · Sayfa X / Y</b></div>
+                    <div><span>Kurumsal antet</span><b>Logo + unvan</b></div>
+                    <div><span>İmza bloğu</span><b>Hazırlayan / Onaylayan</b></div>
+                    <div><span>Format</span><b>OpenXML .xlsx</b></div>
+                  </div>
+                </section>
+                <section class="card flush mt">
+                  ${cardHead('Veri saklama', 'KVKK kapsamında')}
+                  <p class="rpt-kvkk">Giriş-çıkış ve konum doğrulama kayıtları yalnızca puantaj ve iş hukuku yükümlülükleri için işlenir. Saklama süresi sonunda kayıtlar silinir veya anonimleştirilir. Ayrıntılar için üst çubuktaki kilit simgesine tıklayın.</p>
+                </section>
+              </aside>
+            </div>`;
         }
     };
 
@@ -1432,9 +1532,13 @@
             kpis: [
                 { label: 'Toplam Personel', value: String(st.N), sub: 'Aktif kadro' },
                 { label: 'Zamanında Giriş', value: '%' + A.pctText(st.onTimePct), sub: st.onTime + ' personel zamanında', color: '#0B7A53' },
-                { label: 'Toplam Ek Mesai', value: st.totalOvertimeH + ' sa', sub: 'Net: ' + fmtMinSigned(st.netBalanceMin), color: '#0B7A53' },
-                { label: 'Geç Kalan', value: String(st.late), sub: 'Ort. ' + Math.round(st.avgLate) + ' dk gecikme', color: '#B4690E' }
+                { label: 'Toplam Gecikme', value: fmtMinDur(st.totalLateMin), sub: st.late + ' personel geç kaldı', color: '#C8191E' },
+                { label: 'Toplam Ek Mesai', value: A.numText(st.totalOvertimeH) + ' sa', sub: 'Onaylı fazla çalışma', color: '#0B7A53' },
+                { label: 'Net Süre Bakiyesi', value: fmtMinSigned(st.netBalanceMin), sub: 'Ek mesai − gecikme', color: '#2855AE' },
+                { label: 'Geç Kalan / Devamsız', value: st.late + ' / ' + st.absent, sub: 'Ort. ' + Math.round(st.avgLate) + ' dk gecikme', color: '#B4690E' }
             ],
+            preparedBy: S.user ? S.user.name + ' — ' + S.user.title : 'İnsan Kaynakları Yönetimi',
+            approvedBy: 'İnsan Kaynakları Müdürlüğü',
             summaryTitle: 'DEPARTMAN BAZLI UYUM, EK MESAİ VE NET BAKİYE ÖZETİ',
             summaryHeaders: ['Departman', 'Personel', 'Ort. Giriş', 'Top. Ek Mesai', 'Top. Gecikme', 'Net Bakiye (Mesai-Geç)', 'Uyum Oranı'],
             summaryRows: ds.map(x => [x.d, x.n, x.avgIn, '+' + fmtMinDur(x.totalOvertimeMin), '-' + fmtMinDur(x.totalLateMin), fmtMinSigned(x.netMin), '%' + A.pctText(x.pct)]),
@@ -1455,6 +1559,8 @@
 
     function exportLeaderboardsExcel() {
         const E = emps(), lb = D.computeLeaderboards(E, filterOpts());
+        const totOtMin = lb.all.reduce((a, x) => a + x.totalOvertimeMin, 0);
+        const totLateMin = lb.all.reduce((a, x) => a + x.totalLateMin, 0);
         A.excelReport({
             fileName: 'Albayrak_Mesai_ve_Net_Bakiye_Ligi_' + new Date().toISOString().slice(0, 10),
             title: 'FAZLA MESAİ LİDERLERİ VE NET SÜRE BAKİYESİ (MESAİ − GECİKME) RAPORU',
@@ -1466,8 +1572,12 @@
             kpis: [
                 { label: 'En Çok Mesai Yapan', value: lb.topOvertime[0] ? lb.topOvertime[0].emp.name : '—', sub: lb.topOvertime[0] ? '+' + fmtMinDur(lb.topOvertime[0].totalOvertimeMin) : '', color: '#0B7A53' },
                 { label: 'Net Bakiye Lideri', value: lb.bestNet[0] ? lb.bestNet[0].emp.name : '—', sub: lb.bestNet[0] ? fmtMinSigned(lb.bestNet[0].netBalanceMin) : '', color: '#0B7A53' },
-                { label: 'En Düşük Net Bakiye', value: lb.worstNet[0] ? lb.worstNet[0].emp.name : '—', sub: lb.worstNet[0] ? fmtMinSigned(lb.worstNet[0].netBalanceMin) : '', color: '#C8191E' }
+                { label: 'En Düşük Net Bakiye', value: lb.worstNet[0] ? lb.worstNet[0].emp.name : '—', sub: lb.worstNet[0] ? fmtMinSigned(lb.worstNet[0].netBalanceMin) : '', color: '#C8191E' },
+                { label: 'Toplam Ek Mesai', value: fmtMinDur(totOtMin), sub: 'Dönem toplamı', color: '#0B7A53' },
+                { label: 'Toplam Gecikme', value: fmtMinDur(totLateMin), sub: 'Dönem toplamı', color: '#C8191E' },
+                { label: 'Net Süre Bakiyesi', value: fmtMinSigned(totOtMin - totLateMin), sub: 'Ek mesai − gecikme', color: '#2855AE' }
             ],
+            preparedBy: S.user ? S.user.name + ' — ' + S.user.title : 'İnsan Kaynakları Yönetimi',
             summaryTitle: 'NET SÜRE BAKİYESİ EN İYİ 10 PERSONEL (EK MESAİ − GECİKME)',
             summaryHeaders: ['Sıra', 'Sicil No', 'Ad Soyad', 'Departman', 'Toplam Ek Mesai (dk)', 'Toplam Gecikme (dk)', 'Net Bakiye'],
             summaryRows: lb.bestNet.slice(0, 10).map((a, i) => [i + 1, a.emp.sicil, a.emp.name, a.emp.dept, a.totalOvertimeMin, a.totalLateMin, fmtMinSigned(a.netBalanceMin)]),
@@ -1497,10 +1607,13 @@
             ],
             kpis: [
                 { label: 'Zamanında Katılım Oranı', value: '%' + A.pctText(st.onTimePct), sub: 'Hedef: %95,0', color: '#0B7A53' },
-                { label: 'Toplam Fazla Mesai', value: st.totalOvertimeH + ' saat', sub: rangeLabel(), color: '#0B7A53' },
+                { label: 'Toplam Fazla Mesai', value: A.numText(st.totalOvertimeH) + ' saat', sub: rangeLabel(), color: '#0B7A53' },
+                { label: 'Toplam Gecikme', value: fmtMinDur(st.totalLateMin), sub: st.late + ' personel geç kaldı', color: '#C8191E' },
                 { label: 'Net Süre Bakiyesi', value: fmtMinSigned(st.netBalanceMin), sub: 'Ek mesai − gecikme', color: '#2855AE' },
-                { label: 'Ortalama Gecikme', value: Math.round(st.avgLate) + ' dk', sub: 'Geç kalan personel ort.', color: '#B4690E' }
+                { label: 'Ortalama Gecikme', value: Math.round(st.avgLate) + ' dk', sub: 'Geç kalan personel ort.', color: '#B4690E' },
+                { label: 'Devamsız', value: String(st.absent), sub: 'Kayıt açılmayan personel', color: '#C8191E' }
             ],
+            preparedBy: S.user ? S.user.name : 'İK Direktörlüğü',
             summaryTitle: 'DEPARTMAN PERFORMANS, EK MESAİ VE NET BAKİYE MATRİSİ',
             summaryHeaders: ['Departman', 'Kadro', 'Ortalama Giriş', 'Top. Ek Mesai', 'Top. Gecikme', 'Net Bakiye', 'Uyum Oranı (%)'],
             summaryRows: ds.map(x => [x.d, x.n, x.avgIn, '+' + fmtMinDur(x.totalOvertimeMin), '-' + fmtMinDur(x.totalLateMin), fmtMinSigned(x.netMin), '%' + A.pctText(x.pct)]),
@@ -1528,9 +1641,11 @@
             subtitle: 'Dönem: ' + rangeLabel() + ' · En Çok Gecikilen Günler ve Net Mesai Farkları',
             kpis: [
                 { label: 'İncelenen Personel', value: String(list.length), sub: 'Gecikme kaydı olan', color: '#C8191E' },
+                { label: 'Toplam Gecikme', value: fmtMinDur(list.reduce((a, x) => a + x.totalLateMin, 0)), sub: 'Dönem toplamı', color: '#C8191E' },
                 { label: 'Ortalama Gecikme', value: Math.round(stats().avgLate) + ' dk', sub: '08:30 vardiya bazlı', color: '#B4690E' },
                 { label: 'Geofence Durumu', value: '30m Aktif', sub: 'Şube sınırı kontrolü', color: '#0B7A53' }
             ],
+            preparedBy: S.user ? S.user.name + ' — ' + S.user.title : 'İnsan Kaynakları Yönetimi',
             headers: ['Sicil No', 'Ad Soyad', 'Departman', 'Şube', 'Toplam Gecikme (dk)', 'Gecikme Gün Sayısı', 'En Çok Geç Kaldığı Gün', 'Toplam Ek Mesai (dk)', 'Net Süre Bakiyesi'],
             rows: list.map(a => [
                 a.emp.sicil, a.emp.name, a.emp.dept, brName(a.emp.branch),
@@ -1555,6 +1670,7 @@
                 { label: 'Onay Bekleyen', value: String(D.LEAVES.filter(l => l.status === 'pending').length), sub: 'İK onayı bekliyor', color: '#B4690E' },
                 { label: 'Onaylanan', value: String(D.LEAVES.filter(l => l.status === 'approved').length), sub: 'Sisteme işlendi', color: '#0B7A53' }
             ],
+            preparedBy: S.user ? S.user.name + ' — ' + S.user.title : 'İnsan Kaynakları Yönetimi',
             headers: ['Talep No', 'Sicil No', 'Personel Adı', 'Departman', 'İzin Türü', 'Süre (Gün)', 'Başlangıç Tarihi', 'Açıklama', 'Durum'],
             rows: D.LEAVES.map(l => {
                 const e = emp(l.empId);
@@ -1574,6 +1690,8 @@
                 { label: 'Açık Güvenlik Uyarısı', value: String(openAlerts().length), sub: 'Aktif incelemede', color: '#C8191E' },
                 { label: 'Destek Talebi', value: String(openTickets().length), sub: 'Parola / kilit / cihaz', color: '#B4690E' }
             ],
+            preparedBy: S.user ? S.user.name + ' — ' + S.user.title : 'Bilgi Teknolojileri Müdürlüğü',
+            approvedBy: 'Bilgi Teknolojileri Müdürlüğü',
             summaryTitle: 'SON YÖNETİCİ DENETİM GÜNLÜĞÜ (AUDIT LOG)',
             summaryHeaders: ['Saat', 'İşlemi Yapan', 'İşlem Açıklaması', 'Hedef Kayıt', 'Kategori'],
             summaryRows: D.AUDIT.slice(0, 12).map(a => [a.t, a.who, a.act, a.target, a.cat]),
