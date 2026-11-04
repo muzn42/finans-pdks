@@ -79,6 +79,8 @@ Ardından **http://127.0.0.1:8000/index.html** adresini Chrome'da açın. `file:
 
 **Yöntem 2 — Doğrudan dosya:**
 * [`web-dashboard/index.html`](web-dashboard/index.html) dosyasını doğrudan Google Chrome veya modern bir tarayıcıda açın.
+* > [!IMPORTANT]
+  > `file://` ile açıldığında tarayıcı güvenlik kuralları `fetch()` çağrısını engellediği için **`.xlsx` dosyasına logo gömülemez** (rapor antetsiz/logosuz üretilir, diğer tüm biçimlendirme çalışır). Logolu rapor için Yöntem 1 kullanılmalıdır.
 
 * **Demo Girişleri:**
   * **İK Direktörü:** `ik@albayrakfinans.com.tr` / `Ik!2026demo`
