@@ -855,7 +855,7 @@
             <p class="muted" style="font-size:var(--fs-sm);margin-bottom:10px">
                 Ek mesai ${fmtMinDur(an.totalOvertimeMin)}, gecikme ${fmtMinDur(an.totalLateMin)} olarak gerçekleşti; aradaki fark <b>${fmtMinSigned(an.netBalanceMin)}</b>.
             </p>
-            <div class="net-split" role="img" aria-label="Ek mesai ve gecikme dengesi">
+            <div class="net-split-track" role="img" aria-label="Ek mesai ve gecikme dengesi">
                 <div class="net-split-ot" style="width:${otPct}%"></div>
                 <div class="net-split-late" style="width:${100 - otPct}%"></div>
             </div>

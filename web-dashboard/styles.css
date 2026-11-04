@@ -994,6 +994,16 @@ tr.emp-row.is-open td { border-bottom-color: transparent; }
 .list-item.clickable { cursor: pointer; }
 .list-item.clickable:hover { background: var(--surface-2); }
 
+/* Admin panelindeki hesap satirlarinda sag taraftaki buton grubu */
+.row-acts {
+    display: flex; align-items: center; gap: 8px;
+    flex-wrap: wrap; margin-left: auto; flex: none;
+}
+.row-acts .btn { white-space: nowrap; }
+@media (max-width: 720px) {
+    .row-acts { margin-left: 0; width: 100%; justify-content: flex-start; }
+}
+
 /* Klavye odagi: satirin tamami net bir cerceveyle isaretlenir */
 tr.emp-row:focus-visible {
     outline: 2px solid var(--red);
