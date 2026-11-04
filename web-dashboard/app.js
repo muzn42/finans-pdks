@@ -1462,16 +1462,17 @@
     const dndKey = () => 'atf_dnd_' + (S.user ? S.user.role : 'HR') + '_' + S.page;
 
     function draw(animate) {
+        if (!S.user || !PAGES[S.user.role] || !PAGES[S.user.role][S.page]) return;
         const p = PAGES[S.user.role][S.page], pg = $('#page'), active = document.activeElement, focusId = active && active.id && pg.contains(active) ? active.id : null, pos = focusId ? active.selectionStart : null;
         $('#pageTitle').textContent = p.title; $('#pageSub').textContent = typeof p.sub === 'function' ? p.sub() : p.sub; document.title = p.title + ' · Albayrak Finans PDKS';
         pg.innerHTML = p.render(); pg.classList.toggle('still', !animate);
         Array.from(pg.children).forEach((c, i) => c.style.setProperty('--i', i));
         A.hydrate(pg); if (p.mount) p.mount(); A.enableDragGrid(pg, dndKey()); A.countUp(pg); buildNav(); setTools(p);
-        if (S.openEmpId && $('#drawer').classList.contains('on')) empDrawer(S.openEmpId, true);
         if (S.page === 'profile') mountProfileChart();
         if (focusId) { const el = $('#' + focusId); if (el) { el.focus(); if (pos != null && el.setSelectionRange) try { el.setSelectionRange(pos, pos); } catch (e) { } } }
     }
     function go(id, quiet) {
+        if (!S.user || !PAGES[S.user.role]) return;   // oturum kapanmissa sessizce cik
         const role = S.user.role;
         if (!PAGES[role][id]) {
             audit('Yetkisiz sayfa erişim denemesi engellendi (' + id + ')', S.user.email, 'SECURITY');
@@ -1488,17 +1489,19 @@
     /* ======================= Çekmece & Derin Personel Profil Analizi ======================= */
     /* Satir altinda detay ac/kapa (personel listesinde) */
     function empToggleDetail(id) {
+        if (!S.user) return;
         const u = S.ui.emp;
         u.openId = (id == null || u.openId === id) ? null : id;
         draw(false);
     }
     /* Tam sayfa profil ekrani — cekmece yerine ayri rota */
     function empProfile(id) {
-        if (!emp(id)) return;
+        if (!S.user || !emp(id)) return;
         if (!PAGES[S.user.role].profile) return;
         S.ui.emp.openId = null;
         closeDrawer();          // closeDrawer S.openEmpId'yi sifirlar -> sonra set et
         S.openEmpId = id;
+        try { sessionStorage.setItem('atf_emp', String(id)); } catch (e) { }
         go('profile');
     }
 
@@ -1530,8 +1533,9 @@
         d.setAttribute('aria-hidden', 'false');
     }
     function closeDrawer() {
-        S.openEmpId = null;
         const d = $('#drawer');
+        // Sadece gercekten acikken kapat; S.openEmpId'yi sifirlama (profil sayfasi kullanir)
+        if (!d.classList.contains('on')) return;
         d.classList.remove('on', 'wide');
         d.setAttribute('aria-hidden', 'true');
     }
@@ -2215,10 +2219,21 @@
         renderBranchMenu();
         syncDateInputs();
         const h = location.hash.replace('#/', ''); if (PAGES[u.role][h]) S.page = h;
+        // Profil sayfasi yenilenirse secili personeli geri yukle
+        if (S.page === 'profile') {
+            const kayitli = +sessionStorage.getItem('atf_emp') || 0;
+            S.openEmpId = kayitli || null;
+            if (!S.openEmpId || !emp(S.openEmpId)) S.page = 'employees';
+        }
         buildNav(); draw(true); placeNav(); armIdle(); setTimeout(() => { placeNav(); A.placeSeg($('#rangeSeg')); }, 60);
     }
     function logout(msg) {
-        sessionStorage.removeItem('atf_session'); S.user = null; clearTimeout(idleTimer); closeDrawer(); closeModal();
+        sessionStorage.removeItem('atf_session'); sessionStorage.removeItem('atf_emp'); S.user = null; S.openEmpId = null; clearTimeout(idleTimer); closeDrawer(); closeModal();
+        // Bayat DOM'a tiklanirsa JS hatasi olusmasin: icerigi temizle
+        const pg = $('#page'); if (pg) pg.innerHTML = '';
+        const drawerGovde = $('#drawerBody'); if (drawerGovde) drawerGovde.innerHTML = '';
+        const modalGovde = $('#modalBody'); if (modalGovde) modalGovde.innerHTML = '';
+        closeSide();
         $('#appView').hidden = true; $('#authView').hidden = false; $('#loginPassword').value = ''; history.replaceState(null, '', location.pathname);
         setTimeout(() => A.placeSeg($('#portalSeg')), 30); if (msg) A.toast(msg);
     }
