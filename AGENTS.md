@@ -1,6 +1,6 @@
 # AI Asistan Kuralları & Uzmanlık Standartları — Albayrak PDKS
 
-Bu projede çalışan her AI asistan (Antigravity, Gemini, Claude, Copilot vb.) bu kurallara ve entegre edilen uzmanlık standartlarına uyar.
+Bu projede çalışan her AI asistan (Antigravity, Gemini, Claude, Copilot vb.) bu kurallara ve entegre edilen uzmanlık standartlarına uyar. Ayrıca modül bazlı detaylı ECC kuralları [`app/AGENTS.md`](app/AGENTS.md), [`web-dashboard/AGENTS.md`](web-dashboard/AGENTS.md) ve [`server/AGENTS.md`](server/AGENTS.md) dosyalarında tanımlıdır.
 
 ---
 
@@ -50,3 +50,41 @@ Bu projede çalışan her AI asistan (Antigravity, Gemini, Claude, Copilot vb.) 
 - **Compose Recomposition Optimizasyonu:** `LazyColumn` ve `LazyRow` içindeki tüm dinamik listeler kararlı `key = { ... }` parametresiyle çağrılmalıdır.
 - **Gereksiz Hesaplama Engelleme:** Ağır analitik ve liste filtrelemeleri `remember` veya `derivedStateOf` bloklarında saklanmalı; kaydırma esnasında her karede yeniden hesaplanmamalıdır.
 - **Temiz Mimari (UDF):** Tek yönlü veri akışı (Unidirectional Data Flow) korunmalı; UI ekranları doğrudan veritabanı veya ağ işlemi yapmamalı, tüm state `MainViewModel` ve `PdksRepository` üzerinden akmalıdır.
+
+---
+
+## 3. ECC Evrensel Mühendislik Kuralları (`ecc/rules/common`)
+
+### 🧱 Kodlama Stili & Değişmezlik (`common/coding-style.md`)
+- **Immutability (Değişmezlik — KRİTİK):** Mevcut nesneleri yerinde (in-place) mutasyona uğratma; her zaman yeni kopya üret (`copy()`, spread `...` veya yeni dizi/liste döndüren fonksiyonlar).
+- **Temel İlkeler:**
+  - **KISS:** Çalışan en sade çözümü tercih et; erken optimizasyondan kaçın.
+  - **DRY:** Tekrarlayan mantığı ortak yardımcı fonksiyonlara (`ATF.*`, `MinimalComponents.kt` vb.) çıkar.
+  - **YAGNI:** İhtiyaç doğmadan spekülatif soyutlama veya özellik inşa etme.
+- **Kod Organizasyonu:** Yüksek uyum (high cohesion), düşük bağımlılık (low coupling). Derin iç içe bloklardan (>4 seviye) kaçın, erken dönüş (`early return`) kullan.
+
+### 🤖 Ajan & Alt Ajan Orkestrasyonu (`common/agents.md`)
+- **Uzman Subagent Kullanımı:**
+  - Karmaşık özellik planlamasında: `planner` veya `architect`
+  - Kotlin / Android değişikliklerinde: `kotlin-reviewer`
+  - Web / JS / UI değişikliklerinde: `code-reviewer` ve erişilebilirlik için `a11y-architect`
+  - Güvenlik ve yetkilendirme kritik kodlarda: `security-reviewer`
+  - Web E2E ve görsel doğrulamada: `e2e-runner`
+- **Paralel Görev Yürütme:** Birbirinden bağımsız araştırma ve inceleme görevlerinde alt ajanları ardışık değil paralel başlat.
+- **Delegasyon Tamamlama Sözleşmesi (Completion Contract):**
+  1. Bir alt ajan başlattığında sonuçlarını toplayıp birleştirmekten sen sorumlusun ("ateşle ve unut" yasaktır).
+  2. Alt ajanlar çalışırken turu "arka plan ajanları bekleniyor" diyerek yarım bırakma; nihai yanıtın teslim edilebilir çıktının kendisi olmalıdır.
+
+### 🔎 Kod İnceleme & Kalite Kapıları (`common/code-review.md` & `common/testing.md`)
+- **Zorunlu Kontrol Listesi (Her Değişiklik Sonrası):**
+  - [ ] Kod okunabilir ve anlamlı isimlendirilmiş mi?
+  - [ ] Hatalar açıkça ele alınmış mı (`NaN`, `null`, `undefined`, ağ/dosya hataları)?
+  - [ ] Kaynak kodda sabitlenmiş gizli bilgi (API anahtarı, token, gerçek parola) var mı? (Varsa **CRITICAL BLOCK**).
+  - [ ] Üretim kodunda unutulmuş gereksiz `console.log` veya debug çıktısı var mı?
+  - [ ] Yeni veya değişen iş mantığı (Excel `.xlsx` şema sırası, analitik hesaplamalar, geofence) doğrulama betikleri veya testlerle doğrulandı mı?
+
+### 🌿 Git & Geliştirme İş Akışı (`common/git-workflow.md` & `common/development-workflow.md`)
+- **Dal (Branch) Kuralı:** Tüm geliştirmeler `dev` dalında yapılır. Kullanıcı açıkça onay vermeden `main` dalına merge veya doğrudan commit yapılmaz.
+- **Commit Mesajı Formatı (Conventional Commits):**
+  - `<tip>: <açıklama>` formatı kullanılır (`feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`, `perf:`).
+- **Derleme & Paket Güvenliği:** `.apk`, `.aab`, `.zip`, `.jks`, `.keystore`, `.env` dosyaları asla git deposuna eklenmez.
