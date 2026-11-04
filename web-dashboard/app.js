@@ -76,7 +76,7 @@
         openEmpId: null,
         ui: {
             ovLb: 'best', // 'best' | 'worst'
-            emp: { q: '', status: 'ALL', dept: 'ALL', sort: 'net', dir: -1, page: 1, size: 12 },
+            emp: { q: '', status: 'ALL', dept: 'ALL', sort: 'net', dir: -1, page: 1, size: 12, openId: null },
             onb: { name: '', dept: 'Şube Operasyon', title: 'Müşteri Temsilcisi', branch: 'HQ', status: 'PRESENT', startDate: '2026-10-20', email: '' },
             adm: {
                 filter: 'ALL',
@@ -380,6 +380,55 @@
         return L.sort((a, b) => { const x = key(a), y = key(b); return (typeof x === 'string' ? x.localeCompare(y, 'tr') : x - y) * u.dir; }).map(e => ({ e, an: anMap[e.id] }));
     }
 
+    /* =========================================================================
+       PERSONEL LISTESI — SATIR ALTINDA ACILAN DETAY PANELI
+       Kullanici satira tiklar, detaylar satirin hemen altinda acilir.
+       "Tam profili ac" butonu ayri bir tam sayfa ekrana (route) gecis yapar.
+       ========================================================================= */
+    function empDetailHtml(e, an) {
+        const hucre = (etiket, deger, ton) =>
+            `<div class="emp-detail-cell${ton ? ' ' + ton : ''}"><span>${esc(etiket)}</span><b>${deger}</b></div>`;
+
+        return `<div class="emp-detail">
+            <div class="emp-detail-top">
+                <div class="emp-detail-id">
+                    ${avatar(e, 'lg')}
+                    <div style="min-width:0">
+                        <h4>${esc(e.name)}</h4>
+                        <p>${esc(e.title)} · ${esc(e.dept)} · <span class="mono">${e.sicil}</span></p>
+                        <div class="emp-detail-tags">
+                            ${pill(STATUS[e.status][0], STATUS[e.status][1])}
+                            ${pill(brName(e.branch), 'mute')}
+                            ${netPill(an.netBalanceMin)}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="emp-detail-grid">
+                ${hucre('Net Süre Bakiyesi', fmtMinSigned(an.netBalanceMin), an.netBalanceMin >= 0 ? 'ok' : 'bad')}
+                ${hucre('Toplam Gecikme', an.totalLateMin > 0 ? '−' + fmtMinDur(an.totalLateMin) : '0 dk', an.totalLateMin > 0 ? 'warn' : '')}
+                ${hucre('Toplam Ek Mesai', '+' + fmtMinDur(an.totalOvertimeMin), 'ok')}
+                ${hucre('Ort. Giriş / Çıkış', `${an.avgCheckIn} → ${an.avgCheckOut}`)}
+                ${hucre('En Çok Geç Kaldığı Gün', an.mostLateDay.totalLateMin > 0
+                    ? `${esc(an.mostLateDay.dowName)} <small class="muted">(${an.mostLateDay.totalLateMin} dk)</small>`
+                    : 'Yok')}
+                ${hucre('Geofence Uyumu', '%' + an.geofenceRate + ' <small class="muted">(' + (e.dist != null ? String(e.dist).replace('.', ',') + ' m)' : '—)'))}
+            </div>
+            <div class="emp-detail-actions">
+                <button type="button" class="btn btn-primary btn-sm" data-act="emp-profile" data-id="${e.id}">
+                    ${ic('chevron')} Tam profili aç
+                </button>
+                <button type="button" class="btn btn-soft btn-sm" data-act="export-one" data-id="${e.id}">
+                    ${ic('file')} Excel raporu (.xlsx)
+                </button>
+                <span class="grow"></span>
+                <button type="button" class="btn btn-ghost btn-sm" data-act="emp-collapse">
+                    Detayları kapat
+                </button>
+            </div>
+        </div>`;
+    }
+
     HR.employees = {
         title: 'Personel & yoklama analizi', sub: () => 'Personel satırına tıklayarak en çok gecikilen gün, ek mesai günü ve net süre bakiyesi karnesini açın · ' + rangeLabel(), tools: { range: 1, branch: 1 }, icon: 'users',
         render() {
@@ -404,18 +453,21 @@
                 ${th('status', 'Bugün')}
                 <th></th>
             </tr></thead>
-            <tbody>${rows.length ? rows.map(({ e, an }, i) => `<tr class="clickable" style="--r:${i}" data-act="emp-open" data-id="${e.id}">
+            <tbody>${rows.length ? rows.map(({ e, an }, i) => {
+                const acik = u.openId === e.id;
+                return `<tr class="emp-row${acik ? ' is-open' : ''}" style="--r:${i}" data-act="emp-expand" data-id="${e.id}" aria-expanded="${acik}">
                 <td><div class="cell-user">${avatar(e)}<div><b>${esc(e.name)}</b><small class="mono">${e.sicil} · ${esc(brName(e.branch))}</small></div></div></td>
                 <td>${esc(e.dept)}</td>
                 <td class="mono">${an.avgCheckIn} <span class="muted">→ ${an.avgCheckOut}</span></td>
                 <td class="mono" style="color:${an.totalLateMin > 0 ? 'var(--warn)' : 'var(--muted)'}"><b>${an.totalLateMin > 0 ? '−' + fmtMinDur(an.totalLateMin) : '0 dk'}</b> <small class="muted">(${an.lateDays}g)</small></td>
                 <td class="mono" style="color:${an.totalOvertimeMin > 0 ? 'var(--ok)' : 'var(--muted)'}"><b>+${fmtMinDur(an.totalOvertimeMin)}</b> <small class="muted">(${an.overtimeDays}g)</small></td>
                 <td>${netPill(an.netBalanceMin)}</td>
-                <td><small style="display:block;font-size:11.5px"><span style="color:var(--warn);font-weight:700">Geç:</span> ${an.mostLateDay.totalLateMin > 0 ? esc(an.mostLateDay.dowName) + ' (' + an.mostLateDay.totalLateMin + ' dk)' : 'Yok'}</small><small style="display:block;font-size:11.5px"><span style="color:var(--ok);font-weight:700">Mesai:</span> ${esc(an.mostOvertimeDay.dowName)} (+${an.mostOvertimeDay.totalOvertimeMin} dk)</small></td>
+                <td><small style="display:block;font-size:var(--fs-xs)"><span style="color:var(--warn);font-weight:700">Geç:</span> ${an.mostLateDay.totalLateMin > 0 ? esc(an.mostLateDay.dowName) + ' (' + an.mostLateDay.totalLateMin + ' dk)' : 'Yok'}</small><small style="display:block;font-size:var(--fs-xs)"><span style="color:var(--ok);font-weight:700">Mesai:</span> ${esc(an.mostOvertimeDay.dowName)} (+${an.mostOvertimeDay.totalOvertimeMin} dk)</small></td>
                 <td>${e.dist != null ? `<span class="mono">${String(e.dist).replace('.', ',')} m</span> ${pill('%' + an.geofenceRate, 'ok')}` : '<span class="muted">—</span>'}</td>
                 <td>${pill(STATUS[e.status][0], STATUS[e.status][1])}</td>
-                <td class="muted">${ic('chevron')}</td>
-            </tr>`).join('') : `<tr><td colspan="10">${empty('Sonuç bulunamadı', 'Filtreleri değiştirmeyi deneyin.')}</td></tr>`}</tbody></table></div>
+                <td class="muted"><span class="emp-caret${acik ? ' is-open' : ''}">${ic('chevron')}</span></td>
+            </tr>${acik ? `<tr class="detail-row"><td colspan="10">${empDetailHtml(e, an)}</td></tr>` : ''}`;
+            }).join('') : `<tr><td colspan="10">${empty('Sonuç bulunamadı', 'Filtreleri değiştirmeyi deneyin.')}</td></tr>`}</tbody></table></div>
             <div class="pager"><span>${fmt(L.length)} personelden ${L.length ? (u.page - 1) * u.size + 1 : 0}–${Math.min(L.length, u.page * u.size)} gösteriliyor · <b>Dönem: ${esc(rangeLabel())}</b></span>
                 <div style="display:flex;gap:10px;align-items:center">${selectEl('emp-size', [10, 12, 25, 50].map(n => ({ v: String(n), l: n + ' / sayfa' })), String(u.size), 'Sayfa boyutu')}
                 <div class="pg"><button data-act="emp-page" data-v="${u.page - 1}" ${u.page <= 1 ? 'disabled' : ''} aria-label="Önceki">‹</button>${pageBtns(u.page, pages)}<button data-act="emp-page" data-v="${u.page + 1}" ${u.page >= pages ? 'disabled' : ''} aria-label="Sonraki">›</button></div></div></div></section>`;
@@ -726,6 +778,138 @@
             </table></div>`;
         }
     };
+
+    /* =========================================================================
+       TAM SAYFA PERSONEL PROFILI — #/profile rotasi
+       Cekmece (drawer) yerine ayri ekran: geri butonu + derin analiz.
+       ========================================================================= */
+    HR.profile = {
+        title: 'Personel profili',
+        sub: () => (S.openEmpId && emp(S.openEmpId)) ? emp(S.openEmpId).name + ' · derin analiz · ' + rangeLabel() : rangeLabel(),
+        tools: { range: 1 },
+        icon: 'users',
+        render() {
+            const e = emp(S.openEmpId);
+            if (!e) {
+                return `<section class="card">${empty('Personel seçilmedi', 'Personel listesinden bir kişi seçin.')}
+                    <div style="margin-top:14px"><button type="button" class="btn btn-primary" data-go="employees">Personel listesine dön</button></div></section>`;
+            }
+
+            const an = D.empAnalytics(e.id, filterOpts());
+            const totBar = Math.max(1, an.totalOvertimeMin + an.totalLateMin);
+            const otPct = Math.round((an.totalOvertimeMin / totBar) * 100);
+
+            const deptEmps = D.EMPLOYEES.filter(x => x.dept === e.dept);
+            const deptLb = D.computeLeaderboards(deptEmps, filterOpts());
+            const dn = deptLb.all.length || 1;
+            const deptAvgOt = Math.round(deptLb.all.reduce((a, x) => a + x.totalOvertimeMin, 0) / dn);
+            const deptAvgLate = Math.round(deptLb.all.reduce((a, x) => a + x.totalLateMin, 0) / dn);
+
+            const stat = (etiket, deger, alt, ton) =>
+                `<div class="profile-stat${ton ? ' ' + ton : ''}"><span>${esc(etiket)}</span><b>${deger}</b><small>${esc(alt)}</small></div>`;
+
+            return `<div class="profile-screen">
+                <section class="profile-hero">
+                    <div class="profile-hero-in">
+                        ${avatar(e, 'lg')}
+                        <div class="profile-hero-txt">
+                            <h2>${esc(e.name)}</h2>
+                            <p>${esc(e.title)} · ${esc(e.dept)} · <span class="mono">${e.sicil}</span></p>
+                            <div class="profile-hero-tags">
+                                ${pill(STATUS[e.status][0], STATUS[e.status][1])}
+                                ${pill(brName(e.branch), 'mute')}
+                                ${netPill(an.netBalanceMin)}
+                                ${pill('Dönem: ' + rangeLabel(), 'mute')}
+                            </div>
+                        </div>
+                        <div class="profile-hero-actions">
+                            <button type="button" class="btn btn-soft btn-sm" data-go="employees">Listeye dön</button>
+                            ${dlBtn('export-one', 'Excel (.xlsx)', { cls: 'btn-dark btn-sm', id: e.id })}
+                        </div>
+                    </div>
+                </section>
+
+                <div class="profile-stat-grid">
+                    ${stat('Toplam Ek Mesai', '+' + fmtMinDur(an.totalOvertimeMin), an.overtimeDays + ' günde gerçekleşti', 'ok')}
+                    ${stat('Toplam Gecikme', an.totalLateMin > 0 ? '−' + fmtMinDur(an.totalLateMin) : '0 dk', an.lateDays + ' günde geç kaldı', an.totalLateMin > 0 ? 'warn' : '')}
+                    ${stat('Net Süre Bakiyesi', fmtMinSigned(an.netBalanceMin), 'Ek mesai − gecikme', an.netBalanceMin >= 0 ? 'ok' : 'bad')}
+                    ${stat('Ort. Giriş', an.avgCheckIn, 'Ortalama çıkış ' + an.avgCheckOut, 'info')}
+                    ${stat('Günlük Ort. Mesai', String(an.avgWorkH).replace('.', ',') + ' sa', 'Kurumsal hedef 8,5 sa', '')}
+                    ${stat('Devam / Katılım', an.attendedDays + ' / ' + an.logs.length + ' gün', 'İşe gelinen iş günü', 'red')}
+                </div>
+                ${profileTerazi(an, otPct)}
+                ${profileKiyas(e, an, deptAvgOt, deptAvgLate)}
+                <section class="card">
+                    <div class="profile-section-head"><span class="n">3</span><h3>Çalışma saati istikrarı</h3><small>8,5 sa referanslı</small></div>
+                    <div id="prChart"></div>
+                </section>
+                ${profileGunluk(an)}
+            </div>`;
+        }
+    };
+
+    /* Profil ekrani yardimcilari */
+    function profileTerazi(an, otPct) {
+        return `<section class="card">
+            <div class="profile-section-head"><span class="n">1</span><h3>Ek Mesai ve Gecikme Süresi Terazisi</h3><small>${esc(rangeLabel())}</small></div>
+            <p class="muted" style="font-size:var(--fs-sm);margin-bottom:10px">
+                Ek mesai ${fmtMinDur(an.totalOvertimeMin)}, gecikme ${fmtMinDur(an.totalLateMin)} olarak gerçekleşti; aradaki fark <b>${fmtMinSigned(an.netBalanceMin)}</b>.
+            </p>
+            <div class="net-split" role="img" aria-label="Ek mesai ve gecikme dengesi">
+                <div class="net-split-ot" style="width:${otPct}%"></div>
+                <div class="net-split-late" style="width:${100 - otPct}%"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;gap:10px;margin-top:9px;font-size:var(--fs-sm);font-weight:600;flex-wrap:wrap">
+                <span style="color:var(--ok)">● Toplam Ek Mesai: +${fmtMinDur(an.totalOvertimeMin)} (%${otPct})</span>
+                <span style="color:var(--bad)">● Toplam Gecikme: −${fmtMinDur(an.totalLateMin)} (%${100 - otPct})</span>
+            </div>
+        </section>`;
+    }
+
+    function profileCmpRow(etiket, deger, oran, ton) {
+        const w = A.clamp(oran || 0, 4, 100);
+        return `<div class="profile-cmp-row">
+            <div class="lbl"><span>${esc(etiket)}</span><b>${esc(deger)}</b></div>
+            <div class="profile-cmp-track"><div class="profile-cmp-fill ${ton || ''}" style="width:${w}%"></div></div>
+        </div>`;
+    }
+
+    function profileKiyas(e, an, deptAvgOt, deptAvgLate) {
+        return `<section class="card">
+            <div class="profile-section-head"><span class="n">2</span><h3>${esc(e.dept)} birimi ile karşılaştırma</h3></div>
+            <p class="muted" style="font-size:var(--fs-sm);margin-bottom:12px">Personelin departman ortalamasına göre konumu</p>
+            <div class="profile-cmp">
+                ${profileCmpRow(e.name + ' · Ek Mesai', '+' + fmtMinDur(an.totalOvertimeMin), (an.totalOvertimeMin / Math.max(60, deptAvgOt * 1.6)) * 100, 'ok')}
+                ${profileCmpRow(e.dept + ' ortalaması', '+' + fmtMinDur(deptAvgOt), (deptAvgOt / Math.max(60, deptAvgOt * 1.6)) * 100, 'muted')}
+                ${profileCmpRow(e.name + ' · Gecikme', '−' + fmtMinDur(an.totalLateMin), (an.totalLateMin / Math.max(30, deptAvgLate * 1.6)) * 100, 'warn')}
+                ${profileCmpRow(e.dept + ' ortalaması', '−' + fmtMinDur(deptAvgLate), (deptAvgLate / Math.max(30, deptAvgLate * 1.6)) * 100, 'muted')}
+            </div>
+        </section>`;
+    }
+
+    function profileGunluk(an) {
+        const satirlar = an.logs.slice().reverse().map(l => `<tr>
+            <td class="mono"><b>${l.fullDate}</b></td>
+            <td>${esc(l.dowName)}</td>
+            <td class="mono">${l.checkIn || '—'}</td>
+            <td class="mono">${l.checkOut || '—'}</td>
+            <td class="mono">${l.workH ? String(l.workH).replace('.', ',') + ' sa' : '—'}</td>
+            <td class="mono" style="color:${l.lateMin > 0 ? 'var(--warn)' : 'var(--muted)'}">${l.lateMin > 0 ? '−' + l.lateMin + ' dk' : '0 dk'}</td>
+            <td class="mono" style="color:${l.overtimeMin > 0 ? 'var(--ok)' : 'var(--muted)'}">${l.overtimeMin > 0 ? '+' + l.overtimeMin + ' dk' : '0 dk'}</td>
+            <td>${l.status === 'LEAVE' || l.status === 'ABSENT' ? pill(STATUS[l.status][0], STATUS[l.status][1]) : netPill(l.netMin)}</td>
+            <td class="mono">${l.dist != null ? String(l.dist).replace('.', ',') + ' m' : '—'}</td>
+        </tr>`).join('');
+
+        return `<section class="card flush">
+            <div class="profile-section-head" style="padding:18px 20px 9px;margin:0"><span class="n">4</span><h3>Gün gün giriş-çıkış, gecikme ve ek mesai</h3><small>${an.logs.length} iş günü</small></div>
+            <div class="table-wrap" style="max-height:340px;overflow-y:auto">
+                <table>
+                    <thead><tr><th>Tarih</th><th>Gün</th><th>Giriş</th><th>Çıkış</th><th>Mesai</th><th>Gecikme</th><th>Ek Mesai</th><th>Net</th><th>Konum</th></tr></thead>
+                    <tbody>${satirlar}</tbody>
+                </table>
+            </div>
+        </section>`;
+    }
 
     HR.reports = {
         title: 'Kurumsal Raporlar', sub: () => 'Bordro, üst yönetim ve denetim için resmi OpenXML Excel (.xlsx) raporları · ' + rangeLabel(), tools: { range: 1, branch: 1 }, icon: 'file',
@@ -1180,7 +1364,7 @@
     };
 
     const PAGES = {
-        HR: { overview: HR.overview, employees: HR.employees, onboarding: HR.onboarding, leaves: HR.leaves, analytics: HR.analytics, reports: HR.reports },
+        HR: { overview: HR.overview, employees: HR.employees, onboarding: HR.onboarding, leaves: HR.leaves, analytics: HR.analytics, reports: HR.reports, profile: HR.profile },
         IT: { overview: IT.overview, support: IT.support, security: IT.security, devices: IT.devices, branches: IT.branches, audit: IT.audit },
         ADMIN: { overview: ADMIN.overview, permissions: ADMIN.permissions, branches: IT.branches, audit: IT.audit }
     };
@@ -1201,7 +1385,8 @@
         devices: 'Cihazlar',
         branches: 'Şubeler',
         audit: 'Denetim günlüğü',
-        permissions: 'Rol & yetki matrisi'
+        permissions: 'Rol & yetki matrisi',
+        profile: 'Personel profili'
     };
 
     /* ======================= Özel Şube Seçici & Üst Araç Çubuğu ======================= */
@@ -1253,7 +1438,7 @@
         const nav = $('#nav'), role = S.user.role; nav.innerHTML = '<span class="nav-thumb"></span>';
         NAV[role].forEach(([label, ids]) => {
             nav.insertAdjacentHTML('beforeend', `<div class="nav-label">${label}</div>`);
-            ids.forEach(id => { const n = badge(id); nav.insertAdjacentHTML('beforeend', `<button class="nav-item${S.page === id ? ' is-active' : ''}" data-go="${id}" ${S.page === id ? 'aria-current="page"' : ''}>${ic(PAGES[role][id].icon)}<span>${NAV_LABEL[id]}</span>${n ? `<span class="count">${n}</span>` : ''}</button>`); });
+            ids.forEach(id => { const n = badge(id); const aktif = S.page === id || (S.page === 'profile' && id === 'employees'); nav.insertAdjacentHTML('beforeend', `<button class="nav-item${aktif ? ' is-active' : ''}" data-go="${id}" ${S.page === id ? 'aria-current="page"' : ''}>${ic(PAGES[role][id].icon)}<span>${NAV_LABEL[id]}</span>${n ? `<span class="count">${n}</span>` : ''}</button>`); });
         });
         placeNav();
     }
@@ -1283,6 +1468,7 @@
         Array.from(pg.children).forEach((c, i) => c.style.setProperty('--i', i));
         A.hydrate(pg); if (p.mount) p.mount(); A.enableDragGrid(pg, dndKey()); A.countUp(pg); buildNav(); setTools(p);
         if (S.openEmpId && $('#drawer').classList.contains('on')) empDrawer(S.openEmpId, true);
+        if (S.page === 'profile') mountProfileChart();
         if (focusId) { const el = $('#' + focusId); if (el) { el.focus(); if (pos != null && el.setSelectionRange) try { el.setSelectionRange(pos, pos); } catch (e) { } } }
     }
     function go(id, quiet) {
@@ -1300,6 +1486,40 @@
     }
 
     /* ======================= Çekmece & Derin Personel Profil Analizi ======================= */
+    /* Satir altinda detay ac/kapa (personel listesinde) */
+    function empToggleDetail(id) {
+        const u = S.ui.emp;
+        u.openId = (id == null || u.openId === id) ? null : id;
+        draw(false);
+    }
+    /* Tam sayfa profil ekrani — cekmece yerine ayri rota */
+    function empProfile(id) {
+        if (!emp(id)) return;
+        if (!PAGES[S.user.role].profile) return;
+        S.ui.emp.openId = null;
+        closeDrawer();          // closeDrawer S.openEmpId'yi sifirlar -> sonra set et
+        S.openEmpId = id;
+        go('profile');
+    }
+
+    /* Profil ekranindaki calisma saati grafigi (draw sonrasi cizilir) */
+    function mountProfileChart() {
+        const hedef = $('#prChart');
+        if (!hedef || !S.openEmpId) return;
+        const an = D.empAnalytics(S.openEmpId, filterOpts());
+        const kayitlar = an.logs.slice(-14);
+        if (!kayitlar.length) return;
+        A.areaChart(hedef, {
+            labels: kayitlar.map(x => x.label),
+            series: [
+                { data: kayitlar.map(x => x.workH || 0) },
+                { data: kayitlar.map(() => 8.5) }
+            ],
+            yMin: 0, yMax: 11, h: 185, yFmt: v => v + ' sa',
+            tip: (i, v) => `<b>${kayitlar[i].fullDate} (${kayitlar[i].dowName})</b>Çalışma: ${v[0]} sa · Net: ${fmtMinSigned(kayitlar[i].netMin)}`
+        });
+    }
+
     function openDrawer(title, html, wide) {
         $('#drawerTitle').textContent = title;
         $('#drawerBody').innerHTML = html;
@@ -1748,7 +1968,10 @@
             A.toast('Güvenlik politikası güncellendi');
             draw(false);
         },
-        'emp-open': el => empDrawer(+el.dataset.id),
+        'emp-open': el => empProfile(+el.dataset.id),
+        'emp-expand': el => empToggleDetail(+el.dataset.id),
+        'emp-collapse': () => empToggleDetail(null),
+        'emp-profile': el => empProfile(+el.dataset.id),
         'emp-status': el => { S.ui.emp.status = el.dataset.v; S.ui.emp.page = 1; draw(false); },
         'emp-sort': el => { const u = S.ui.emp; u.dir = u.sort === el.dataset.v ? -u.dir : -1; u.sort = el.dataset.v; draw(false); },
         'emp-page': el => { S.ui.emp.page = +el.dataset.v; draw(false); },

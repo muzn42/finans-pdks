@@ -31,6 +31,34 @@
     --font: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
     --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
     --side-w: 252px;
+
+    /* ---------- Tipografi olcegi (moduler, tek kaynak) ---------- */
+    --fs-3xs: 10px;   /* yalnizca etiket / ust bilgi */
+    --fs-2xs: 11px;   /* mikro etiket, meta */
+    --fs-xs: 11.5px;  /* tablo basligi, kucuk aciklama */
+    --fs-sm: 12.5px;  /* yardimci metin, tablo hucre */
+    --fs-base: 13.5px;/* govde varsayilani */
+    --fs-md: 15px;    /* kart basligi */
+    --fs-lg: 17px;    /* bolum basligi */
+    --fs-xl: 21px;    /* sayfa alt basligi */
+    --fs-2xl: 27px;   /* KPI degeri / sayfa basligi */
+    --fs-3xl: 34px;   /* buyuk metrik */
+
+    --fw-regular: 400;
+    --fw-medium: 500;
+    --fw-semibold: 600;
+    --fw-bold: 700;
+    --fw-extra: 800;
+
+    --lh-tight: 1.15;
+    --lh-snug: 1.3;
+    --lh-normal: 1.5;
+    --lh-relaxed: 1.65;
+
+    --ls-tight: -.022em;  /* buyuk basliklar */
+    --ls-snug: -.012em;   /* kart basliklari */
+    --ls-normal: 0;
+    --ls-wide: .055em;    /* BUYUK HARF etiketler */
 }
 
 [data-theme="dark"] {
@@ -55,7 +83,7 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { -webkit-text-size-adjust: 100%; }
 body {
-    background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 14px; line-height: 1.5;
+    background: var(--bg); color: var(--ink); font-family: var(--font); font-size: var(--fs-base); line-height: var(--lh-normal);
     -webkit-font-smoothing: antialiased; min-height: 100vh; overflow-x: hidden;
     transition: background-color .3s var(--ease), color .3s var(--ease);
 }
@@ -676,6 +704,86 @@ tbody tr { animation: rowIn .45s var(--ease) both; animation-delay: calc(var(--r
 }
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: .01ms !important; animation-delay: 0ms !important; transition-duration: .01ms !important; }
+
+/* =========================================================================
+   TIPOGRAFI KATMANI — tek kaynak: --fs-* / --fw-* / --lh-* / --ls-*
+   Amac: ekranlarda "bazi yerler kalin bazi yerler ince" daginikligini bitirmek,
+   okunabilir ve kurumsal bir hiyerarsi kurmak.
+   ========================================================================= */
+
+/* Basliklar: optik olarak sikilastirilmis, kontrollu satir yuksekligi */
+h1, h2, h3, h4, h5, h6 {
+    font-weight: var(--fw-bold);
+    letter-spacing: var(--ls-snug);
+    line-height: var(--lh-snug);
+    text-wrap: balance;
+}
+p { line-height: var(--lh-normal); }
+
+/* --- Semantik yardimcilar (yeni ekranlarda dogrudan kullanilir) --- */
+.t-eyebrow {
+    font-size: var(--fs-2xs); font-weight: var(--fw-extra);
+    letter-spacing: var(--ls-wide); text-transform: uppercase;
+    color: var(--muted); line-height: 1.2;
+}
+.t-meta { font-size: var(--fs-xs); color: var(--muted); line-height: var(--lh-normal); }
+.t-title { font-size: var(--fs-md); font-weight: var(--fw-bold); letter-spacing: var(--ls-snug); }
+.t-metric {
+    font-size: var(--fs-2xl); font-weight: var(--fw-extra);
+    letter-spacing: var(--ls-tight); line-height: var(--lh-tight);
+    font-variant-numeric: tabular-nums;
+}
+.t-num { font-variant-numeric: tabular-nums; letter-spacing: var(--ls-normal); }
+
+/* --- Ust bar --- */
+.top-title h1 { font-size: var(--fs-xl); font-weight: var(--fw-extra); letter-spacing: var(--ls-tight); }
+.top-title p { font-size: var(--fs-sm); color: var(--muted); margin-top: 2px; }
+
+/* --- Yan menu --- */
+.nav-item { font-size: var(--fs-base); font-weight: var(--fw-semibold); letter-spacing: var(--ls-normal); }
+.nav-group-label { font-size: var(--fs-3xs); font-weight: var(--fw-extra); letter-spacing: var(--ls-wide); text-transform: uppercase; }
+.side-brand b { font-size: var(--fs-base); font-weight: var(--fw-extra); letter-spacing: var(--ls-snug); }
+.side-brand small { font-size: var(--fs-2xs); font-weight: var(--fw-semibold); }
+
+/* --- Kart basliklari --- */
+.card-head h3 { font-size: var(--fs-md); font-weight: var(--fw-bold); letter-spacing: var(--ls-snug); }
+.card-head p { font-size: var(--fs-sm); color: var(--muted); margin-top: 2px; line-height: var(--lh-normal); }
+
+/* --- KPI --- */
+.kpi-label {
+    font-size: var(--fs-2xs); font-weight: var(--fw-extra);
+    letter-spacing: var(--ls-wide); text-transform: uppercase; color: var(--muted);
+}
+.kpi-val { font-weight: var(--fw-extra); letter-spacing: var(--ls-tight); font-variant-numeric: tabular-nums; }
+.kpi-val small { font-size: var(--fs-sm); font-weight: var(--fw-semibold); letter-spacing: var(--ls-normal); }
+.kpi-foot { font-size: var(--fs-xs); color: var(--muted); font-weight: var(--fw-medium); }
+
+/* --- Tablolar: basliklar kucuk/buyuk harf aralikli, hucreler okunur --- */
+.table-wrap table th, .rpt-table th {
+    font-size: var(--fs-xs); font-weight: var(--fw-extra);
+    letter-spacing: var(--ls-wide); text-transform: uppercase; color: var(--muted);
+}
+.table-wrap table td, .rpt-table td { font-size: var(--fs-sm); line-height: var(--lh-normal); }
+.table-wrap table td b { font-weight: var(--fw-bold); }
+
+/* --- Cekmece / profil --- */
+.drawer-title, .drawer-head h3 { font-size: var(--fs-md); font-weight: var(--fw-bold); letter-spacing: var(--ls-snug); }
+.profile h4 { font-size: var(--fs-lg); font-weight: var(--fw-extra); letter-spacing: var(--ls-snug); }
+.kv div small {
+    font-size: var(--fs-2xs); font-weight: var(--fw-extra);
+    letter-spacing: var(--ls-wide); text-transform: uppercase; color: var(--muted);
+}
+.kv div b, .kv div { font-size: var(--fs-sm); }
+.list-item b { font-size: var(--fs-base); font-weight: var(--fw-semibold); letter-spacing: var(--ls-normal); }
+.list-item small { font-size: var(--fs-xs); color: var(--muted); }
+.pill { font-size: var(--fs-xs); font-weight: var(--fw-bold); letter-spacing: .01em; }
+.chip { font-size: var(--fs-sm); font-weight: var(--fw-semibold); }
+.btn { font-size: var(--fs-sm); font-weight: var(--fw-bold); letter-spacing: var(--ls-normal); }
+
+/* Bonus/rozet sayilari hizalansin */
+.rank-top span { font-size: var(--fs-sm); font-weight: var(--fw-semibold); }
+.rank-top b { font-size: var(--fs-sm); font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; }
+
     .page > *, .chart .bar, .chart .hbar, .bar-fill, tbody tr { opacity: 1 !important; transform: none !important; }
     .chart .draw { stroke-dashoffset: 0 !important; } .chart .fade { opacity: 1 !important; }
 }
@@ -874,3 +982,161 @@ tbody tr { animation: rowIn .45s var(--ease) both; animation-delay: calc(var(--r
     .rpt-doc-row, .rpt-kpi, .rpt-sign { break-inside: avoid; }
 }
 
+
+/* =========================================================================
+   PERSONEL LISTESI — SATIR ALTINDA ACILAN "DETAYLAR" PANELI
+   ========================================================================= */
+tr.emp-row { cursor: pointer; transition: background-color .15s var(--ease); }
+tr.emp-row:hover { background: var(--surface-2); }
+tr.emp-row.is-open { background: var(--red-soft); }
+tr.emp-row.is-open td { border-bottom-color: transparent; }
+
+tr.detail-row > td {
+    padding: 0 !important;
+    border-bottom: 1px solid var(--line);
+    background: var(--surface-2);
+}
+
+.emp-detail {
+    padding: 16px 18px 18px;
+    display: grid;
+    gap: 14px;
+    animation: detailIn .32s var(--ease) both;
+}
+@keyframes detailIn {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: none; }
+}
+
+.emp-detail-top {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 14px; flex-wrap: wrap;
+}
+.emp-detail-id { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.emp-detail-id h4 { font-size: var(--fs-md); font-weight: var(--fw-extra); letter-spacing: var(--ls-snug); }
+.emp-detail-id p { font-size: var(--fs-xs); color: var(--muted); margin-top: 2px; }
+.emp-detail-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+
+.emp-detail-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+    gap: 1px; background: var(--line); border: 1px solid var(--line);
+    border-radius: 12px; overflow: hidden;
+}
+.emp-detail-cell {
+    background: var(--surface); padding: 10px 12px;
+    display: flex; flex-direction: column; gap: 3px;
+}
+.emp-detail-cell span {
+    font-size: var(--fs-2xs); font-weight: var(--fw-extra);
+    letter-spacing: var(--ls-wide); text-transform: uppercase; color: var(--muted);
+}
+.emp-detail-cell b {
+    font-size: var(--fs-base); font-weight: var(--fw-bold);
+    font-variant-numeric: tabular-nums; letter-spacing: var(--ls-normal);
+}
+.emp-detail-cell.ok b { color: var(--ok); }
+.emp-detail-cell.bad b { color: var(--bad); }
+.emp-detail-cell.warn b { color: var(--warn); }
+
+.emp-detail-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.emp-detail-actions .grow { flex: 1; }
+
+/* Satir sonundaki ok: detay acikken 90 derece doner */
+.emp-caret { display: inline-flex; transition: transform .28s var(--ease); }
+.emp-caret.is-open { transform: rotate(90deg); }
+.emp-caret .ic { width: 16px; height: 16px; }
+
+@media (max-width: 760px) {
+    .emp-detail { padding: 14px 12px 16px; }
+}
+
+
+/* =========================================================================
+   TAM SAYFA PERSONEL PROFILI (drawer yerine ayri ekran)
+   ========================================================================= */
+.profile-screen { display: grid; gap: 16px; }
+
+.profile-hero {
+    position: relative; overflow: hidden;
+    border-radius: var(--r-lg); border: 1px solid var(--line);
+    background: var(--surface); box-shadow: var(--sh-2);
+    padding: 26px 26px 24px;
+}
+.profile-hero::before {
+    content: ''; position: absolute; inset: 0 0 auto 0; height: 4px;
+    background: linear-gradient(90deg, var(--red) 0 168px, var(--line) 168px 100%);
+}
+.profile-hero-in { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; padding-top: 6px; }
+.profile-hero .avatar { width: 68px; height: 68px; font-size: 22px; flex: none; }
+.profile-hero-txt { min-width: 0; flex: 1 1 260px; }
+.profile-hero-txt h2 {
+    font-size: var(--fs-2xl); font-weight: var(--fw-extra);
+    letter-spacing: var(--ls-tight); line-height: var(--lh-tight);
+}
+.profile-hero-txt p { font-size: var(--fs-sm); color: var(--ink-2); margin-top: 4px; }
+.profile-hero-txt .mono { font-size: var(--fs-sm); color: var(--muted); }
+.profile-hero-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.profile-hero-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+.profile-stat-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(158px, 1fr)); gap: 12px;
+}
+.profile-stat {
+    background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--line);
+    border-radius: var(--r-md); padding: 13px 15px 14px;
+    transition: transform .2s var(--ease), box-shadow .25s var(--ease);
+}
+.profile-stat:hover { transform: translateY(-2px); box-shadow: var(--sh-2); }
+.profile-stat span {
+    display: block; font-size: var(--fs-2xs); font-weight: var(--fw-extra);
+    letter-spacing: var(--ls-wide); text-transform: uppercase; color: var(--muted);
+}
+.profile-stat b {
+    display: block; margin: 6px 0 3px;
+    font-size: var(--fs-xl); font-weight: var(--fw-extra);
+    letter-spacing: var(--ls-tight); font-variant-numeric: tabular-nums;
+}
+.profile-stat small { display: block; font-size: var(--fs-xs); color: var(--muted); line-height: var(--lh-normal); }
+.profile-stat.ok { border-left-color: var(--ok); } .profile-stat.ok b { color: var(--ok); }
+.profile-stat.bad { border-left-color: var(--bad); } .profile-stat.bad b { color: var(--bad); }
+.profile-stat.warn { border-left-color: var(--warn); } .profile-stat.warn b { color: var(--warn); }
+.profile-stat.info { border-left-color: var(--info); } .profile-stat.info b { color: var(--info); }
+.profile-stat.red { border-left-color: var(--red); } .profile-stat.red b { color: var(--red); }
+
+
+
+.profile-section-head {
+    display: flex; align-items: center; gap: 10px;
+    margin: 4px 0 12px; padding-bottom: 9px;
+    border-bottom: 2px solid var(--red);
+}
+.profile-section-head .n {
+    width: 22px; height: 22px; flex: none; border-radius: 7px;
+    display: inline-grid; place-items: center;
+    background: var(--red); color: #fff;
+    font-size: var(--fs-2xs); font-weight: var(--fw-extra);
+}
+.profile-section-head h3 {
+    font-size: var(--fs-md); font-weight: var(--fw-extra); letter-spacing: var(--ls-snug);
+}
+.profile-section-head small { margin-left: auto; font-size: var(--fs-xs); color: var(--muted); font-weight: var(--fw-medium); }
+
+.profile-cmp { display: grid; gap: 11px; }
+.profile-cmp-row { display: grid; gap: 5px; }
+.profile-cmp-row .lbl {
+    display: flex; justify-content: space-between; gap: 10px;
+    font-size: var(--fs-sm); font-weight: var(--fw-semibold);
+}
+.profile-cmp-row .lbl b { font-variant-numeric: tabular-nums; font-weight: var(--fw-bold); }
+.profile-cmp-track { height: 8px; border-radius: 999px; background: var(--line-2); overflow: hidden; }
+.profile-cmp-fill { height: 100%; border-radius: 999px; background: var(--ink-2); transition: width .55s var(--ease); }
+.profile-cmp-fill.ok { background: var(--ok); }
+.profile-cmp-fill.warn { background: var(--warn); }
+.profile-cmp-fill.bad { background: var(--bad); }
+.profile-cmp-fill.muted { background: var(--line); }
+@media (max-width: 760px) {
+    .profile-hero { padding: 20px 16px; }
+    .profile-hero .avatar { width: 54px; height: 54px; font-size: 18px; }
+    .profile-hero-txt h2 { font-size: var(--fs-xl); }
+    .profile-hero-actions { width: 100%; }
+}
