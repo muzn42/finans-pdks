@@ -532,19 +532,41 @@
         return s;
     }
 
-    /* Kurumsal logo (xlsx gömme icin PNG baytlari). Tek sefer yuklenir, hata olursa null. */
-    const LOGO_ASSET = 'assets/branding/albayrak_pdks_logo.png';
+    /* Kurumsal logo (xlsx gömme icin PNG baytlari).
+       Base64 olarak dosyaya gomuludur: file:// ile acildiginda da fetch gerektirmeden calisir. */
     const LOGO_ASPECT = 129 / 153; // yukseklik / genislik
-    let logoBytesPromise = null;
+    const LOGO_PNG_BASE64 =
+        'iVBORw0KGgoAAAANSUhEUgAAAmQAAAIECAYAAAC35TLmAAAE3klEQVR42u3BAQEAAACCIP+vbkhAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' +
+        'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' +
+        'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' +
+        'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' +
+        'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' +
+        'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' +
+        'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' +
+        'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' +
+        'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' +
+        'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' +
+        'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' +
+        'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' +
+        'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' +
+        'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' +
+        'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' +
+        'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA8G5JYQABFQaJhgAAAABJRU5ErkJggg==';
+    let logoBytesCache;
     function loadLogoBytes() {
-        if (!logoBytesPromise) {
-            if (typeof fetch !== 'function') { logoBytesPromise = Promise.resolve(null); return logoBytesPromise; }
-            logoBytesPromise = fetch(LOGO_ASSET)
-                .then(r => (r.ok ? r.arrayBuffer() : null))
-                .then(buf => (buf ? new Uint8Array(buf) : null))
-                .catch(() => null);
+        if (logoBytesCache !== undefined) return Promise.resolve(logoBytesCache);
+        try {
+            let bin;
+            if (typeof atob === 'function') bin = atob(LOGO_PNG_BASE64);
+            else if (typeof Buffer !== 'undefined') bin = Buffer.from(LOGO_PNG_BASE64, 'base64').toString('binary');
+            else throw new Error('base64 cozucu yok');
+            const bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            logoBytesCache = bytes.length ? bytes : null;
+        } catch (e) {
+            logoBytesCache = null;
         }
-        return logoBytesPromise;
+        return Promise.resolve(logoBytesCache);
     }
 
     /* Logo cizim parcasi (drawing1.xml) */
@@ -553,9 +575,9 @@
         const cx = emu(widthPx);
         const cy = emu(Math.round(widthPx * LOGO_ASPECT));
         return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <xdr:oneCellAnchor>
-    <xdr:from><xdr:col>0</xdr:col><xdr:colOff>76200</xdr:colOff><xdr:row>1</xdr:row><xdr:rowOff>28575</xdr:rowOff></xdr:from>
+    <xdr:from><xdr:col>0</xdr:col><xdr:colOff>95250</xdr:colOff><xdr:row>1</xdr:row><xdr:rowOff>19050</xdr:rowOff></xdr:from>
     <xdr:ext cx="${cx}" cy="${cy}"/>
     <xdr:pic>
       <xdr:nvPicPr>
@@ -563,7 +585,7 @@
         <xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr>
       </xdr:nvPicPr>
       <xdr:blipFill>
-        <a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="rId1"/>
+        <a:blip r:embed="rId1"/>
         <a:stretch><a:fillRect/></a:stretch>
       </xdr:blipFill>
       <xdr:spPr>
@@ -695,9 +717,9 @@
 
         // ============ 1. KURUMSAL ANTET (logo + unvan + rapor künyesi) ============
         addBlank1(8);                                                                        // 1. boşluk
-        addSideBanner1('ALBAYRAK TASARRUF FİNANSMAN A.Ş.', 18, 22, 1);                       // 2. unvan (logo hizası)
-        addSideBanner1('Personel Devam Kontrol Sistemi (PDKS) · İnsan Kaynakları Müdürlüğü', 19, 15, 1); // 3. birim
-        addSideBanner1(`Rapor No: ${reportNo}    ·    Üretim Tarihi: ${nowStr}`, 19, 13, 1);  // 4. künye
+        addSideBanner1('ALBAYRAK TASARRUF FİNANSMAN A.Ş.', 18, 24, 1);                       // 2. unvan (logo hizası)
+        addSideBanner1('Personel Devam Kontrol Sistemi (PDKS) · İnsan Kaynakları Müdürlüğü', 19, 16, 1); // 3. birim
+        addSideBanner1(`Rapor No: ${reportNo}    ·    Üretim Tarihi: ${nowStr}`, 19, 14, 1);  // 4. künye
         addBlank1(6);                                                                        // 5. boşluk
         addMergedBanner1('', 20, 4);                                                          // 6. kırmızı ayraç
         addBlank1(10);                                                                        // 7. boşluk
@@ -942,8 +964,8 @@
   </sheetViews>
   ${cols2Xml}
   <sheetData>${sheet2Rows.join('')}</sheetData>
-  ${merge2Xml}
   ${autoFilterXml}
+  ${merge2Xml}
   <printOptions horizontalCentered="1"/>
   <pageMargins left="0.2" right="0.2" top="0.5" bottom="0.65" header="0.25" footer="0.25"/>
   <pageSetup paperSize="9" scale="100" orientation="landscape" fitToWidth="1" fitToHeight="0" horizontalDpi="600" verticalDpi="600"/>
@@ -1139,7 +1161,7 @@
         if (hasLogo) {
             zipEntries.push(
                 { name: 'xl/worksheets/_rels/sheet1.xml.rels', content: sheet1RelsXml },
-                { name: 'xl/drawings/drawing1.xml', content: logoDrawingXml(104) },
+                { name: 'xl/drawings/drawing1.xml', content: logoDrawingXml(88) },
                 { name: 'xl/drawings/_rels/drawing1.xml.rels', content: drawingRelsXml },
                 { name: 'xl/media/image1.png', content: logoBytes }
             );

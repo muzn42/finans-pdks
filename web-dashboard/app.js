@@ -1668,7 +1668,10 @@
             kpis: [
                 { label: 'Toplam Talep', value: String(D.LEAVES.length), sub: 'Kayıtlı izin talebi' },
                 { label: 'Onay Bekleyen', value: String(D.LEAVES.filter(l => l.status === 'pending').length), sub: 'İK onayı bekliyor', color: '#B4690E' },
-                { label: 'Onaylanan', value: String(D.LEAVES.filter(l => l.status === 'approved').length), sub: 'Sisteme işlendi', color: '#0B7A53' }
+                { label: 'Onaylanan', value: String(D.LEAVES.filter(l => l.status === 'approved').length), sub: 'Sisteme işlendi', color: '#0B7A53' },
+                { label: 'Reddedilen', value: String(D.LEAVES.filter(l => l.status === 'rejected').length), sub: 'Gerekçesiyle kapatıldı', color: '#C8191E' },
+                { label: 'Toplam Gecikme', value: fmtMinDur(stats().totalLateMin), sub: 'Dönem toplamı', color: '#C8191E' },
+                { label: 'İzinli Personel', value: String(stats().leave), sub: 'Aktif izinli sayısı', color: '#2855AE' }
             ],
             preparedBy: S.user ? S.user.name + ' — ' + S.user.title : 'İnsan Kaynakları Yönetimi',
             headers: ['Talep No', 'Sicil No', 'Personel Adı', 'Departman', 'İzin Türü', 'Süre (Gün)', 'Başlangıç Tarihi', 'Açıklama', 'Durum'],
