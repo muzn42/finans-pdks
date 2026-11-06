@@ -704,6 +704,9 @@ tbody tr { animation: rowIn .45s var(--ease) both; animation-delay: calc(var(--r
 }
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: .01ms !important; animation-delay: 0ms !important; transition-duration: .01ms !important; }
+    .page > *, .chart .bar, .chart .hbar, .bar-fill, tbody tr { opacity: 1 !important; transform: none !important; }
+    .chart .draw { stroke-dashoffset: 0 !important; } .chart .fade { opacity: 1 !important; }
+}
 
 /* =========================================================================
    TIPOGRAFI KATMANI — tek kaynak: --fs-* / --fw-* / --lh-* / --ls-*
@@ -749,10 +752,10 @@ p { line-height: var(--lh-normal); }
 .card-head h3 { font-size: var(--fs-md); font-weight: var(--fw-bold); letter-spacing: var(--ls-snug); }
 .card-head p { font-size: var(--fs-sm); color: var(--muted); margin-top: 2px; line-height: var(--lh-normal); }
 
-/* --- KPI --- */
+/* --- KPI (Anasayfa ile birebir uyumlu, okunaklı cümle düzeni) --- */
 .kpi-label {
-    font-size: var(--fs-2xs); font-weight: var(--fw-extra);
-    letter-spacing: var(--ls-wide); text-transform: uppercase; color: var(--muted);
+    font-size: 12.5px; font-weight: var(--fw-semibold);
+    letter-spacing: var(--ls-normal); color: var(--ink-2);
 }
 .kpi-val { font-weight: var(--fw-extra); letter-spacing: var(--ls-tight); font-variant-numeric: tabular-nums; }
 .kpi-val small { font-size: var(--fs-sm); font-weight: var(--fw-semibold); letter-spacing: var(--ls-normal); }
@@ -783,10 +786,6 @@ p { line-height: var(--lh-normal); }
 /* Bonus/rozet sayilari hizalansin */
 .rank-top span { font-size: var(--fs-sm); font-weight: var(--fw-semibold); }
 .rank-top b { font-size: var(--fs-sm); font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; }
-
-    .page > *, .chart .bar, .chart .hbar, .bar-fill, tbody tr { opacity: 1 !important; transform: none !important; }
-    .chart .draw { stroke-dashoffset: 0 !important; } .chart .fade { opacity: 1 !important; }
-}
 
 /* =========================================================================
    KURUMSAL RAPOR GÖRÜNÜMÜ (Raporlar sayfası) — belge/kağıt estetiği
@@ -1080,91 +1079,62 @@ tr.detail-row > td {
 
 
 /* =========================================================================
-   TAM SAYFA PERSONEL PROFILI (drawer yerine ayri ekran)
+   TAM SAYFA PERSONEL PROFILI — ANASAYFA & ANALITIK ILE %100 AYNI TASARIM DILI
    ========================================================================= */
 .profile-screen { display: grid; gap: 16px; }
 
 .profile-hero {
-    position: relative; overflow: hidden;
-    border-radius: var(--r-lg); border: 1px solid var(--line);
-    background: var(--surface); box-shadow: var(--sh-2);
-    padding: 26px 26px 24px;
+    display: grid; gap: 18px;
 }
-.profile-hero::before {
-    content: ''; position: absolute; inset: 0 0 auto 0; height: 4px;
-    background: linear-gradient(90deg, var(--red) 0 168px, var(--line) 168px 100%);
+.profile-hero-in {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 18px; flex-wrap: wrap; padding-bottom: 16px; border-bottom: 1px solid var(--line);
 }
-.profile-hero-in { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; padding-top: 6px; }
-.profile-hero .avatar { width: 68px; height: 68px; font-size: 22px; flex: none; }
-.profile-hero-txt { min-width: 0; flex: 1 1 260px; }
+.profile-hero-id {
+    display: flex; align-items: center; gap: 16px; min-width: 0; flex: 1 1 320px;
+}
+.profile-hero .avatar.lg { width: 64px; height: 64px; font-size: 20px; flex: none; }
+.profile-hero-txt { min-width: 0; flex: 1; }
 .profile-hero-txt h2 {
-    font-size: var(--fs-2xl); font-weight: var(--fw-extra);
-    letter-spacing: var(--ls-tight); line-height: var(--lh-tight);
+    font-size: 21px; font-weight: 800;
+    letter-spacing: -.02em; line-height: 1.2; color: var(--ink);
 }
-.profile-hero-txt p { font-size: var(--fs-sm); color: var(--ink-2); margin-top: 4px; }
-.profile-hero-txt .mono { font-size: var(--fs-sm); color: var(--muted); }
-.profile-hero-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.profile-hero-txt p {
+    font-size: 13px; color: var(--ink-2); margin-top: 3px; font-weight: 500;
+}
+.profile-hero-txt .mono { font-size: 12.5px; color: var(--muted); font-weight: 600; }
+.profile-hero-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 9px; align-items: center; }
 .profile-hero-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 
-.profile-stat-grid {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(158px, 1fr)); gap: 12px;
+/* Excel'deki 2 Sütunlu Sicil ve Tahakkuk Cetveli ile Birebir Uyumlu Anahtar-Değer Tablosu */
+.pdks-kv-table {
+    width: 100%; border-collapse: collapse; font-size: 12.5px;
 }
-.profile-stat {
-    background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--line);
-    border-radius: var(--r-md); padding: 13px 15px 14px;
-    transition: transform .2s var(--ease), box-shadow .25s var(--ease);
+.pdks-kv-table tr {
+    border-bottom: 1px solid var(--line-2);
+    transition: background-color .15s;
 }
-.profile-stat:hover { transform: translateY(-2px); box-shadow: var(--sh-2); }
-.profile-stat span {
-    display: block; font-size: var(--fs-2xs); font-weight: var(--fw-extra);
-    letter-spacing: var(--ls-wide); text-transform: uppercase; color: var(--muted);
+.pdks-kv-table tr:last-child { border-bottom: 0; }
+.pdks-kv-table tr:hover { background: var(--surface-2); }
+.pdks-kv-table th {
+    width: 38%; padding: 10px 18px; text-align: left;
+    font-family: var(--font); font-size: 12px; font-weight: 600;
+    text-transform: none; letter-spacing: 0;
+    color: var(--ink-2); background: var(--surface-2);
+    border-right: 1px solid var(--line-2); border-bottom: 0;
+    white-space: nowrap;
 }
-.profile-stat b {
-    display: block; margin: 6px 0 3px;
-    font-size: var(--fs-xl); font-weight: var(--fw-extra);
-    letter-spacing: var(--ls-tight); font-variant-numeric: tabular-nums;
+.pdks-kv-table td {
+    padding: 10px 18px; font-size: 13px; font-weight: 600;
+    color: var(--ink); white-space: normal; line-height: 1.4;
+    border-bottom: 0;
 }
-.profile-stat small { display: block; font-size: var(--fs-xs); color: var(--muted); line-height: var(--lh-normal); }
-.profile-stat.ok { border-left-color: var(--ok); } .profile-stat.ok b { color: var(--ok); }
-.profile-stat.bad { border-left-color: var(--bad); } .profile-stat.bad b { color: var(--bad); }
-.profile-stat.warn { border-left-color: var(--warn); } .profile-stat.warn b { color: var(--warn); }
-.profile-stat.info { border-left-color: var(--info); } .profile-stat.info b { color: var(--info); }
-.profile-stat.red { border-left-color: var(--red); } .profile-stat.red b { color: var(--red); }
+.pdks-kv-table td b { font-weight: 700; }
+.pdks-kv-table td.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 12.5px; }
 
-
-
-.profile-section-head {
-    display: flex; align-items: center; gap: 10px;
-    margin: 4px 0 12px; padding-bottom: 9px;
-    border-bottom: 2px solid var(--red);
-}
-.profile-section-head .n {
-    width: 22px; height: 22px; flex: none; border-radius: 7px;
-    display: inline-grid; place-items: center;
-    background: var(--red); color: #fff;
-    font-size: var(--fs-2xs); font-weight: var(--fw-extra);
-}
-.profile-section-head h3 {
-    font-size: var(--fs-md); font-weight: var(--fw-extra); letter-spacing: var(--ls-snug);
-}
-.profile-section-head small { margin-left: auto; font-size: var(--fs-xs); color: var(--muted); font-weight: var(--fw-medium); }
-
-.profile-cmp { display: grid; gap: 11px; }
-.profile-cmp-row { display: grid; gap: 5px; }
-.profile-cmp-row .lbl {
-    display: flex; justify-content: space-between; gap: 10px;
-    font-size: var(--fs-sm); font-weight: var(--fw-semibold);
-}
-.profile-cmp-row .lbl b { font-variant-numeric: tabular-nums; font-weight: var(--fw-bold); }
-.profile-cmp-track { height: 8px; border-radius: 999px; background: var(--line-2); overflow: hidden; }
-.profile-cmp-fill { height: 100%; border-radius: 999px; background: var(--ink-2); transition: width .55s var(--ease); }
-.profile-cmp-fill.ok { background: var(--ok); }
-.profile-cmp-fill.warn { background: var(--warn); }
-.profile-cmp-fill.bad { background: var(--bad); }
-.profile-cmp-fill.muted { background: var(--line); }
 @media (max-width: 760px) {
-    .profile-hero { padding: 20px 16px; }
-    .profile-hero .avatar { width: 54px; height: 54px; font-size: 18px; }
-    .profile-hero-txt h2 { font-size: var(--fs-xl); }
+    .profile-hero .avatar.lg { width: 52px; height: 52px; font-size: 17px; }
+    .profile-hero-txt h2 { font-size: 18px; }
     .profile-hero-actions { width: 100%; }
+    .pdks-kv-table th, .pdks-kv-table td { padding: 9px 12px; font-size: 12px; }
 }
