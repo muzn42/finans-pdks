@@ -1992,16 +1992,16 @@
         const dailyLogsRev = an.logs.slice().reverse();
         extraSections.push({
             title: `GÜN GÜN PDKS GİRİŞ-ÇIKIŞ VE PUANTAJ CETVELİ (${dailyLogsRev.length} İŞ GÜNÜ)`,
-            headers: ['Tarih', 'Gün', 'İlk Giriş', 'Son Çıkış', 'Fiili Mesai', 'Gecikme', 'Ek Mesai', 'Net Bakiye & Durum'],
+            headers: ['Tarih', 'Gün', 'İlk Giriş', 'Son Çıkış', 'Mesai & Net Bakiye', 'Gecikme', 'Ek Mesai', 'Yoklama Durumu & Mesafe'],
             rows: dailyLogsRev.map(l => [
                 l.fullDate,
                 l.dowName,
                 l.checkIn || '—',
                 l.checkOut || '—',
-                l.workH ? A.numText(l.workH) + ' sa' : '0 sa',
+                `${l.workH ? A.numText(l.workH) + ' sa' : '0 sa'} (${fmtMinSigned(l.netMin)})`,
                 l.lateMin > 0 ? '−' + l.lateMin + ' dk' : '0 dk',
                 l.overtimeMin > 0 ? '+' + l.overtimeMin + ' dk' : '0 dk',
-                `${fmtMinSigned(l.netMin)} · ${STATUS[l.status][0]}${l.dist != null ? ' (' + A.numText(l.dist) + 'm)' : ''}`
+                `${STATUS[l.status][0]}${l.dist != null ? ' (' + A.numText(l.dist) + 'm)' : ''}`
             ])
         });
 
@@ -2012,8 +2012,7 @@
             subtitle: e.title + ' · ' + e.dept + ' · ' + br.name + ' · Dönem: ' + rangeLabel(),
             meta: [
                 ['Personel', e.name + ' (' + e.sicil + ')'],
-                ['Departman / Görev', e.dept + ' / ' + e.title],
-                ['Şube', br.name + ' (' + br.city + ')'],
+                ['Şube', br.name],
                 ['Dönem', an.periodLabel + ' (' + an.totalDays + ' İş Günü)']
             ],
             kvSections: [
@@ -2022,26 +2021,26 @@
                     rows: [
                         ['Sicil Numarası', e.sicil, 'Ad Soyad', e.name],
                         ['Departman / Birim', e.dept, 'Unvan / Görev', e.title],
-                        ['Bağlı Olduğu Şube', `${br.name} (${br.city})`, 'Koordinat & Geofence', `${br.lat.toFixed(4)}, ${br.lng.toFixed(4)} · ${br.radius}m Sınır`],
-                        ['Kurumsal Wi-Fi SSID', br.wifi, 'Standart Vardiya Planı', '08:30 – 17:30 (8,5 Sa · 1 Sa Öğle)'],
-                        ['Eşlenmiş Mobil Cihaz', dev ? `${dev.model} (${dev.os})` : 'Kurumsal Mobil Cihaz · Android 14', 'Cihaz Durumu & Sürüm', dev ? `${devStatusLabel} · v${dev.ver} (${dev.mask})` : 'Eşlendi (Aktif) · v2.4.1'],
-                        ['Güncel Yoklama Durumu', STATUS[e.status][0], 'İncelenen Rapor Dönemi', `${an.periodLabel} (${an.totalDays} İş Günü)`]
+                        ['Bağlı Olduğu Şube', `${br.name} (${br.city})`, 'Koordinat & Sınır', `${br.lat.toFixed(4)}, ${br.lng.toFixed(4)} · ${br.radius}m Sınır`],
+                        ['Kurumsal Wi-Fi', br.wifi, 'Standart Vardiya', '08:30 – 17:30 (8,5 Sa · 1 Sa Öğle)'],
+                        ['Eşlenmiş Cihaz', dev ? `${dev.model} (${dev.os})` : 'Kurumsal Mobil Cihaz · Android 14', 'Cihaz & Sürüm', dev ? `${devStatusLabel} · v${dev.ver} (${dev.mask})` : 'Eşlendi (Aktif) · v2.4.1'],
+                        ['Yoklama Durumu', STATUS[e.status][0], 'Rapor Dönemi', `${an.periodLabel} (${an.totalDays} İş Günü)`]
                     ]
                 },
                 {
                     title: 'Dönem Puantaj, Mesai ve Devam Tahakkuk Cetveli (Detaylı PDKS Özeti)',
                     rows: [
-                        ['Toplam Takvim İş Günü', `${an.totalDays} iş günü`, 'Fiili Çalışılan Gün', `${an.attendedDays} gün (%${A.pctText(attRatePct)} devam)`],
-                        ['Zamanında Giriş Günü', `${an.presentDays} gün (%${A.pctText(an.onTimePct)} uyum)`, 'Geç Kalınan Gün Sayısı', `${an.lateDays} gün`],
-                        ['İzinli / Raporlu Gün', `${an.leaveDays} gün`, 'Devamsız Gün Sayısı', `${an.absentDays} gün`],
-                        ['Toplam Fiili Çalışma', `${A.numText(an.totalWorkH)} saat (${Math.round(an.totalWorkH * 60)} dk)`, 'Günlük Ortalama Mesai', `${A.numText(an.avgWorkH)} saat / gün (Hedef: 8,5 sa)`],
-                        ['Toplam Onaylı Ek Mesai', `+${fmtMinDur(an.totalOvertimeMin)} (${an.overtimeDays} gün · ${an.totalOvertimeMin} dk)`, 'Toplam Gecikme Süresi', `${an.totalLateMin > 0 ? '−' + fmtMinDur(an.totalLateMin) : '0 dk'} (${an.lateDays} gün · ${an.totalLateMin} dk)`],
-                        ['Net Süre Bakiyesi', `${fmtMinSigned(an.netBalanceMin)} (${an.netBalanceMin >= 0 ? 'Pozitif Bakiye' : 'Negatif Bakiye'})`, 'Departman İçi Sıralama', `${deptRank} / ${deptCount}. sıra (${e.dept})`],
-                        ['Ort. Giriş / Çıkış Saati', `${an.avgCheckIn} → ${an.avgCheckOut}`, 'En Erken / Geç Saatler', `Giriş: ${an.earliestCheckIn}–${an.latestCheckIn} · Çıkış: ${an.latestCheckOut}`],
-                        ['En Çok Geç Kaldığı Gün', an.mostLateDay.totalLateMin > 0 ? `${an.mostLateDay.dowName} (−${an.mostLateDay.totalLateMin} dk · ${an.mostLateDay.lateCount} kez)` : 'Gecikme Yok (Tam Uyum)', 'Zirve Gecikme Kaydı', an.peakLateRec && an.peakLateRec.lateMin > 0 ? `${an.peakLateRec.fullDate} ${an.peakLateRec.dowShort} (−${an.peakLateRec.lateMin} dk · Giriş ${an.peakLateRec.checkIn})` : 'Dönem İçinde Gecikme Yok'],
-                        ['En Çok Ek Mesai Günü', an.mostOvertimeDay.totalOvertimeMin > 0 ? `${an.mostOvertimeDay.dowName} (+${an.mostOvertimeDay.totalOvertimeMin} dk · ${an.mostOvertimeDay.otCount} kez)` : 'Ek Mesai Kaydı Yok', 'Zirve Ek Mesai Kaydı', an.peakOtRec && an.peakOtRec.overtimeMin > 0 ? `${an.peakOtRec.fullDate} ${an.peakOtRec.dowShort} (+${an.peakOtRec.overtimeMin} dk · Çıkış ${an.peakOtRec.checkOut})` : 'Ek Mesai Kaydı Yok'],
-                        ['En Verimli (Lider) Gün', `${an.bestNetDay.dowName} (Net ${fmtMinSigned(an.bestNetDay.netMin)} · Ort. ${A.numText(an.bestNetDay.avgWorkH)} sa)`, 'Birim Ort. Kıyaslaması', `Ort. Mesai: +${fmtMinDur(deptAvgOt)} · Ort. Geç: −${fmtMinDur(deptAvgLate)}`],
-                        ['30m Geofence Uyumu', `%${A.pctText(an.geofenceRate)} Uyum (Ort. ${A.numText(an.avgDist)}m · Maks. ${A.numText(an.maxDist)}m)`, 'İzin & Güvenlik Özeti', `${empLeaves.length} izin talebi · ${empAlerts.length ? empAlerts.length + ' güvenlik uyarısı' : 'İhlal yok (Temiz)'}`]
+                        ['Takvim İş Günü', `${an.totalDays} iş günü`, 'Fiili Çalışılan Gün', `${an.attendedDays} gün (%${A.pctText(attRatePct)} devam)`],
+                        ['Zamanında Giriş', `${an.presentDays} gün (%${A.pctText(an.onTimePct)} uyum)`, 'Geç Kalınan Gün', `${an.lateDays} gün`],
+                        ['İzinli / Raporlu', `${an.leaveDays} gün`, 'Devamsız İş Günü', `${an.absentDays} gün`],
+                        ['Toplam Fiili Mesai', `${A.numText(an.totalWorkH)} saat (${Math.round(an.totalWorkH * 60)} dk)`, 'Günlük Ort. Mesai', `${A.numText(an.avgWorkH)} saat / gün (Hedef: 8,5 sa)`],
+                        ['Toplam Ek Mesai', `+${fmtMinDur(an.totalOvertimeMin)} (${an.overtimeDays} gün · ${an.totalOvertimeMin} dk)`, 'Toplam Gecikme', `${an.totalLateMin > 0 ? '−' + fmtMinDur(an.totalLateMin) : '0 dk'} (${an.lateDays} gün · ${an.totalLateMin} dk)`],
+                        ['Net Süre Bakiyesi', `${fmtMinSigned(an.netBalanceMin)} (${an.netBalanceMin >= 0 ? 'Pozitif Bakiye' : 'Negatif Bakiye'})`, 'Birim Sıralaması', `${deptRank} / ${deptCount}. sıra (${e.dept})`],
+                        ['Ort. Giriş / Çıkış', `${an.avgCheckIn} → ${an.avgCheckOut}`, 'Erken / Geç Saat', `Giriş: ${an.earliestCheckIn}–${an.latestCheckIn} · Çıkış: ${an.latestCheckOut}`],
+                        ['En Çok Gecikilen', an.mostLateDay.totalLateMin > 0 ? `${an.mostLateDay.dowName} (−${an.mostLateDay.totalLateMin} dk · ${an.mostLateDay.lateCount} kez)` : 'Gecikme Yok (Tam Uyum)', 'Zirve Gecikme', an.peakLateRec && an.peakLateRec.lateMin > 0 ? `${an.peakLateRec.fullDate} ${an.peakLateRec.dowShort} (−${an.peakLateRec.lateMin} dk · Giriş ${an.peakLateRec.checkIn})` : 'Dönem İçinde Gecikme Yok'],
+                        ['En Çok Ek Mesai', an.mostOvertimeDay.totalOvertimeMin > 0 ? `${an.mostOvertimeDay.dowName} (+${an.mostOvertimeDay.totalOvertimeMin} dk · ${an.mostOvertimeDay.otCount} kez)` : 'Ek Mesai Kaydı Yok', 'Zirve Ek Mesai', an.peakOtRec && an.peakOtRec.overtimeMin > 0 ? `${an.peakOtRec.fullDate} ${an.peakOtRec.dowShort} (+${an.peakOtRec.overtimeMin} dk · Çıkış ${an.peakOtRec.checkOut})` : 'Ek Mesai Kaydı Yok'],
+                        ['En Verimli Gün', `${an.bestNetDay.dowName} (Net ${fmtMinSigned(an.bestNetDay.netMin)} · Ort. ${A.numText(an.bestNetDay.avgWorkH)} sa)`, 'Birim Ortalaması', `Ort. Mesai: +${fmtMinDur(deptAvgOt)} · Ort. Geç: −${fmtMinDur(deptAvgLate)}`],
+                        ['30m Geofence Uyum', `%${A.pctText(an.geofenceRate)} Uyum (Ort. ${A.numText(an.avgDist)}m · Maks. ${A.numText(an.maxDist)}m)`, 'İzin & Güvenlik', `${empLeaves.length} izin talebi · ${empAlerts.length ? empAlerts.length + ' güvenlik uyarısı' : 'İhlal yok (Temiz)'}`]
                     ]
                 }
             ],
@@ -2056,7 +2055,7 @@
             preparedBy: S.user ? S.user.name + ' — ' + S.user.title : 'İnsan Kaynakları Yönetimi',
             approvedBy: 'İnsan Kaynakları Müdürlüğü',
             summaryTitle: 'HAFTANIN GÜNLERİNE GÖRE (PAZARTESİ – CUMA) DAVRANIŞ VE MESAİ ANALİZİ',
-            summaryHeaders: ['Haftanın Günü', 'Katılım (Gün)', 'Ort. Giriş', 'Ort. Çıkış', 'Ort. Mesai (Sa)', 'Top. Gecikme', 'Top. Ek Mesai', 'Net Süre Bakiyesi'],
+            summaryHeaders: ['Haftanın Günü', 'Katılım', 'Ort. Giriş', 'Ort. Çıkış', 'Ort. Mesai', 'Gecikme', 'Ek Mesai', 'Net Süre Bakiyesi'],
             summaryRows: an.weekdayList.map(w => [
                 w.dowName,
                 w.attended + ' gün',

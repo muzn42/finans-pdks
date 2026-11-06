@@ -1010,16 +1010,16 @@
 
         addBlank1(12);
         addMergedBanner1(
-            'Bu belge Albayrak Tasarruf Finansman A.Ş. Personel Devam Kontrol Sistemi tarafından otomatik üretilmiştir. Yetkisiz kopyalanması ve dağıtılması yasaktır.',
+            'Bu belge Albayrak Tasarruf Finansman A.Ş. PDKS sistemi tarafından otomatik üretilmiştir. Yetkisiz çoğaltılması yasaktır.',
             26,
             14
         );
 
         let cols1Xml = '<cols>';
-        const col1Widths = [22, 14, 14, 15, 22, 14, 14, 22];
+        const col1Widths = [25, 15, 14, 15, 25, 15, 15, 30];
         for (let c = 1; c <= colCount1; c++) {
-            // A4 Dikey (Portrait): A ve E (etiket sütunları) 22 birim, B:D (43 birim) ve F:H (50 birim) değer alanları
-            const w = col1Widths[c - 1] || (c === colCount1 ? 22 : 15);
+            // A4 Dikey (Portrait): A ve E (etiket sütunları) 25 birim, B:D (44 birim) ve F:H (60 birim) değer alanları
+            const w = col1Widths[c - 1] || (c === colCount1 ? 26 : 15);
             cols1Xml += `<col min="${c}" max="${c}" width="${w}" customWidth="1"/>`;
         }
         cols1Xml += '</cols>';
@@ -1089,13 +1089,13 @@
 
         let cols2Xml = '<cols>';
         for (let c = 1; c <= colCount2; c++) {
-            // A4 Dikey (Portrait) yazdırma için optimize sütun genişlikleri
-            const w = c === 1 ? 11
-                : c === 2 ? 16
-                : (c === 3 || c === 4) ? 13
-                : c <= 9 ? 10
-                : c <= 11 ? 13
-                : 12;
+            // Her sütunun başlık ve içerik uzunluğunu ölçerek +5 karakter pay bırakır (kesilmeyi %100 önler)
+            let maxLen = String(headers[c - 1] || '').length;
+            for (let ri = 0; ri < rows.length; ri++) {
+                const vLen = String((rows[ri] && rows[ri][c - 1]) != null ? rows[ri][c - 1] : '').length;
+                if (vLen > maxLen) maxLen = vLen;
+            }
+            const w = Math.min(32, Math.max(12, maxLen + 5));
             cols2Xml += `<col min="${c}" max="${c}" width="${w}" customWidth="1"/>`;
         }
         cols2Xml += '</cols>';
