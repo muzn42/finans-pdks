@@ -683,7 +683,7 @@
 
     function xmlEsc(v) {
         let s = String(v == null ? '' : v);
-        if (/^[=+\-@]/.test(s)) s = "'" + s;
+        if (/^[=@]/.test(s)) s = "'" + s;
         return s
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
@@ -717,11 +717,11 @@
         const hasLogo = !!(logoBytes && logoBytes.length);
 
         const detectStatusStyleIdx = (val, rowIdx) => {
-            const s = String(val || '').toLocaleLowerCase('tr-TR');
-            if (s.includes('ofiste') || s.includes('zamanında') || s.includes('onaylandı') || s.includes('çözüldü') || s.includes('eşlendi') || s.includes('uygun') || s.includes('hedef üstü') || s.includes('pozitif') || s.includes('temiz') || s.includes('uyum')) {
+            const s = String(val || '').trim().toLocaleLowerCase('tr-TR');
+            if (s.includes('ofiste') || s.includes('zamanında') || s.includes('onaylandı') || s.includes('çözüldü') || s.includes('eşlendi') || s.includes('uygun') || s.includes('hedef üstü') || s.includes('pozitif') || s.includes('temiz') || s.includes('tam uyum')) {
                 return 8; // OK (Yeşil Rozet)
             }
-            if (s.includes('geç') || s.includes('bekliyor') || s.includes('orta') || s.includes('işlemde') || s.includes('uyarı') || s.includes('normal') || s.includes('izlenmeli') || s.includes('izinli')) {
+            if (s === 'geç' || s.includes('geç kaldı') || s.includes('geç /') || s.includes('bekliyor') || s.includes('orta') || s.includes('işlemde') || s.includes('uyarı') || s.includes('normal') || s.includes('izlenmeli') || s.includes('izinli')) {
                 return 9; // WARN (Kehribar Rozet)
             }
             if (s.includes('devamsız') || s.includes('reddedildi') || s.includes('yüksek') || s.includes('engelli') || s.includes('ihlal') || s.includes('alan dışı') || s.includes('kritik') || s.includes('negatif')) {
@@ -734,7 +734,7 @@
         const sharedMap = new Map();
         const getSstIdx = (val) => {
             let s = String(val == null ? '' : val);
-            if (/^[=+\-@]/.test(s)) s = "'" + s;
+            if (/^[=@]/.test(s)) s = "'" + s;
             s = s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
             if (sharedMap.has(s)) return sharedMap.get(s);
             const idx = sharedStrings.length;
@@ -792,13 +792,14 @@
             sheet1Rows.push(`<row r="${r1}" ht="${heightPt}" customHeight="1"/>`);
         };
 
-        /* Dikey Anahtar-Değer (Sicil & Tahakkuk Kartı) Tablosu Üretici (A:B Etiket1 | C:D Değer1 | E:F Etiket2 | G:H Değer2) */
+        /* Dikey Anahtar-Değer (Sicil & Tahakkuk Kartı) Tablosu Üretici (A: Etiket1 [1 sütun] | B:D Değer1 [3 sütun] | E: Etiket2 [1 sütun] | F:H Değer2 [3 sütun]) */
         const renderKvSection1 = (sec) => {
             if (!sec || !sec.rows || !sec.rows.length) return;
             addSectionHeader1(sec.title || 'Bilgi Kartı');
             const half = Math.floor(colCount1 / 2); // 4
-            const lblSpan1 = Math.max(1, Math.floor(half / 2)); // 2 (A:B)
-            const lblSpan2 = Math.max(1, Math.floor((colCount1 - half) / 2)); // 2 (E:F)
+            // Etiketler 1'er geniş sütun (A ve E), değerler 3'er birleşik sütun (B:D ve F:H) alır; böylece uzun metinler kesilmez
+            const lblSpan1 = 1;
+            const lblSpan2 = 1;
 
             sec.rows.forEach((pairRow, ri) => {
                 r1++;
@@ -808,10 +809,11 @@
                 const v2 = pairRow[3] != null ? String(pairRow[3]) : (l2 ? '—' : '');
 
                 const pickValStyle = (val) => {
-                    const sv = String(val || '');
+                    const sv = String(val || '').trim();
                     if (sv.startsWith('+')) return 8;
                     if (sv.startsWith('-') || sv.startsWith('−')) return 10;
-                    return detectStatusStyleIdx(sv, ri);
+                    if (sv.length <= 28) return detectStatusStyleIdx(sv, ri);
+                    return (ri % 2 === 1) ? 7 : 6;
                 };
                 const stV1 = pickValStyle(v1);
                 const stV2 = l2 ? pickValStyle(v2) : ((ri % 2 === 1) ? 7 : 6);
@@ -1014,9 +1016,10 @@
         );
 
         let cols1Xml = '<cols>';
+        const col1Widths = [22, 14, 14, 15, 22, 14, 14, 22];
         for (let c = 1; c <= colCount1; c++) {
-            // A4 Dikey (Portrait) yazdırma için dengeli sütun genişlikleri (toplam ~126 karakter birimi)
-            const w = c === 1 ? 15 : (c === 2 ? 20 : (c === colCount1 ? 20 : 14));
+            // A4 Dikey (Portrait): A ve E (etiket sütunları) 22 birim, B:D (43 birim) ve F:H (50 birim) değer alanları
+            const w = col1Widths[c - 1] || (c === colCount1 ? 22 : 15);
             cols1Xml += `<col min="${c}" max="${c}" width="${w}" customWidth="1"/>`;
         }
         cols1Xml += '</cols>';
@@ -1210,17 +1213,17 @@
     <!-- 5: Tablo başlığı -->
     <xf numFmtId="0" fontId="5" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
     <!-- 6: Tablo hücresi -->
-    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" indent="1"/></xf>
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" indent="1" shrinkToFit="1"/></xf>
     <!-- 7: Tablo hücresi (zebra) -->
-    <xf numFmtId="0" fontId="0" fillId="4" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" indent="1"/></xf>
+    <xf numFmtId="0" fontId="0" fillId="4" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" indent="1" shrinkToFit="1"/></xf>
     <!-- 8: Durum OK (yeşil) -->
-    <xf numFmtId="0" fontId="6" fillId="6" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="6" fillId="6" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" shrinkToFit="1"/></xf>
     <!-- 9: Durum UYARI (kehribar) -->
-    <xf numFmtId="0" fontId="7" fillId="7" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="7" fillId="7" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" shrinkToFit="1"/></xf>
     <!-- 10: Durum KRİTİK (kırmızı) -->
-    <xf numFmtId="0" fontId="8" fillId="8" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-    <!-- 11: KPI etiketi -->
-    <xf numFmtId="0" fontId="9" fillId="5" borderId="3" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
+    <xf numFmtId="0" fontId="8" fillId="8" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" shrinkToFit="1"/></xf>
+    <!-- 11: KPI / Sicil etiketi -->
+    <xf numFmtId="0" fontId="9" fillId="5" borderId="3" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" shrinkToFit="1"/></xf>
     <!-- 12: KPI değeri (pozitif / yüzde) -->
     <xf numFmtId="0" fontId="10" fillId="0" borderId="3" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
     <!-- 13: KPI değeri (nötr, KOYU) -->
