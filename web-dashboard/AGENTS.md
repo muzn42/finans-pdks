@@ -32,7 +32,7 @@ Bu dizindeki tüm HTML, CSS ve JavaScript (`index.html`, `styles.css`, `landing.
 
 ### OpenXML Excel (`.xlsx`) Üretim Kuralları (`core.js`)
 - Excel OOXML şemasında (`ECMA-376 CT_Worksheet`) XML eleman sırası katıdır: `<sheetViews>` → `<cols>` → `<sheetData>` → `<autoFilter>` → `<mergeCells>` → `<pageMargins>` → `<pageSetup>` → `<headerFooter>` → `<drawing>`. Bu sırayı asla bozma (`<mergeCells>` her zaman `<autoFilter>`'dan **sonra** gelmelidir).
-- Raporlar A4 yatay (`paperSize="9"`, `orientation="landscape"`, `fitToWidth="1"`, `fitToHeight="0"`), her sayfada tekrarlanan başlık (`_xlnm.Print_Titles`) ve gömülü kurumsal logo (`LOGO_PNG_BASE64`) ile üretilmelidir.
+- Raporlar A4 dikey (`paperSize="9"`, `orientation="portrait"`, `fitToWidth="1"`, `fitToHeight="0"`), her sayfada tekrarlanan başlık (`_xlnm.Print_Titles`) ve gömülü kurumsal logo (`LOGO_PNG_BASE64`) ile üretilmelidir.
 - Hücre stillerinde beyaz zemin üzerine beyaz yazı (`fontId` / `fillId` çakışması) oluşmadığından emin ol.
 
 ---

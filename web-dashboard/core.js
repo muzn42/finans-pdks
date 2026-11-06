@@ -364,6 +364,14 @@
         }
 
         let dragged = null;
+        let lastDropTarget = null;
+        const clearDropTarget = () => {
+            if (lastDropTarget) {
+                lastDropTarget.classList.remove('is-drop-target');
+                lastDropTarget = null;
+            }
+        };
+
         on('dragstart', e => {
             const card = e.target.closest('.card[draggable="true"]');
             if (!card) return;
@@ -375,7 +383,7 @@
 
         on('dragend', () => {
             if (dragged) dragged.classList.remove('is-dragging');
-            ATF.$$('.is-drop-target', root).forEach(el => el.classList.remove('is-drop-target'));
+            clearDropTarget();
             dragged = null;
         });
 
@@ -385,15 +393,21 @@
             if (!over || over === dragged || over.parentElement !== dragged.parentElement) return;
             e.preventDefault();
             e.dataTransfer.dropEffect = 'move';
-            ATF.$$('.is-drop-target', root).forEach(el => { if (el !== over) el.classList.remove('is-drop-target'); });
-            over.classList.add('is-drop-target');
+            if (lastDropTarget !== over) {
+                if (lastDropTarget) lastDropTarget.classList.remove('is-drop-target');
+                over.classList.add('is-drop-target');
+                lastDropTarget = over;
+            }
         });
 
         on('dragleave', e => {
             const over = e.target.closest('.card[draggable="true"]');
             // Sadece kartın tamamen dışına çıkıldığında hedef işaretini kaldır (iç elemanlara geçişte titremesin)
             if (over && e.relatedTarget && over.contains(e.relatedTarget)) return;
-            if (over) over.classList.remove('is-drop-target');
+            if (over) {
+                over.classList.remove('is-drop-target');
+                if (lastDropTarget === over) lastDropTarget = null;
+            }
         });
 
         on('drop', e => {
@@ -401,6 +415,7 @@
             const target = e.target.closest('.card[draggable="true"]');
             if (!target || target === dragged || target.parentElement !== dragged.parentElement) return;
             e.preventDefault();
+            clearDropTarget();
             target.classList.remove('is-drop-target');
 
             const parent = target.parentElement;
@@ -682,11 +697,14 @@
         const fileName = (o.fileName || 'albayrak-pdks-rapor').replace(/\.(csv|xls|xlsx)$/i, '') + '.xlsx';
         const title = o.title || 'ALBAYRAK FİNANS KURUMSAL PDKS RAPORU';
         const subtitle = o.subtitle || 'İnsan Kaynakları ve Konum Doğrulama Analitiği';
+        const orientation = o.orientation || 'portrait'; // Varsayılan: A4 Dikey (Portrait)
         const meta = o.meta || [];
         const kpis = o.kpis || [];
+        const kvSections = o.kvSections || [];
         const summaryTitle = o.summaryTitle || 'DEPARTMAN BAZLI UYUM, EK MESAİ VE NET BAKİYE ÖZETİ';
         const summaryHeaders = o.summaryHeaders || [];
         const summaryRows = o.summaryRows || [];
+        const extraSections = o.extraSections || [];
         const headers = o.headers || [];
         const rows = o.rows || [];
         const notes = o.notes || [];
@@ -700,10 +718,10 @@
 
         const detectStatusStyleIdx = (val, rowIdx) => {
             const s = String(val || '').toLocaleLowerCase('tr-TR');
-            if (s.includes('ofiste') || s.includes('zamanında') || s.includes('onaylandı') || s.includes('çözüldü') || s.includes('eşlendi') || s.includes('uygun') || s.includes('hedef üstü') || s.includes('pozitif')) {
+            if (s.includes('ofiste') || s.includes('zamanında') || s.includes('onaylandı') || s.includes('çözüldü') || s.includes('eşlendi') || s.includes('uygun') || s.includes('hedef üstü') || s.includes('pozitif') || s.includes('temiz') || s.includes('uyum')) {
                 return 8; // OK (Yeşil Rozet)
             }
-            if (s.includes('geç') || s.includes('bekliyor') || s.includes('orta') || s.includes('işlemde') || s.includes('uyarı') || s.includes('normal') || s.includes('izlenmeli')) {
+            if (s.includes('geç') || s.includes('bekliyor') || s.includes('orta') || s.includes('işlemde') || s.includes('uyarı') || s.includes('normal') || s.includes('izlenmeli') || s.includes('izinli')) {
                 return 9; // WARN (Kehribar Rozet)
             }
             if (s.includes('devamsız') || s.includes('reddedildi') || s.includes('yüksek') || s.includes('engelli') || s.includes('ihlal') || s.includes('alan dışı') || s.includes('kritik') || s.includes('negatif')) {
@@ -725,11 +743,12 @@
             return idx;
         };
 
-        /* ================= SHEET 1: RAPOR ÖZETİ ================= */
+        /* ================= SHEET 1: RAPOR ÖZETİ (A4 DİKEY PDKS FORMATI) ================= */
         const sheet1Rows = [];
         const merges1 = [];
         let r1 = 0;
-        const colCount1 = Math.max(summaryHeaders.length || 8, kpis.length ? kpis.length * 2 : 8, 8);
+        const maxExtraCols = extraSections.reduce((m, sec) => Math.max(m, (sec.headers || []).length), 0);
+        const colCount1 = Math.max(summaryHeaders.length || 8, maxExtraCols, 8);
 
         const addMergedBanner1 = (text, styleIdx, heightPt) => {
             r1++;
@@ -764,13 +783,108 @@
         let sectionNo = 0;
         const addSectionHeader1 = (text) => {
             sectionNo++;
-            addBlank1(12);
+            addBlank1(10);
             addMergedBanner1(`${sectionNo}. ${String(text).toLocaleUpperCase('tr-TR')}`, 4, 20);
         };
 
         const addBlank1 = (heightPt = 10) => {
             r1++;
             sheet1Rows.push(`<row r="${r1}" ht="${heightPt}" customHeight="1"/>`);
+        };
+
+        /* Dikey Anahtar-Değer (Sicil & Tahakkuk Kartı) Tablosu Üretici (A:B Etiket1 | C:D Değer1 | E:F Etiket2 | G:H Değer2) */
+        const renderKvSection1 = (sec) => {
+            if (!sec || !sec.rows || !sec.rows.length) return;
+            addSectionHeader1(sec.title || 'Bilgi Kartı');
+            const half = Math.floor(colCount1 / 2); // 4
+            const lblSpan1 = Math.max(1, Math.floor(half / 2)); // 2 (A:B)
+            const lblSpan2 = Math.max(1, Math.floor((colCount1 - half) / 2)); // 2 (E:F)
+
+            sec.rows.forEach((pairRow, ri) => {
+                r1++;
+                const l1 = pairRow[0] != null ? String(pairRow[0]) : '';
+                const v1 = pairRow[1] != null ? String(pairRow[1]) : '—';
+                const l2 = pairRow[2] != null ? String(pairRow[2]) : '';
+                const v2 = pairRow[3] != null ? String(pairRow[3]) : (l2 ? '—' : '');
+
+                const pickValStyle = (val) => {
+                    const sv = String(val || '');
+                    if (sv.startsWith('+')) return 8;
+                    if (sv.startsWith('-') || sv.startsWith('−')) return 10;
+                    return detectStatusStyleIdx(sv, ri);
+                };
+                const stV1 = pickValStyle(v1);
+                const stV2 = l2 ? pickValStyle(v2) : ((ri % 2 === 1) ? 7 : 6);
+
+                const cL1Start = 0, cL1End = lblSpan1 - 1;
+                const cV1Start = lblSpan1, cV1End = half - 1;
+                const cL2Start = half, cL2End = half + lblSpan2 - 1;
+                const cV2Start = half + lblSpan2, cV2End = colCount1 - 1;
+
+                let cells = '';
+                for (let c = 0; c < colCount1; c++) {
+                    const ref = colRef(c) + r1;
+                    if (c === cL1Start) cells += `<c r="${ref}" s="11" t="s"><v>${getSstIdx(l1)}</v></c>`;
+                    else if (c <= cL1End) cells += `<c r="${ref}" s="11"/>`;
+                    else if (c === cV1Start) cells += `<c r="${ref}" s="${stV1}" t="s"><v>${getSstIdx(v1)}</v></c>`;
+                    else if (c <= cV1End) cells += `<c r="${ref}" s="${stV1}"/>`;
+                    else if (c === cL2Start) cells += `<c r="${ref}" s="11" t="s"><v>${getSstIdx(l2)}</v></c>`;
+                    else if (c <= cL2End) cells += `<c r="${ref}" s="11"/>`;
+                    else if (c === cV2Start) cells += `<c r="${ref}" s="${stV2}" t="s"><v>${getSstIdx(v2)}</v></c>`;
+                    else cells += `<c r="${ref}" s="${stV2}"/>`;
+                }
+                sheet1Rows.push(`<row r="${r1}" ht="20" customHeight="1">${cells}</row>`);
+                if (cL1End > cL1Start) merges1.push(`${colRef(cL1Start)}${r1}:${colRef(cL1End)}${r1}`);
+                if (cV1End > cV1Start) merges1.push(`${colRef(cV1Start)}${r1}:${colRef(cV1End)}${r1}`);
+                if (cL2End > cL2Start) merges1.push(`${colRef(cL2Start)}${r1}:${colRef(cL2End)}${r1}`);
+                if (cV2End > cV2Start) merges1.push(`${colRef(cV2Start)}${r1}:${colRef(cV2End)}${r1}`);
+            });
+        };
+
+        /* Sheet 1 Üzerinde Tam Genişlikli Dikey Tablo Üretici */
+        const renderTableSection1 = (secTitle, tHeaders, tRows) => {
+            if (!tHeaders || !tHeaders.length || !tRows || !tRows.length) return;
+            addSectionHeader1(secTitle);
+
+            const hLen = tHeaders.length;
+            r1++;
+            let sHdrCells = '';
+            tHeaders.forEach((h, ci) => {
+                sHdrCells += `<c r="${colRef(ci)}${r1}" s="5" t="s"><v>${getSstIdx(h)}</v></c>`;
+            });
+            for (let c = hLen; c < colCount1; c++) {
+                sHdrCells += `<c r="${colRef(c)}${r1}" s="5"/>`;
+            }
+            sheet1Rows.push(`<row r="${r1}" ht="22" customHeight="1">${sHdrCells}</row>`);
+            if (hLen < colCount1) {
+                merges1.push(`${colRef(hLen - 1)}${r1}:${colRef(colCount1 - 1)}${r1}`);
+            }
+
+            tRows.forEach((sr, sri) => {
+                r1++;
+                let srCells = '';
+                let lastStyle = (sri % 2 === 1) ? 7 : 6;
+                sr.forEach((val, ci) => {
+                    let st = (sri % 2 === 1) ? 7 : 6;
+                    const strVal = String(val == null ? '' : val);
+                    if (ci === sr.length - 1) {
+                        st = detectStatusStyleIdx(val, sri);
+                    } else if (strVal.startsWith('+')) {
+                        st = 8;
+                    } else if (strVal.startsWith('-') || strVal.startsWith('−')) {
+                        st = 10;
+                    }
+                    lastStyle = st;
+                    srCells += `<c r="${colRef(ci)}${r1}" s="${st}" t="s"><v>${getSstIdx(val)}</v></c>`;
+                });
+                for (let c = sr.length; c < colCount1; c++) {
+                    srCells += `<c r="${colRef(c)}${r1}" s="${lastStyle}"/>`;
+                }
+                sheet1Rows.push(`<row r="${r1}" ht="19" customHeight="1">${srCells}</row>`);
+                if (sr.length < colCount1) {
+                    merges1.push(`${colRef(sr.length - 1)}${r1}:${colRef(colCount1 - 1)}${r1}`);
+                }
+            });
         };
 
         // ============ 1. KURUMSAL ANTET (logo + unvan + rapor künyesi) ============
@@ -789,12 +903,20 @@
             addMergedBanner1(metaJoined, 3, 18);                                              // 10. filtre künyesi
         }
 
-        // ============ 2. YÖNETİCİ ÖZETİ GÖSTERGELERİ (KPI KARTLARI) ============
+        // ============ 2. PERSONEL / KURUM DİKEY BİLGİ KARTLARI (kvSections - Varsa İlk Sırada) ============
+        if (kvSections.length) {
+            kvSections.forEach(sec => renderKvSection1(sec));
+        }
+
+        // ============ 3. YÖNETİCİ ÖZETİ GÖSTERGELERİ (DİKEY KPI KARTLARI) ============
         if (kpis.length) {
-            addSectionHeader1('Yönetici Özeti Göstergeleri');
+            addSectionHeader1('Temel Performans ve Puantaj Göstergeleri');
 
             const kpiItems = kpis.slice(0, 6);
-            const perRow = kpiItems.length <= 4 ? kpiItems.length : 3;
+            // Dikey (portrait) düzende 2'li veya 3'lü geniş kartlar halinde alt alta dizilir
+            const perRow = (kpiItems.length === 4 || kpiItems.length === 6 || kpiItems.length === 2)
+                ? 2
+                : Math.min(3, kpiItems.length);
             const kpiCardCols = Math.max(1, Math.floor(colCount1 / perRow));
 
             const addKpiStrip = (chunk, styleOf, textOf, heightPt, emptyStyle) => {
@@ -802,7 +924,7 @@
                 let cells = '';
                 chunk.forEach((k, idx) => {
                     const c1 = idx * kpiCardCols;
-                    const c2 = c1 + kpiCardCols - 1;
+                    const c2 = (idx === chunk.length - 1) ? (colCount1 - 1) : (c1 + kpiCardCols - 1);
                     const ref1 = colRef(c1) + r1;
                     const ref2 = colRef(c2) + r1;
                     const st = styleOf(k);
@@ -812,15 +934,12 @@
                     }
                     if (c2 > c1) merges1.push(`${ref1}:${ref2}`);
                 });
-                for (let c = chunk.length * kpiCardCols; c < colCount1; c++) {
-                    cells += `<c r="${colRef(c)}${r1}" s="${emptyStyle}"/>`;
-                }
                 sheet1Rows.push(`<row r="${r1}" ht="${heightPt}" customHeight="1">${cells}</row>`);
             };
 
             for (let i = 0; i < kpiItems.length; i += perRow) {
                 const chunk = kpiItems.slice(i, i + perRow);
-                if (i > 0) addBlank1(8);
+                if (i > 0) addBlank1(6);
                 // Etiket
                 addKpiStrip(chunk, () => 11, k => String(k.label || '').toLocaleUpperCase('tr-TR'), 16, 11);
                 // Değer
@@ -833,7 +952,7 @@
                         return k.tone === 'warn' ? 14 : 13;
                     },
                     k => String(k.value || '0'),
-                    24,
+                    22,
                     13
                 );
                 // Alt açıklama
@@ -841,39 +960,14 @@
             }
         }
 
-        // ============ 3. DEPARTMAN / BİRİM ÖZET MATRİSİ ============
+        // ============ 4. ÖZET MATRİSİ & EK DİKEY TABLOLAR ============
         if (summaryHeaders.length && summaryRows.length) {
-            addSectionHeader1(summaryTitle);
+            renderTableSection1(summaryTitle, summaryHeaders, summaryRows);
+        }
 
-            r1++;
-            let sHdrCells = '';
-            summaryHeaders.forEach((h, ci) => {
-                sHdrCells += `<c r="${colRef(ci)}${r1}" s="5" t="s"><v>${getSstIdx(h)}</v></c>`;
-            });
-            for (let c = summaryHeaders.length; c < colCount1; c++) {
-                sHdrCells += `<c r="${colRef(c)}${r1}" s="5"/>`;
-            }
-            sheet1Rows.push(`<row r="${r1}" ht="22" customHeight="1">${sHdrCells}</row>`);
-
-            summaryRows.forEach((sr, sri) => {
-                r1++;
-                let srCells = '';
-                sr.forEach((val, ci) => {
-                    let st = (sri % 2 === 1) ? 7 : 6;
-                    const strVal = String(val || '');
-                    if (ci === sr.length - 1) {
-                        st = detectStatusStyleIdx(val, sri);
-                    } else if (strVal.startsWith('+')) {
-                        st = 8;
-                    } else if (strVal.startsWith('-') || strVal.startsWith('−')) {
-                        st = 10;
-                    }
-                    srCells += `<c r="${colRef(ci)}${r1}" s="${st}" t="s"><v>${getSstIdx(val)}</v></c>`;
-                });
-                for (let c = sr.length; c < colCount1; c++) {
-                    srCells += `<c r="${colRef(c)}${r1}" s="${(sri % 2 === 1) ? 7 : 6}"/>`;
-                }
-                sheet1Rows.push(`<row r="${r1}" ht="20" customHeight="1">${srCells}</row>`);
+        if (extraSections.length) {
+            extraSections.forEach(sec => {
+                renderTableSection1(sec.title, sec.headers, sec.rows);
             });
         }
 
@@ -892,22 +986,22 @@
             if (colCount1 - 1 > half) merges1.push(`${colRef(half)}${r1}:${colRef(colCount1 - 1)}${r1}`);
         };
 
-        // ============ 4. DEĞERLENDİRME VE METODOLOJİ NOTU ============
+        // ============ 5. DEĞERLENDİRME VE METODOLOJİ NOTU ============
         addSectionHeader1('Değerlendirme ve Metodoloji Notu');
 
         const defaultNotes = [
-            'Gecikme süresi, vardiya başlangıç saatine göre hesaplanan pozitif sapmadır.',
-            'Ek mesai süresi, vardiya bitişinden sonra gerçekleşen onaylı çalışma süresidir.',
+            'Gecikme süresi, standart vardiya başlangıç saatine (08:30, 10 dk tolerans ile 08:40) göre hesaplanan pozitif sapmadır.',
+            'Ek mesai süresi, vardiya bitişinden (17:30) sonra gerçekleşen onaylı fazla çalışma süresidir.',
             'Net süre bakiyesi = Toplam ek mesai − Toplam gecikme. Negatif bakiye kayıp süreyi gösterir.',
             'Konum doğrulaması şube merkezine 30 metre yarıçapla sınırlıdır; sahte konum (mock GPS) tespiti blokajla sonuçlanır.',
-            `Ham kayıtların tamamı "Puantaj Detay" sekmesinde yer alır (${rows.length} satır · AutoFilter açık · başlık satırı her sayfada tekrar eder).`
+            `Tüm detaylı kayıtlar bu sayfanın devamında ve "Puantaj Detay" sekmesinde yer alır (${rows.length} satır · A4 Dikey yazdırmaya hazır).`
         ];
         (notes.length ? notes : defaultNotes).forEach((n, i) => {
             addMergedBanner1(`${i + 1})  ${n}`, 26, 15);
         });
 
-        // ============ 5. ONAY VE İMZA BLOĞU ============
-        addBlank1(22);
+        // ============ 6. ONAY VE İMZA BLOĞU ============
+        addBlank1(20);
         addTwoColRow1('', '', 25, 22);
         addTwoColRow1('Hazırlayan', 'Onaylayan', 24, 13);
         addTwoColRow1(preparedBy || 'İnsan Kaynakları Yönetimi', approvedBy, 25, 13);
@@ -921,8 +1015,8 @@
 
         let cols1Xml = '<cols>';
         for (let c = 1; c <= colCount1; c++) {
-            // A4 yatay yazdırma için toplam genişlik ~146 karakter birimi ile sınırlandı
-            const w = c === 1 ? 20 : (c === 2 ? 24 : (c === colCount1 ? 22 : 16));
+            // A4 Dikey (Portrait) yazdırma için dengeli sütun genişlikleri (toplam ~126 karakter birimi)
+            const w = c === 1 ? 15 : (c === 2 ? 20 : (c === colCount1 ? 20 : 14));
             cols1Xml += `<col min="${c}" max="${c}" width="${w}" customWidth="1"/>`;
         }
         cols1Xml += '</cols>';
@@ -939,8 +1033,8 @@
   <sheetData>${sheet1Rows.join('')}</sheetData>
   ${merge1Xml}
   <printOptions horizontalCentered="1"/>
-  <pageMargins left="0.3" right="0.3" top="0.45" bottom="0.65" header="0.25" footer="0.25"/>
-  <pageSetup paperSize="9" scale="100" orientation="landscape" fitToWidth="1" fitToHeight="0" horizontalDpi="600" verticalDpi="600"/>
+  <pageMargins left="0.25" right="0.25" top="0.4" bottom="0.6" header="0.2" footer="0.2"/>
+  <pageSetup paperSize="9" scale="100" orientation="${orientation}" fitToWidth="1" fitToHeight="0" horizontalDpi="600" verticalDpi="600"/>
   <headerFooter><oddFooter>&amp;L Albayrak Tasarruf Finansman A.Ş. · PDKS&amp;C Rapor No: ${xmlEsc(reportNo)}&amp;R Sayfa &amp;P / &amp;N</oddFooter></headerFooter>
   ${logoBytes ? '<drawing r:id="rId1"/>' : ''}
 </worksheet>`;
@@ -952,7 +1046,7 @@
 
         // 1. satır: ek başlık bandı (her sayfada tekrarlanır)
         {
-            const ekTitle = `EK-1 · DETAY KAYIT LİSTESİ (${rows.length} KAYIT) — ${title}`;
+            const ekTitle = `EK-1 · DETAYLI PUANTAJ VE KAYIT CETVELİ (${rows.length} KAYIT) — ${title}`;
             let tCells = '';
             for (let c = 0; c < colCount2; c++) {
                 const ref = colRef(c) + '1';
@@ -992,12 +1086,12 @@
 
         let cols2Xml = '<cols>';
         for (let c = 1; c <= colCount2; c++) {
-            // A4 yatay yazdırma için sütun genişlikleri içeriğe göre daraltıldı (~162 birim)
-            const w = c === 1 ? 12
-                : c === 2 ? 21
-                : (c === 3 || c === 4) ? 15
-                : c <= 9 ? 11
-                : c <= 11 ? 16
+            // A4 Dikey (Portrait) yazdırma için optimize sütun genişlikleri
+            const w = c === 1 ? 11
+                : c === 2 ? 16
+                : (c === 3 || c === 4) ? 13
+                : c <= 9 ? 10
+                : c <= 11 ? 13
                 : 12;
             cols2Xml += `<col min="${c}" max="${c}" width="${w}" customWidth="1"/>`;
         }
@@ -1025,8 +1119,8 @@
   ${autoFilterXml}
   ${merge2Xml}
   <printOptions horizontalCentered="1"/>
-  <pageMargins left="0.2" right="0.2" top="0.5" bottom="0.65" header="0.25" footer="0.25"/>
-  <pageSetup paperSize="9" scale="100" orientation="landscape" fitToWidth="1" fitToHeight="0" horizontalDpi="600" verticalDpi="600"/>
+  <pageMargins left="0.2" right="0.2" top="0.45" bottom="0.6" header="0.2" footer="0.2"/>
+  <pageSetup paperSize="9" scale="100" orientation="${orientation}" fitToWidth="1" fitToHeight="0" horizontalDpi="600" verticalDpi="600"/>
   <headerFooter><oddFooter>&amp;L Albayrak Tasarruf Finansman A.Ş. · PDKS — EK-1&amp;C Rapor No: ${xmlEsc(reportNo)}&amp;R Sayfa &amp;P / &amp;N</oddFooter></headerFooter>
 </worksheet>`;
 

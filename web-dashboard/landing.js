@@ -128,19 +128,42 @@
             privacyImages[i] = img;
         }
 
+        let privacyPreloadStarted = false;
+        function preloadPrivacyFrames() {
+            if (privacyPreloadStarted) return;
+            privacyPreloadStarted = true;
+            let idx = 0;
+            function loadBatch() {
+                const end = Math.min(PRIVACY_FRAME_COUNT, idx + 12);
+                for (; idx < end; idx++) loadPrivacyFrame(idx);
+                if (idx < PRIVACY_FRAME_COUNT) setTimeout(loadBatch, 24);
+            }
+            loadBatch();
+        }
+
+        function loadScrollWindow(centerIdx, radius) {
+            const start = Math.max(0, centerIdx - radius);
+            const end = Math.min(TOTAL_SCROLL_FRAMES - 1, centerIdx + radius);
+            for (let i = start; i <= end; i++) loadScrollFrame(i);
+        }
+
         loadScrollFrame(0);
         loadScrollFrame(VIDEO1_LAST_IDX);
         loadScrollFrame(BRIDGE_LAST_IDX);
         loadPrivacyFrame(0);
         loadPrivacyFrame(PRIVACY_FRAME_COUNT - 1);
 
+        // Kademeli (non-blocking) ön yükleme: ana iş parçacığını (main thread) tıkamaz
         setTimeout(() => {
-            for (let i = 0; i <= VIDEO1_LAST_IDX; i += 4) loadScrollFrame(i);
-            for (let i = VIDEO1_LAST_IDX + 1; i <= BRIDGE_LAST_IDX; i++) loadScrollFrame(i);
-            for (let i = 0; i < PRIVACY_FRAME_COUNT; i++) loadPrivacyFrame(i);
-            setTimeout(() => {
-                for (let i = 0; i <= VIDEO1_LAST_IDX; i++) loadScrollFrame(i);
-            }, 80);
+            for (let i = 0; i <= VIDEO1_LAST_IDX; i += 8) loadScrollFrame(i);
+            let bgIdx = 0;
+            function loadNextChunk() {
+                if (shell.hidden) return;
+                const limit = Math.min(VIDEO1_LAST_IDX + 1, bgIdx + 16);
+                for (; bgIdx < limit; bgIdx++) loadScrollFrame(bgIdx);
+                if (bgIdx <= VIDEO1_LAST_IDX) setTimeout(loadNextChunk, 32);
+            }
+            setTimeout(loadNextChunk, 60);
         }, 16);
 
         // Spring State'leri (stiffness: 260, damping: 28)
@@ -160,6 +183,20 @@
 
         let lastRenderedKey = '';
         let lastTime = performance.now();
+        let rafId = null;
+
+        function wakeLoop() {
+            if (shell.hidden || rafId !== null) return;
+            lastTime = performance.now();
+            rafId = requestAnimationFrame(tick);
+        }
+
+        function stopLoop() {
+            if (rafId !== null) {
+                cancelAnimationFrame(rafId);
+                rafId = null;
+            }
+        }
 
         function applyPortalMeta(role) {
             const meta = PORTAL_META[role] || PORTAL_META.HR;
@@ -172,6 +209,9 @@
 
         function choosePortalRole(role) {
             roleChosen = true;
+            // Ara geçiş karelerini ve parola gizlilik karelerini ihtiyaç anında yükle
+            for (let i = VIDEO1_LAST_IDX + 1; i <= BRIDGE_LAST_IDX; i++) loadScrollFrame(i);
+            preloadPrivacyFrames();
             applyPortalMeta(role);
             if (portalChoiceView) portalChoiceView.hidden = true;
             if (loginForm) {
@@ -180,6 +220,7 @@
                 void loginForm.offsetWidth;
                 loginForm.style.animation = '';
             }
+            wakeLoop();
             setTimeout(() => {
                 if (window.ATF && window.ATF.placeSeg) {
                     window.ATF.placeSeg(document.getElementById('portalSeg'));
@@ -202,6 +243,7 @@
                 void portalChoiceView.offsetWidth;
                 portalChoiceView.style.animation = '';
             }
+            wakeLoop();
         }
 
         document.querySelectorAll('[data-choose-portal]').forEach(btn => {
@@ -235,6 +277,7 @@
             scrollSpring.target = rawP;
             logoSpring.target = clamp(rawP / 0.10, 0, 1);
             dockSpring.target = clamp((rawP - 0.83) / 0.13, 0, 1);
+            wakeLoop();
         }
 
         window.addEventListener('scroll', computeTargetScroll, { passive: true });
@@ -244,6 +287,7 @@
         function scrollToLogin() {
             const maxScroll = Math.max(1, shell.offsetHeight - window.innerHeight);
             window.scrollTo({ top: maxScroll, behavior: 'smooth' });
+            wakeLoop();
         }
         if (skipBtn) skipBtn.addEventListener('click', scrollToLogin);
         if (scrollCue) scrollCue.addEventListener('click', scrollToLogin);
@@ -251,14 +295,21 @@
         function syncPasswordPrivacyState() {
             if (!passInput) return;
             showPassword = passInput.type === 'text';
+            if (showPassword) preloadPrivacyFrames();
             if (togglePassBtn) {
                 togglePassBtn.classList.toggle('is-peeking', showPassword);
                 togglePassBtn.setAttribute('aria-label', showPassword ? 'Parolayı gizle' : 'Parolayı göster');
             }
+            wakeLoop();
+        }
+
+        if (passInput) {
+            passInput.addEventListener('focus', preloadPrivacyFrames, { passive: true });
         }
 
         if (togglePassBtn) {
             togglePassBtn.addEventListener('click', () => {
+                preloadPrivacyFrames();
                 setTimeout(syncPasswordPrivacyState, 0);
             });
         }
@@ -278,10 +329,12 @@
                 const inApp = !appView.hidden;
                 document.body.classList.toggle('in-app', inApp);
                 if (inApp) {
+                    stopLoop();
                     window.scrollTo({ top: 0, behavior: 'instant' });
                 } else {
                     computeTargetScroll();
                     drawCurrentState(true);
+                    wakeLoop();
                     setTimeout(() => {
                         if (window.ATF && window.ATF.placeSeg) {
                             window.ATF.placeSeg(document.getElementById('portalSeg'));
@@ -304,20 +357,25 @@
         function renderFrameToStage(key, imgObj) {
             if (!imgObj || key === lastRenderedKey) return;
             lastRenderedKey = key;
-            if (frameImg && frameImg.src !== imgObj.src) {
-                frameImg.src = imgObj.src;
-            }
             if (ctx && imgObj.complete && imgObj.naturalWidth > 0) {
                 try {
                     ctx.drawImage(imgObj, 0, 0, 1920, 1080);
+                    if (frameImg && !frameImg.hidden) {
+                        frameImg.hidden = true;
+                    }
+                    return;
                 } catch (_) {
                     // Ignore transient decode errors
                 }
             }
+            if (frameImg && frameImg.src !== imgObj.src) {
+                frameImg.hidden = false;
+                frameImg.src = imgObj.src;
+            }
         }
 
         function drawCurrentState(force = false) {
-            if (shell.hidden) return;
+            if (shell.hidden) return false;
             if (force) lastRenderedKey = '';
 
             const now = performance.now();
@@ -401,13 +459,13 @@
                 renderFrameToStage(`priv_${pIdx}`, imgObj);
             } else if (p >= 0.83 && (roleChosen || bridgeCursor > VIDEO1_LAST_IDX + 0.5)) {
                 const bIdx = clamp(Math.round(bridgeCursor), VIDEO1_LAST_IDX, BRIDGE_LAST_IDX);
-                loadScrollFrame(bIdx);
+                loadScrollWindow(bIdx, 6);
                 const imgObj = findNearestLoaded(scrollImages, scrollLoaded, bIdx, TOTAL_SCROLL_FRAMES);
                 renderFrameToStage(`scroll_${bIdx}`, imgObj);
             } else {
                 const scrubNorm = clamp((p - 0.09) / (0.84 - 0.09), 0, 1);
                 const sIdx = clamp(Math.round(scrubNorm * VIDEO1_LAST_IDX), 0, VIDEO1_LAST_IDX);
-                loadScrollFrame(sIdx);
+                loadScrollWindow(sIdx, 8);
                 const imgObj = findNearestLoaded(scrollImages, scrollLoaded, sIdx, TOTAL_SCROLL_FRAMES);
                 renderFrameToStage(`scroll_${sIdx}`, imgObj);
             }
@@ -423,13 +481,25 @@
 
             if (skipBtn) skipBtn.classList.toggle('is-hidden', p > 0.80);
             if (progBar) progBar.style.transform = `scaleY(${p.toFixed(3)})`;
+
+            const springsActive =
+                Math.abs(scrollSpring.value - scrollSpring.target) > 0.0005 ||
+                Math.abs(logoSpring.value - logoSpring.target) > 0.0005 ||
+                Math.abs(dockSpring.value - dockSpring.target) > 0.0005 ||
+                Math.abs(bridgeCursor - targetBridge) > 0.01 ||
+                Math.abs(privacyCursor - targetPrivFrame) > 0.01;
+            return springsActive;
         }
 
         function tick() {
-            drawCurrentState(false);
-            requestAnimationFrame(tick);
+            rafId = null;
+            if (shell.hidden) return;
+            const keepGoing = drawCurrentState(false);
+            if (keepGoing) {
+                rafId = requestAnimationFrame(tick);
+            }
         }
-        requestAnimationFrame(tick);
+        wakeLoop();
 
         setTimeout(() => {
             if (window.ATF && window.ATF.placeSeg) {

@@ -354,18 +354,38 @@
             logs
         };
 
+        if (analyticsCache.size >= 2500) {
+            const oldestKey = analyticsCache.keys().next().value;
+            if (oldestKey !== undefined) analyticsCache.delete(oldestKey);
+        }
         analyticsCache.set(cacheKey, res);
         return res;
     }
 
-    /* ---- Tüm Personeller İçin Sıralama / Lig Hesaplayıcı ---- */
+    /* ---- Tüm Personeller İçin Sıralama / Lig Hesaplayıcı (Memoized) ---- */
+    const leaderboardCache = new Map();
+
     function computeLeaderboards(empList, opts) {
-        const list = (empList || EMPLOYEES).map(e => empAnalytics(e.id, opts));
+        const src = empList || EMPLOYEES;
+        const selDays = resolveDays(opts);
+        const firstId = src.length ? src[0].id : 0;
+        const lastId = src.length ? src[src.length - 1].id : 0;
+        const lbKey = `${src.length}_${firstId}_${lastId}_${selDays[0].iso}_${selDays[selDays.length - 1].iso}_${EMPLOYEES.length}`;
+        if (leaderboardCache.has(lbKey)) return leaderboardCache.get(lbKey);
+
+        const list = src.map(e => empAnalytics(e.id, opts));
         const topOvertime = [...list].sort((a, b) => (b.totalOvertimeMin - a.totalOvertimeMin) || (b.otDaysCount - a.otDaysCount));
         const bestNet = [...list].sort((a, b) => (b.netBalanceMin - a.netBalanceMin) || (b.onTimePct - a.onTimePct));
         const worstNet = [...list].sort((a, b) => (a.netBalanceMin - b.netBalanceMin) || (b.totalLateMin - a.totalLateMin));
         const mostLate = [...list].sort((a, b) => (b.totalLateMin - a.totalLateMin) || (b.lateDaysCount - a.lateDaysCount));
-        return { all: list, topOvertime, bestNet, worstNet, mostLate };
+        const out = { all: list, topOvertime, bestNet, worstNet, mostLate };
+
+        if (leaderboardCache.size >= 60) {
+            const oldestKey = leaderboardCache.keys().next().value;
+            if (oldestKey !== undefined) leaderboardCache.delete(oldestKey);
+        }
+        leaderboardCache.set(lbKey, out);
+        return out;
     }
 
     /* ---- İzin / mazeret talepleri ---- */
@@ -437,6 +457,7 @@
 
     function clearAnalyticsCache() {
         analyticsCache.clear();
+        leaderboardCache.clear();
     }
 
     function addEmployee(o) {

@@ -963,9 +963,9 @@ p { line-height: var(--lh-normal); }
     .rpt-sign { grid-template-columns: minmax(0, 1fr); gap: 22px; }
 }
 
-/* Rapor sayfası yazdırma (Ctrl+P) — A4 yatay, yalnızca belge */
+/* Rapor sayfası yazdırma (Ctrl+P) — A4 dikey, yalnızca belge */
 @media print {
-    @page { size: A4 landscape; margin: 10mm; }
+    @page { size: A4 portrait; margin: 10mm; }
     html, body { background: #fff !important; }
     .side, .scrim, .top, .rpt-side, .toast, .seg, .chips, .icon-btn, .dnd-hint { display: none !important; }
     .shell { display: block !important; }
