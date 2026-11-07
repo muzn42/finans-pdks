@@ -37,3 +37,15 @@ scratch/
 
 # SQLite veritabani
 *.db
+
+# Node.js & Next.js
+node_modules/
+.next/
+out/
+.env.*
+!.env.example
+web-dashboard/.env
+web-dashboard/.env.*
+!web-dashboard/.env.example
+tsconfig.tsbuildinfo
+next-env.d.ts

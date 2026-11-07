@@ -1,0 +1,195 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Branch {
+  id           Int        @id @default(autoincrement())
+  code         String     @unique
+  name         String
+  city         String
+  lat          Float
+  lng          Float
+  radiusMeters Float      @default(30.0) @map("radius_meters")
+  wifiSsid     String     @map("wifi_ssid")
+  weight       Float      @default(0.1)
+  createdAtUtc DateTime   @default(now()) @map("created_at_utc") @db.Timestamptz(3)
+  employees    Employee[]
+
+  @@index([city])
+  @@map("branches")
+}
+
+model Shift {
+  id           Int        @id @default(autoincrement())
+  code         String     @unique
+  name         String
+  startMin     Int        @default(510) @map("start_min") // 08:30 = 510
+  endMin       Int        @default(1050) @map("end_min")  // 17:30 = 1050
+  breakMin     Int        @default(60) @map("break_min")
+  graceMin     Int        @default(5) @map("grace_min")
+  isFlexible   Boolean    @default(false) @map("is_flexible")
+  createdAtUtc DateTime   @default(now()) @map("created_at_utc") @db.Timestamptz(3)
+  employees    Employee[]
+
+  @@map("shifts")
+}
+
+model Employee {
+  id              Int               @id @default(autoincrement())
+  sicil           String            @unique
+  name            String
+  dept            String
+  title           String
+  branchCode      String            @map("branch_code")
+  branch          Branch            @relation(fields: [branchCode], references: [code])
+  shiftId         Int               @default(1) @map("shift_id")
+  shift           Shift             @relation(fields: [shiftId], references: [id])
+  status          String            @default("PRESENT") // PRESENT | LATE | LEAVE | ABSENT
+  inMin           Int?              @map("in_min")
+  outMin          Int?              @map("out_min")
+  checkIn         String?           @map("check_in")
+  checkOut        String?           @map("check_out")
+  lateMin         Int               @default(0) @map("late_min")
+  overtimeMin     Int               @default(0) @map("overtime_min")
+  distMeters      Float             @default(8.5) @map("dist_meters")
+  deviceModel     String            @default("Samsung S24") @map("device_model")
+  deviceOs        String            @default("Android 14") @map("device_os")
+  appVersion      String            @default("2.4.1") @map("app_version")
+  deviceBound     Boolean           @default(true) @map("device_bound")
+  email           String
+  hireDate        String            @map("hire_date")
+  leaveUsedDays   Int               @default(4) @map("leave_used_days")
+  leaveTotalDays  Int               @default(14) @map("leave_total_days")
+  createdAtUtc    DateTime          @default(now()) @map("created_at_utc") @db.Timestamptz(3)
+  updatedAtUtc    DateTime          @updatedAt @map("updated_at_utc") @db.Timestamptz(3)
+  accessLogs      AccessLog[]
+  dailyAttendance DailyAttendance[]
+  leaveRequests   LeaveRequest[]
+  securityAlerts  SecurityAlert[]
+
+  @@index([shiftId])
+  @@index([status])
+  @@index([branchCode, status])
+  @@index([dept, status])
+  @@index([name])
+  @@map("employees")
+}
+
+model AccessLog {
+  id             Int      @id @default(autoincrement())
+  employeeId     Int      @map("employee_id")
+  employee       Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  eventType      String   @map("event_type") // CHECK_IN | LUNCH_OUT | LUNCH_IN | BREAK_OUT | BREAK_IN | CHECK_OUT
+  source         String   @default("MOBILE_GEOFENCE") // MOBILE_GEOFENCE | QR_TURNSTILE | WEB_MANUAL
+  branchCode     String   @map("branch_code")
+  distanceMeters Float    @default(6.4) @map("distance_meters")
+  isMockGps      Boolean  @default(false) @map("is_mock_gps")
+  note           String?
+  timestampUtc   DateTime @default(now()) @map("timestamp_utc") @db.Timestamptz(3)
+
+  @@index([employeeId, timestampUtc(sort: Desc)])
+  @@index([timestampUtc(sort: Desc)])
+  @@map("access_logs")
+}
+
+model DailyAttendance {
+  id             Int       @id @default(autoincrement())
+  employeeId     Int       @map("employee_id")
+  employee       Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  workDate       String    @map("work_date") // YYYY-MM-DD
+  checkInUtc     DateTime? @map("check_in_utc") @db.Timestamptz(3)
+  checkOutUtc    DateTime? @map("check_out_utc") @db.Timestamptz(3)
+  inMin          Int?      @map("in_min")
+  outMin         Int?      @map("out_min")
+  workedMin      Int       @default(0) @map("worked_min")
+  lateMin        Int       @default(0) @map("late_min")
+  overtimeMin    Int       @default(0) @map("overtime_min")
+  breakMin       Int       @default(60) @map("break_min")
+  hourlyLeaveMin Int       @default(0) @map("hourly_leave_min")
+  distanceMeters Float     @default(7.2) @map("distance_meters")
+  status         String    @default("PRESENT") // PRESENT | LATE | LEAVE | ABSENT
+  updatedAtUtc   DateTime  @updatedAt @map("updated_at_utc") @db.Timestamptz(3)
+
+  @@unique([employeeId, workDate])
+  @@index([workDate, status])
+  @@map("daily_attendance")
+}
+
+model LeaveRequest {
+  id            Int      @id @default(autoincrement())
+  code          String   @unique // TL-2401
+  employeeId    Int      @map("employee_id")
+  employee      Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveType     String   @map("leave_type") // Yıllık izin | Mazeret izni | Saatlik izin | Saha görevi | Sağlık raporu
+  isHourly      Boolean  @default(false) @map("is_hourly")
+  startDate     String   @map("start_date")
+  endDate       String   @map("end_date")
+  startClock    String?  @map("start_clock") // Saatlik izin için örn. "08:30"
+  endClock      String?  @map("end_clock")   // Saatlik izin için örn. "10:30"
+  days          Float    @default(1.0)
+  durationMin   Int      @default(480) @map("duration_min")
+  note          String
+  status        String   @default("PENDING") // PENDING | APPROVED | REJECTED
+  reviewerName  String?  @map("reviewer_name")
+  reviewedAtUtc DateTime? @map("reviewed_at_utc") @db.Timestamptz(3)
+  createdAtUtc  DateTime @default(now()) @map("created_at_utc") @db.Timestamptz(3)
+
+  @@index([status, createdAtUtc(sort: Desc)])
+  @@index([employeeId, status])
+  @@index([employeeId, isHourly, status, startDate])
+  @@map("leave_requests")
+}
+
+model SecurityAlert {
+  id             Int      @id @default(autoincrement())
+  code           String   @unique // SEC-8801
+  employeeId     Int      @map("employee_id")
+  employee       Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  branchCode     String   @map("branch_code")
+  alertType      String   @map("alert_type") // 30m sınır aşımı | Sahte GPS (Mock) | Farklı cihaz | Mesai dışı giriş | Kurumsal Wi-Fi dışı
+  severity       String   @default("HIGH") // HIGH | MED
+  distanceMeters Float    @default(65.0) @map("distance_meters")
+  status         String   @default("OPEN") // OPEN | CLOSED
+  createdAtUtc   DateTime @default(now()) @map("created_at_utc") @db.Timestamptz(3)
+
+  @@index([employeeId])
+  @@index([status, severity])
+  @@index([createdAtUtc(sort: Desc)])
+  @@map("security_alerts")
+}
+
+model UserAccount {
+  id           Int      @id @default(autoincrement())
+  code         String   @unique // ACC-1
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         String   // HR | IT | ADMIN | DEPT_MANAGER | PERSONNEL
+  name         String
+  title        String
+  branchCode   String   @default("ALL") @map("branch_code")
+  managedDept  String?  @map("managed_dept")
+  employeeSicil String? @map("employee_sicil")
+  active       Boolean  @default(true)
+  permsJson    String   @default("[]") @map("perms_json")
+  createdAtUtc DateTime @default(now()) @map("created_at_utc") @db.Timestamptz(3)
+
+  @@map("user_accounts")
+}
+
+model AuditLog {
+  id           Int      @id @default(autoincrement())
+  actorName    String   @map("actor_name")
+  actorRole    String   @map("actor_role")
+  action       String
+  target       String
+  ipAddress    String   @default("10.24.18.42") @map("ip_address")
+  createdAtUtc DateTime @default(now()) @map("created_at_utc") @db.Timestamptz(3)
+
+  @@index([createdAtUtc(sort: Desc)])
+  @@map("audit_logs")
+}
