@@ -332,6 +332,13 @@
                     stopLoop();
                     window.scrollTo({ top: 0, behavior: 'instant' });
                 } else {
+                    window.scrollTo({ top: 0, behavior: 'instant' });
+                    scrollSpring.value = 0; scrollSpring.target = 0; scrollSpring.velocity = 0;
+                    logoSpring.value = 0; logoSpring.target = 0; logoSpring.velocity = 0;
+                    dockSpring.value = 0; dockSpring.target = 0; dockSpring.velocity = 0;
+                    bridgeCursor = VIDEO1_LAST_IDX;
+                    privacyCursor = 0;
+                    resetToPortalChoice();
                     computeTargetScroll();
                     drawCurrentState(true);
                     wakeLoop();

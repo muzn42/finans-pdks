@@ -7,7 +7,27 @@
      Kullanıcı Adı / Şifre ekranı süzülerek gelir
    ========================================================================== */
 
-.auth-scroll-shell {
+.auth-scroll-shell,
+#authView,
+html[data-theme="dark"] #authView {
+    --bg: #F5F5F6;
+    --surface: #FFFFFF;
+    --surface-2: #F7F8FA;
+    --ink: #17181A;
+    --ink-2: #4B4F55;
+    --muted: #6E737D;
+    --line: #E4E6EB;
+    --line-2: #F1F2F4;
+    --red-soft: #FDECEC;
+    --ok-soft: #E6F6EF;
+    --warn-soft: #FFF3DC;
+    --info-soft: #E9EFFB;
+    --bad-soft: #FDECEC;
+    --sh-1: 0 1px 2px rgba(20, 22, 26, .04);
+    --sh-2: 0 1px 2px rgba(20, 22, 26, .04), 0 8px 24px -8px rgba(20, 22, 26, .10);
+    --sh-3: 0 2px 4px rgba(20, 22, 26, .04), 0 24px 48px -16px rgba(20, 22, 26, .22);
+    color-scheme: light;
+    color: #17181A;
     position: relative;
     width: 100%;
     height: 440vh;
@@ -132,7 +152,7 @@
     font-weight: 800;
     letter-spacing: 0.26em;
     text-transform: uppercase;
-    color: var(--ink-2);
+    color: #383C43;
     white-space: nowrap;
 }
 
@@ -161,10 +181,10 @@
     border-radius: 999px;
     font-size: 13px;
     font-weight: 700;
-    color: var(--ink);
-    background: rgba(255, 255, 255, 0.92);
-    border: 1px solid var(--line);
-    box-shadow: 0 4px 14px -4px rgba(17, 19, 23, 0.08);
+    color: #17181A;
+    background: rgba(255, 255, 255, 0.96);
+    border: 1.5px solid #DFE2E8;
+    box-shadow: 0 6px 18px -4px rgba(17, 19, 23, 0.10);
     display: inline-flex;
     align-items: center;
     gap: 8px;
@@ -202,9 +222,9 @@
     padding: 10px 20px 10px 14px;
     border-radius: 999px;
     background: rgba(255, 255, 255, 0.96);
-    border: 1px solid var(--line);
-    box-shadow: 0 10px 28px -8px rgba(17, 19, 23, 0.08);
-    color: var(--ink);
+    border: 1.5px solid #DFE2E8;
+    box-shadow: 0 10px 28px -8px rgba(17, 19, 23, 0.12);
+    color: #17181A;
     font-size: 13px;
     font-weight: 700;
     white-space: nowrap;
@@ -226,7 +246,7 @@
     width: 18px;
     height: 28px;
     border-radius: 10px;
-    border: 1.8px solid var(--ink-2);
+    border: 1.8px solid #383C43;
     position: relative;
 }
 
@@ -272,7 +292,8 @@
 .landing-auth-dock .auth-card {
     max-width: 100%;
     background: #FFFFFF;
-    border: 1px solid var(--line);
+    color: #17181A;
+    border: 1px solid #E4E6EB;
     border-radius: 24px;
     padding: 30px 28px;
     box-shadow:
@@ -280,6 +301,78 @@
         0 4px 16px -2px rgba(17, 19, 23, 0.05);
     animation: none;
     overflow: hidden;
+}
+
+.landing-auth-dock .auth-card h2 {
+    color: #141517;
+}
+
+.landing-auth-dock .auth-card .muted {
+    color: #5A606A;
+}
+
+.landing-auth-dock .auth-card .seg {
+    background: #F1F2F5;
+    border: 1px solid #E4E6EB;
+}
+
+.landing-auth-dock .auth-card .seg-thumb {
+    background: #FFFFFF;
+    box-shadow: 0 1px 3px rgba(16, 20, 28, 0.08), 0 0 0 1px #E4E6EB;
+}
+
+.landing-auth-dock .auth-card .seg-btn {
+    color: #4B4F55;
+}
+
+.landing-auth-dock .auth-card .seg-btn.is-active {
+    color: var(--red);
+}
+
+.landing-auth-dock .auth-card .field > span {
+    color: #383C43;
+}
+
+.landing-auth-dock .auth-card .input {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 46px;
+    background: #F8F9FB;
+    border: 1.5px solid #DFE2E8;
+    color: #6E737D;
+}
+
+.landing-auth-dock .auth-card .input:focus-within {
+    background: #FFFFFF;
+    border-color: var(--red);
+    box-shadow: 0 0 0 4px rgba(227, 30, 36, 0.12);
+    color: var(--red);
+}
+
+.landing-auth-dock .auth-card .input input {
+    color: #141517;
+    -webkit-text-fill-color: #141517;
+}
+
+.landing-auth-dock .auth-card .input input:-webkit-autofill,
+.landing-auth-dock .auth-card .input input:-webkit-autofill:hover,
+.landing-auth-dock .auth-card .input input:-webkit-autofill:focus {
+    -webkit-text-fill-color: #141517;
+    -webkit-box-shadow: 0 0 0 1000px #F8F9FB inset !important;
+    transition: background-color 5000s ease-in-out 0s;
+}
+
+.landing-auth-dock .auth-card .link-btn {
+    color: #4B4F55;
+}
+
+.landing-auth-dock .auth-card .link-btn:hover {
+    color: var(--red);
+}
+
+.landing-auth-dock .auth-card .auth-legal {
+    color: #6E737D;
 }
 
 .portal-choice-view,
@@ -313,8 +406,8 @@
     width: 100%;
     padding: 14px 16px;
     border-radius: 16px;
-    border: 1.5px solid var(--line);
-    background: var(--surface-2);
+    border: 1.5px solid #E4E6EB;
+    background: #F8F9FB;
     text-align: left;
     cursor: pointer;
     transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s, background-color 0.2s, box-shadow 0.22s;
@@ -341,7 +434,7 @@
 }
 
 .prc-ic.red {
-    background: var(--red-soft);
+    background: #FDECEC;
     color: var(--red);
 }
 
@@ -351,7 +444,7 @@
 }
 
 .prc-ic.info {
-    background: var(--info-soft);
+    background: #E9EFFB;
     color: var(--info);
 }
 
@@ -365,18 +458,18 @@
 .prc-body b {
     font-size: 14.5px;
     font-weight: 800;
-    color: var(--ink);
+    color: #141517;
     letter-spacing: -0.01em;
 }
 
 .prc-body small {
     font-size: 12px;
-    color: var(--ink-2);
+    color: #5A606A;
     line-height: 1.35;
 }
 
 .prc-arr {
-    color: var(--muted);
+    color: #6E737D;
     transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), color 0.2s;
 }
 
@@ -396,11 +489,11 @@
 .portal-back-btn {
     font-size: 12px;
     font-weight: 700;
-    color: var(--ink-2);
+    color: #383C43;
     padding: 5px 11px;
     border-radius: 999px;
-    background: var(--line-2);
-    border: 1px solid var(--line);
+    background: #F1F2F5;
+    border: 1px solid #DFE2E8;
     white-space: nowrap;
     cursor: pointer;
     transition: background-color 0.2s, color 0.2s, transform 0.16s;

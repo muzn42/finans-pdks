@@ -2733,7 +2733,17 @@
     const ROLE_PORTAL_NAME = { HR: 'İK Portalı', IT: 'BT Portalı', ADMIN: 'Admin Portalı' };
     const ROLE_FULL_NAME = { HR: 'İnsan Kaynakları', IT: 'Bilgi Teknolojileri', ADMIN: 'Sistem Yöneticisi (Admin)' };
 
+    function syncTheme() {
+        const activeTheme = S.user ? (localStorage.getItem('atf_theme') || 'light') : 'light';
+        document.documentElement.dataset.theme = activeTheme;
+        const tb = $('#themeBtn');
+        if (tb) tb.innerHTML = ic(activeTheme === 'dark' ? 'sun' : 'moon');
+        const sl = $('#sideLogo');
+        if (sl) sl.style.color = activeTheme === 'dark' ? '#fff' : 'var(--charcoal)';
+    }
+
     function startApp() {
+        syncTheme();
         $('#authView').hidden = true; $('#appView').hidden = false; window.scrollTo({ top: 0 });
         const u = S.user; S.page = 'overview'; S.range = 30; S.fromDate = ''; S.toDate = ''; S.branch = u.branch && u.branch !== 'ALL' ? u.branch : 'ALL';
         $('#sidePortal').textContent = ROLE_PORTAL_NAME[u.role] || 'Yönetim Portalı'; $('#userName').textContent = u.name; $('#userTitle').textContent = u.title; $('#userAvatar').textContent = A.initials(u.name);
@@ -2755,7 +2765,9 @@
         const drawerGovde = $('#drawerBody'); if (drawerGovde) drawerGovde.innerHTML = '';
         const modalGovde = $('#modalBody'); if (modalGovde) modalGovde.innerHTML = '';
         closeSide();
+        syncTheme();
         $('#appView').hidden = true; $('#authView').hidden = false; $('#loginPassword').value = ''; history.replaceState(null, '', location.pathname);
+        window.scrollTo({ top: 0, behavior: 'instant' });
         setTimeout(() => A.placeSeg($('#portalSeg')), 30); if (msg) A.toast(msg);
     }
     function armIdle() { clearTimeout(idleTimer); idleTimer = setTimeout(() => logout('Hareketsizlik nedeniyle oturum kapatıldı.'), 15 * 60 * 1000); }
@@ -2777,10 +2789,9 @@
 
     /* ======================= Başlangıç ======================= */
     function init() {
-        document.documentElement.dataset.theme = localStorage.getItem('atf_theme') || 'light';
         A.hydrate(document); $('#authLogo').innerHTML = A.LOGO; $('#sideLogo').innerHTML = A.LOGO; $('#authLogo').style.color = '#fff'; $('#sideLogo').style.color = 'var(--charcoal)';
-        const themeIc = () => { $('#themeBtn').innerHTML = ic(document.documentElement.dataset.theme === 'dark' ? 'sun' : 'moon'); $('#sideLogo').style.color = document.documentElement.dataset.theme === 'dark' ? '#fff' : 'var(--charcoal)'; }; themeIc();
-        $('#themeBtn').onclick = () => { const t = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = t; localStorage.setItem('atf_theme', t); themeIc(); if (S.user) draw(false); };
+        syncTheme();
+        $('#themeBtn').onclick = () => { const t = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'; localStorage.setItem('atf_theme', t); syncTheme(); if (S.user) draw(false); };
 
         $('#portalSeg').addEventListener('click', e => { const b = e.target.closest('.seg-btn'); if (!b) return; $$('#portalSeg .seg-btn').forEach(x => { x.classList.toggle('is-active', x === b); x.setAttribute('aria-selected', x === b); }); S.portal = b.dataset.portal; A.placeSeg($('#portalSeg')); $('#loginError').hidden = true; });
         $('#rangeSeg').addEventListener('click', e => {
