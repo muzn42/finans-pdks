@@ -3,6 +3,14 @@ package com.example.ui.screens
 import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -15,6 +23,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -36,6 +45,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -57,61 +67,71 @@ import com.example.ui.components.MinimalSegmentedControl
 import com.example.ui.theme.*
 import com.example.util.SoundEffectPlayer
 
-private data class DemoRoleProfile(
-    val roleLabel: String,
+private data class QuickPersonnelProfile(
+    val shortLabel: String,
     val code: String,
     val fullName: String,
     val titleDept: String,
-    val badgeText: String
+    val branchLabel: String
 )
 
 @Composable
 fun LoginScreen(viewModel: MainViewModel) {
     val context = LocalContext.current
     val employees by viewModel.employees.collectAsState()
+    val branches by viewModel.branches.collectAsState()
     val loginError by viewModel.loginError.collectAsState()
 
-    var selectedRoleIdx by remember { mutableIntStateOf(0) }
-    var username by remember { mutableStateOf("FN-1001") }
+    var selectedProfileIdx by remember { mutableIntStateOf(0) }
+    var username by remember { mutableStateOf("FN-1048") }
     var password by remember { mutableStateOf("123456") }
     var passwordVisible by remember { mutableStateOf(false) }
     var showForgotPassDialog by remember { mutableStateOf(false) }
 
-    val profiles = remember(employees) {
-        val pEmp = employees.firstOrNull { it.role == "PERSONNEL" }
-        val hrEmp = employees.firstOrNull { it.role == "HR" }
-        val itEmp = employees.firstOrNull { it.role == "IT" }
+    // Yalnızca Personel Hızlı Seçim Profilleri (İK ve BT girişi mobilden kaldırıldı)
+    val profiles = remember(employees, branches) {
+        val branchMap = branches.associateBy { it.id }
+        val p1 = employees.getOrNull(0)
+        val p2 = employees.getOrNull(1)
+        val p3 = employees.getOrNull(2)
 
         listOf(
-            DemoRoleProfile(
-                roleLabel = "Personel",
-                code = pEmp?.employeeCode ?: "FN-1001",
-                fullName = pEmp?.fullName ?: "Ahmet Yılmaz",
-                titleDept = "${pEmp?.title ?: "Kıdemli Uzman"} · ${pEmp?.department ?: "Finans & Muhasebe"}",
-                badgeText = "30m Yoklama"
+            QuickPersonnelProfile(
+                shortLabel = p1?.employeeCode ?: "FN-1048",
+                code = p1?.employeeCode ?: "FN-1048",
+                fullName = p1?.fullName ?: "Ahmet Yılmaz",
+                titleDept = "${p1?.title ?: "Kıdemli Tasarruf Danışmanı"} · ${p1?.department ?: "Tasarruf Finansman Satış"}",
+                branchLabel = branchMap[p1?.branchId]?.name ?: "Genel Müdürlük (Ataşehir)"
             ),
-            DemoRoleProfile(
-                roleLabel = "İK Yönetimi",
-                code = hrEmp?.employeeCode ?: "FN-2001",
-                fullName = hrEmp?.fullName ?: "Zeynep Kaya",
-                titleDept = "${hrEmp?.title ?: "İK Müdürü"} · ${hrEmp?.department ?: "İnsan Kaynakları"}",
-                badgeText = "Analiz & Onay"
+            QuickPersonnelProfile(
+                shortLabel = p2?.employeeCode ?: "FN-2091",
+                code = p2?.employeeCode ?: "FN-2091",
+                fullName = p2?.fullName ?: "Zeynep Kaya",
+                titleDept = "${p2?.title ?: "Tasarruf Sözleşme Uzmanı"} · ${p2?.department ?: "Şube Operasyon"}",
+                branchLabel = branchMap[p2?.branchId]?.name ?: "Genel Müdürlük (Ataşehir)"
             ),
-            DemoRoleProfile(
-                roleLabel = "BT & Destek",
-                code = itEmp?.employeeCode ?: "FN-3001",
-                fullName = itEmp?.fullName ?: "Burak Demir",
-                titleDept = "${itEmp?.title ?: "Sistem Yöneticisi"} · ${itEmp?.department ?: "Bilgi Teknolojileri"}",
-                badgeText = "Parola & Güvenlik"
+            QuickPersonnelProfile(
+                shortLabel = p3?.employeeCode ?: "FN-3114",
+                code = p3?.employeeCode ?: "FN-3114",
+                fullName = p3?.fullName ?: "Caner Özdemir",
+                titleDept = "${p3?.title ?: "Teslimat & Finansman Yöneticisi"} · ${p3?.department ?: "Tahsis & Teslimat"}",
+                branchLabel = branchMap[p3?.branchId]?.name ?: "Adana / Seyhan Şube"
             )
         )
     }
 
-    LaunchedEffect(profiles) {
-        username = profiles[selectedRoleIdx].code
-    }
+    val activeProfile = profiles[selectedProfileIdx]
 
-    val activeProfile = profiles[selectedRoleIdx]
+    val infiniteTransition = rememberInfiniteTransition(label = "login_hero_pulse")
+    val pulseRadiusFactor by infiniteTransition.animateFloat(
+        initialValue = 0.94f,
+        targetValue = 1.08f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2800, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulse_radius"
+    )
 
     Column(
         modifier = Modifier
@@ -122,33 +142,32 @@ fun LoginScreen(viewModel: MainViewModel) {
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             // =================================================================
-            // 1. MİMARİ KOYU HERO BAŞLIK ALANI (Beyaz Rozetli Logo & Geometri)
+            // 1. WEB DASHBOARD İLE UYUMLU MİMARİ KOYU HERO BAŞLIK ALANI
             // =================================================================
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(AlbayrakDarkSurface)
             ) {
-                // Arka plan ince mimari halkalar ve hafif kırmızı ambiyans
                 Canvas(modifier = Modifier.matchParentSize()) {
-                    val c = Offset(size.width * 0.92f, size.height * 0.18f)
+                    val c = Offset(size.width * 0.90f, size.height * 0.22f)
                     drawCircle(
                         brush = Brush.radialGradient(
                             colors = listOf(
-                                AlbayrakRed.copy(alpha = 0.20f),
+                                AlbayrakRed.copy(alpha = 0.24f),
                                 Color.Transparent
                             ),
                             center = c,
-                            radius = size.width * 0.65f
+                            radius = size.width * 0.70f * pulseRadiusFactor
                         ),
                         center = c,
-                        radius = size.width * 0.65f
+                        radius = size.width * 0.70f * pulseRadiusFactor
                     )
                     for (i in 1..3) {
                         drawCircle(
-                            color = Color.White.copy(alpha = 0.045f),
-                            radius = (size.width * 0.22f) * i,
-                            center = Offset(size.width * 0.88f, size.height * 0.85f),
+                            color = Color.White.copy(alpha = 0.05f),
+                            radius = (size.width * 0.21f) * i * pulseRadiusFactor,
+                            center = Offset(size.width * 0.86f, size.height * 0.82f),
                             style = Stroke(width = 1.dp.toPx())
                         )
                     }
@@ -158,9 +177,8 @@ fun LoginScreen(viewModel: MainViewModel) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .statusBarsPadding()
-                        .padding(start = 22.dp, end = 22.dp, top = 20.dp, bottom = 42.dp)
+                        .padding(start = 22.dp, end = 22.dp, top = 20.dp, bottom = 44.dp)
                 ) {
-                    // Üst Bar: Beyaz Kutu İçinde Net Okunan Logo + Durum Rozeti
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -172,7 +190,7 @@ fun LoginScreen(viewModel: MainViewModel) {
                         ) {
                             Image(
                                 painter = painterResource(id = R.drawable.ic_albayrak_emblem),
-                                contentDescription = "Albayrak Finans",
+                                contentDescription = "Albayrak Finans Logosu",
                                 modifier = Modifier.size(38.dp)
                             )
 
@@ -185,19 +203,18 @@ fun LoginScreen(viewModel: MainViewModel) {
                                     letterSpacing = (-0.3).sp
                                 )
                                 Text(
-                                    text = "Kurumsal PDKS Platformu",
-                                    color = Color.White.copy(alpha = 0.55f),
+                                    text = "Mobil Personel Yoklama & Kariyer Portalı",
+                                    color = Color.White.copy(alpha = 0.60f),
                                     fontSize = 11.sp
                                 )
                             }
                         }
 
-                        // Sağ üst canlı sistem rozeti
                         Row(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(999.dp))
                                 .background(Color.White.copy(alpha = 0.08f))
-                                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(999.dp))
+                                .border(1.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(999.dp))
                                 .padding(horizontal = 10.dp, vertical = 5.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -209,8 +226,8 @@ fun LoginScreen(viewModel: MainViewModel) {
                                     .background(StatusOk)
                             )
                             Text(
-                                text = "30m GPS Aktif",
-                                color = Color.White.copy(alpha = 0.88f),
+                                text = "${branches.size.coerceAtLeast(54)} Şube · 30m Harita",
+                                color = Color.White.copy(alpha = 0.90f),
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
@@ -220,7 +237,7 @@ fun LoginScreen(viewModel: MainViewModel) {
                     Spacer(modifier = Modifier.height(22.dp))
 
                     Text(
-                        text = "Şubede olduğunuz an,\nkayıt tek dokunuşla.",
+                        text = "Şube harita konumu ve\n30m mesai tek dokunuşta.",
                         color = Color.White,
                         fontSize = 24.sp,
                         lineHeight = 30.sp,
@@ -229,8 +246,8 @@ fun LoginScreen(viewModel: MainViewModel) {
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Personel devam takibi, İK analitiği ve BT güvenlik merkezi tek kurumsal çatıda.",
-                        color = Color.White.copy(alpha = 0.65f),
+                        text = "Şubenizin açık adresini ve kendi canlı konumunuzu harita üzerinde görün, 30 metre geofence alanından giriş-çıkış yapın ve kişisel PDKS analizinizi takip edin.",
+                        color = Color.White.copy(alpha = 0.68f),
                         fontSize = 12.sp,
                         lineHeight = 17.sp
                     )
@@ -238,22 +255,22 @@ fun LoginScreen(viewModel: MainViewModel) {
             }
 
             // =================================================================
-            // 2. ÜST ÜSTE BİNEN (OVERLAPPING) MİNİMALİST GİRİŞ KARTI
+            // 2. SADECE PERSONEL GİRİŞ KARTI (İK & BT Girişleri Kaldırıldı)
             // =================================================================
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .offset(y = (-22).dp)
+                    .offset(y = (-24).dp)
                     .padding(horizontal = 16.dp)
             ) {
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
                         .shadow(
-                            elevation = 10.dp,
+                            elevation = 12.dp,
                             shape = RoundedCornerShape(20.dp),
-                            ambientColor = Color.Black.copy(alpha = 0.08f),
-                            spotColor = Color.Black.copy(alpha = 0.08f)
+                            ambientColor = Color.Black.copy(alpha = 0.09f),
+                            spotColor = Color.Black.copy(alpha = 0.09f)
                         ),
                     shape = RoundedCornerShape(20.dp),
                     color = CardSurface,
@@ -264,7 +281,6 @@ fun LoginScreen(viewModel: MainViewModel) {
                             .fillMaxWidth()
                             .padding(20.dp)
                     ) {
-                        // Başlık Satırı
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -272,26 +288,26 @@ fun LoginScreen(viewModel: MainViewModel) {
                         ) {
                             Column {
                                 Text(
-                                    text = "Kurumsal Oturum Aç",
+                                    text = "Personel Girişi",
                                     color = InkPrimary,
                                     fontSize = 18.sp,
                                     fontWeight = FontWeight.Bold,
                                     letterSpacing = (-0.4).sp
                                 )
                                 Text(
-                                    text = "Birim seçin veya sicil kodunuzu girin",
+                                    text = "Kurumsal sicil numaranız veya e-postanız ile oturum açın",
                                     color = InkMuted,
-                                    fontSize = 12.sp
+                                    fontSize = 11.5.sp
                                 )
                             }
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(8.dp))
                                     .background(AlbayrakRedLight)
-                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    .padding(horizontal = 9.dp, vertical = 4.dp)
                             ) {
                                 Text(
-                                    text = activeProfile.badgeText,
+                                    text = "Sadece Personel",
                                     color = AlbayrakRed,
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold
@@ -299,14 +315,21 @@ fun LoginScreen(viewModel: MainViewModel) {
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(14.dp))
 
-                        // Kayan İndikatörlü Birim Seçici
+                        Text(
+                            text = "Hızlı Demo Personel Seçimi",
+                            color = InkSecondary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+
                         MinimalSegmentedControl(
-                            items = profiles.map { it.roleLabel },
-                            selectedIndex = selectedRoleIdx,
+                            items = profiles.map { it.shortLabel },
+                            selectedIndex = selectedProfileIdx,
                             onSelect = { idx ->
-                                selectedRoleIdx = idx
+                                selectedProfileIdx = idx
                                 viewModel.clearLoginError()
                                 username = profiles[idx].code
                                 password = "123456"
@@ -315,13 +338,12 @@ fun LoginScreen(viewModel: MainViewModel) {
 
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        // Seçili Demo Profili Bilgi Kartı (Yumuşak geçişli)
                         AnimatedContent(
                             targetState = activeProfile,
                             transitionSpec = {
                                 fadeIn(tween(180)) togetherWith fadeOut(tween(120))
                             },
-                            label = "demo_profile_card"
+                            label = "demo_personnel_card"
                         ) { prof ->
                             val initials = prof.fullName.split(" ")
                                 .mapNotNull { it.firstOrNull()?.uppercaseChar() }
@@ -344,9 +366,9 @@ fun LoginScreen(viewModel: MainViewModel) {
                             ) {
                                 Box(
                                     modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(RoundedCornerShape(9.dp))
-                                        .background(InkPrimary),
+                                        .size(38.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(AlbayrakRed),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
@@ -373,6 +395,26 @@ fun LoginScreen(viewModel: MainViewModel) {
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                        modifier = Modifier.padding(top = 2.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.LocationOn,
+                                            contentDescription = null,
+                                            tint = AlbayrakRed,
+                                            modifier = Modifier.size(11.dp)
+                                        )
+                                        Text(
+                                            text = prof.branchLabel,
+                                            color = InkSecondary,
+                                            fontSize = 10.5.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
                                 }
 
                                 Column(horizontalAlignment = Alignment.End) {
@@ -384,7 +426,7 @@ fun LoginScreen(viewModel: MainViewModel) {
                                         fontWeight = FontWeight.Bold
                                     )
                                     Text(
-                                        text = "Hazır Profil",
+                                        text = "Aktif Kadro",
                                         color = StatusOk,
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.SemiBold
@@ -395,15 +437,14 @@ fun LoginScreen(viewModel: MainViewModel) {
 
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        // Özel Tasarım Minimalist Giriş Alanı 1: Sicil / E-Posta
                         MinimalLoginField(
-                            label = "Sicil Numarası veya E-Posta",
+                            label = "Personel Sicil Numarası veya E-Posta",
                             value = username,
                             onValueChange = {
                                 username = it
                                 viewModel.clearLoginError()
                             },
-                            placeholder = "FN-1001 veya ad.soyad@albayrakfinans.com.tr",
+                            placeholder = "FN-1048 veya ad.soyad@albayrakfinans.com.tr",
                             leadingIcon = Icons.Default.Badge,
                             keyboardOptions = KeyboardOptions(
                                 keyboardType = KeyboardType.Text,
@@ -413,9 +454,8 @@ fun LoginScreen(viewModel: MainViewModel) {
 
                         Spacer(modifier = Modifier.height(14.dp))
 
-                        // Özel Tasarım Minimalist Giriş Alanı 2: Parola
                         MinimalLoginField(
-                            label = "Kurumsal Parola",
+                            label = "Personel Parolası",
                             value = password,
                             onValueChange = {
                                 password = it
@@ -463,13 +503,28 @@ fun LoginScreen(viewModel: MainViewModel) {
 
                         Spacer(modifier = Modifier.height(18.dp))
 
-                        // Ana Giriş Butonu (Sağda kırmızı ok rozetli kurumsal buton)
+                        val loginBtnInteraction = remember { MutableInteractionSource() }
+                        val isBtnPressed by loginBtnInteraction.collectIsPressedAsState()
+                        val btnScale by animateFloatAsState(
+                            targetValue = if (isBtnPressed) 0.97f else 1f,
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                stiffness = Spring.StiffnessMediumLow
+                            ),
+                            label = "login_btn_scale"
+                        )
+
                         Surface(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(50.dp),
-                            shape = RoundedCornerShape(12.dp),
+                                .height(52.dp)
+                                .graphicsLayer {
+                                    scaleX = btnScale
+                                    scaleY = btnScale
+                                },
+                            shape = RoundedCornerShape(13.dp),
                             color = InkPrimary,
+                            interactionSource = loginBtnInteraction,
                             onClick = {
                                 val ok = viewModel.login(username, password)
                                 if (ok) {
@@ -488,15 +543,15 @@ fun LoginScreen(viewModel: MainViewModel) {
                             ) {
                                 Column {
                                     Text(
-                                        text = "${activeProfile.roleLabel} Olarak Giriş Yap",
+                                        text = "Personel Olarak Giriş Yap",
                                         color = Color.White,
                                         fontSize = 14.sp,
                                         fontWeight = FontWeight.Bold,
                                         letterSpacing = (-0.2).sp
                                     )
                                     Text(
-                                        text = "Sicil: $username · Güvenli Oturum",
-                                        color = Color.White.copy(alpha = 0.6f),
+                                        text = "Sicil: $username · 30m Harita & Yoklama",
+                                        color = Color.White.copy(alpha = 0.65f),
                                         fontSize = 10.sp,
                                         fontFamily = FontFamily.Monospace
                                     )
@@ -504,19 +559,44 @@ fun LoginScreen(viewModel: MainViewModel) {
 
                                 Box(
                                     modifier = Modifier
-                                        .size(32.dp)
-                                        .clip(RoundedCornerShape(8.dp))
+                                        .size(34.dp)
+                                        .clip(RoundedCornerShape(9.dp))
                                         .background(AlbayrakRed),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
                                         imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                                        contentDescription = "Giriş",
+                                        contentDescription = "Giriş Yap",
                                         tint = Color.White,
-                                        modifier = Modifier.size(17.dp)
+                                        modifier = Modifier.size(18.dp)
                                     )
                                 }
                             }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(SubtleSurface)
+                                .padding(horizontal = 11.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.DesktopWindows,
+                                contentDescription = null,
+                                tint = InkSecondary,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Text(
+                                text = "İK Yönetimi, BT Güvenlik ve Admin işlemleri kurumsal Web Dashboard üzerinden yürütülmektedir.",
+                                color = InkMuted,
+                                fontSize = 10.5.sp,
+                                lineHeight = 14.sp
+                            )
                         }
                     }
                 }
@@ -539,11 +619,11 @@ fun LoginScreen(viewModel: MainViewModel) {
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
                 FooterSecurityTag(Icons.Default.VerifiedUser, "KVKK Uyumlu")
+                FooterSecurityTag(Icons.Default.Map, "Canlı Şube Haritası")
                 FooterSecurityTag(Icons.Default.GpsFixed, "30m Geofence")
-                FooterSecurityTag(Icons.Default.PhonelinkLock, "Cihaz Eşleşmeli")
             }
             Text(
-                text = "© 2026 Albayrak Tasarruf Finansman A.Ş. · 5651 Log Kayıtlı",
+                text = "© 2026 Albayrak Tasarruf Finansman A.Ş. · Mobil Personel Uygulaması",
                 color = InkFaint,
                 fontSize = 11.sp
             )
@@ -559,7 +639,7 @@ fun LoginScreen(viewModel: MainViewModel) {
                 SoundEffectPlayer.playCheckInChime(context)
                 Toast.makeText(
                     context,
-                    "BT Destek talebiniz (#BT-${(1040..1099).random()}) iletildi. BT uzmanı geçici parolanızı üretecektir.",
+                    "BT Destek talebiniz (#BT-${(1040..1099).random()}) Web BT Portalına iletildi.",
                     Toast.LENGTH_LONG
                 ).show()
             }
@@ -685,7 +765,7 @@ private fun MinimalLoginField(
             if (isPassword && onTogglePassword != null) {
                 IconButton(
                     onClick = onTogglePassword,
-                    modifier = Modifier.size(28.dp)
+                    modifier = Modifier.size(32.dp)
                 ) {
                     Icon(
                         imageVector = if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
@@ -746,7 +826,7 @@ private fun ForgotPasswordSupportModal(
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "Talebiniz Bilgi Teknolojileri ekranına anlık olarak düşer.",
+                    text = "Talebiniz Web BT Portalı ekranına anlık olarak düşer.",
                     color = InkMuted,
                     fontSize = 12.sp
                 )

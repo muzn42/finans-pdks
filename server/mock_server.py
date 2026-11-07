@@ -333,6 +333,7 @@ def scrape_albayrak_branches():
             "branch_code": "ŞB-001",
             "branchCode": "ŞB-001",
             "city": "İstanbul",
+            "district": "Ataşehir",
             "address": "Yenişehir Mah. Kızılcık Sok. Albayrak Plaza No:1/35 34779 Ataşehir / İstanbul",
             "latitude": 40.995454,
             "longitude": 29.140893,
@@ -341,6 +342,7 @@ def scrape_albayrak_branches():
             "wifi_ssid": "ALBAYRAK_GM_SECURE",
             "wifiSsid": "ALBAYRAK_GM_SECURE",
             "phone": "444 88 61",
+            "googleMapUrl": "https://www.google.com/maps/search/?api=1&query=40.995454,29.140893",
             "is_default": True,
             "isDefault": True
         }
@@ -370,23 +372,35 @@ def scrape_albayrak_branches():
                     lng = float(m_dest.group(2))
 
             if lat is None:
-                lat = 40.995454 + ((idx % 15) * 0.008)
-                lng = 29.140893 + ((idx % 15) * 0.008)
+                key_str = f"{province} {b.get('district', '')} {name}"
+                # Önbellekteki gerçek koordinat tablosundan eşle
+                cached_match = next((cb for cb in ACTIVE_BRANCHES if cb.get("name") == name or cb.get("id") == idx), None)
+                if cached_match and cached_match.get("latitude"):
+                    lat = float(cached_match["latitude"])
+                    lng = float(cached_match["longitude"])
+                else:
+                    lat = 40.995454 + ((idx % 15) * 0.008)
+                    lng = 29.140893 + ((idx % 15) * 0.008)
 
+            cached_match = next((cb for cb in ACTIVE_BRANCHES if cb.get("name") == name or cb.get("id") == idx), None)
+            district_val = (b.get("district") or (cached_match.get("district") if cached_match else province)).strip()
+            gmap_val = map_url or road_url or (cached_match.get("googleMapUrl") if cached_match else f"https://www.google.com/maps/search/?api=1&query={lat:.6f},{lng:.6f}")
             processed.append({
                 "id": idx,
                 "name": name,
                 "branch_code": f"ŞB-{idx:03d}",
                 "branchCode": f"ŞB-{idx:03d}",
                 "city": province,
+                "district": district_val,
                 "address": address,
                 "latitude": round(lat, 6),
                 "longitude": round(lng, 6),
                 "radius_meters": 30.0,
                 "radiusMeters": 30.0,
-                "wifi_ssid": f"ALBAYRAK_{idx}_WIFI",
-                "wifiSsid": f"ALBAYRAK_{idx}_WIFI",
+                "wifi_ssid": f"ALBAYRAK_{idx:02d}_WIFI",
+                "wifiSsid": f"ALBAYRAK_{idx:02d}_WIFI",
                 "phone": phone,
+                "googleMapUrl": gmap_val,
                 "is_default": False,
                 "isDefault": False
             })
@@ -447,7 +461,7 @@ def load_cached_branches():
 def branch_scheduler_worker():
     """
     Arka plan zamanlayıcısı:
-    - Sunucu başladığında önbelleği yükler veya ilk scraping yapar.
+    - Sunucu başladığında önce önbelleği yükler, ardından ilk scraping yapar.
     - Her gece 01:00'de otomatik olarak web scraping yaparak şubeleri günceller.
     """
     time.sleep(1)

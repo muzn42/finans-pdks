@@ -26,13 +26,13 @@ async function runTests() {
 
   assert.ok(empCount >= 500, `En az 500 personel olmalı, bulunan: ${empCount}`);
   assert.ok(shiftCount >= 4, `En az 4 vardiya olmalı, bulunan: ${shiftCount}`);
-  assert.ok(branchCount >= 6, `En az 6 şube olmalı, bulunan: ${branchCount}`);
+  assert.ok(branchCount >= 54, `En az 54 şube olmalı, bulunan: ${branchCount}`);
   assert.ok(accessCount >= 100, `En az 100 AccessLog olmalı, bulunan: ${accessCount}`);
   assert.ok(leaveCount >= 15, `En az 15 izin talebi olmalı, bulunan: ${leaveCount}`);
   assert.ok(alertCount >= 20, `En az 20 güvenlik alarmı olmalı, bulunan: ${alertCount}`);
   assert.ok(userCount >= 5, `5 RBAC rol hesabı olmalı, bulunan: ${userCount}`);
   console.log(
-    `[PASS 1/6] PostgreSQL 18 Şema & Veri Bütünlüğü: ${empCount} personel, ${shiftCount} vardiya, ${accessCount} AccessLog, ${leaveCount} izin, ${userCount} RBAC rolü.`
+    `[PASS 1/6] PostgreSQL 18 Şema & Veri Bütünlüğü: ${empCount} personel, ${branchCount} şube, ${shiftCount} vardiya, ${accessCount} AccessLog, ${leaveCount} izin, ${userCount} RBAC rolü.`
   );
 
   // 2. Web Crypto HMAC-SHA256 JWT İmzalama ve Doğrulama Testi

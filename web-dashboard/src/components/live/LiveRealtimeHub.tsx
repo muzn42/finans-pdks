@@ -42,6 +42,10 @@ interface BootstrapResponse {
     code: string;
     name: string;
     city: string;
+    district?: string;
+    address?: string;
+    phone?: string;
+    googleMapUrl?: string;
     lat: number;
     lng: number;
     radius: number;
@@ -173,7 +177,7 @@ export function LiveRealtimeHub() {
   const [inApp, setInApp] = useState(false);
 
   // Canlı geçiş simülatörü form state
-  const [simEmpId, setSimEmpId] = useState<number>(459);
+  const [simEmpId, setSimEmpId] = useState<number>(1);
   const [simEvent, setSimEvent] = useState<string>("CHECK_IN");
   const [simSource, setSimSource] = useState<string>("MOBILE_GEOFENCE");
   const [simClock, setSimClock] = useState<string>("08:28");
@@ -185,7 +189,7 @@ export function LiveRealtimeHub() {
   } | null>(null);
 
   // Saatlik / Günlük izin oluşturma form state
-  const [lvEmpId, setLvEmpId] = useState<number>(459);
+  const [lvEmpId, setLvEmpId] = useState<number>(1);
   const [lvType, setLvType] = useState<string>("Saatlik izin");
   const [lvDate, setLvDate] = useState<string>("20.10.2026");
   const [lvStartClock, setLvStartClock] = useState<string>("08:30");
@@ -699,11 +703,62 @@ export function LiveRealtimeHub() {
                           >
                             {(data?.employees || []).slice(0, 60).map((e) => (
                               <option key={e.id} value={e.id}>
-                                {e.sicil} · {e.name} ({e.dept})
+                                {e.sicil} · {e.name} ({e.dept} · {e.branch})
                               </option>
                             ))}
                           </select>
                         </div>
+
+                        {(() => {
+                          const selEmp = (data?.employees || []).find((e) => e.id === simEmpId) || data?.employees?.[0];
+                          const selBranch = (data?.branches || []).find((b) => b.code === selEmp?.branch) || data?.branches?.[0];
+                          if (!selBranch) return null;
+                          const bbox = `${(selBranch.lng - 0.0045).toFixed(5)}%2C${(selBranch.lat - 0.0032).toFixed(5)}%2C${(selBranch.lng + 0.0045).toFixed(5)}%2C${(selBranch.lat + 0.0032).toFixed(5)}`;
+                          const osmUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${selBranch.lat.toFixed(5)}%2C${selBranch.lng.toFixed(5)}`;
+                          const inside30m = simDist <= (selBranch.radius || 30);
+                          return (
+                            <div className="rounded-xl border border-zinc-200 bg-zinc-50/70 p-3 dark:border-zinc-800 dark:bg-zinc-900/60">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="font-bold text-zinc-900 dark:text-zinc-100">
+                                  {selBranch.name} ({selBranch.city})
+                                </span>
+                                <Badge variant={inside30m ? "ok" : "bad"}>
+                                  {inside30m ? "30m Sınır İçinde" : "30m Sınır Dışı"}
+                                </Badge>
+                              </div>
+                              <p className="mt-1 text-[11px] leading-relaxed text-zinc-600 dark:text-zinc-300">
+                                {selBranch.address || `${selBranch.name} · ${selBranch.city}`}
+                              </p>
+                              <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2 font-mono text-[10.5px] text-zinc-500">
+                                <span>
+                                  Koord: {selBranch.lat.toFixed(4)}, {selBranch.lng.toFixed(4)} · Tel:{" "}
+                                  {selBranch.phone || "0850 222 0 252"}
+                                </span>
+                                <a
+                                  href={
+                                    selBranch.googleMapUrl &&
+                                    selBranch.googleMapUrl.startsWith("https://")
+                                      ? selBranch.googleMapUrl
+                                      : `https://www.google.com/maps/search/?api=1&query=${selBranch.lat},${selBranch.lng}`
+                                  }
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="font-semibold text-albayrak-red hover:underline"
+                                >
+                                  Google Harita ↗
+                                </a>
+                              </div>
+                              <div className="mt-2 h-32 w-full overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-700">
+                                <iframe
+                                  title={`${selBranch.name} Harita`}
+                                  src={osmUrl}
+                                  className="h-full w-full border-0"
+                                  loading="lazy"
+                                />
+                              </div>
+                            </div>
+                          );
+                        })()}
 
                         <div className="grid grid-cols-2 gap-2.5">
                           <div>

@@ -47,7 +47,7 @@
         },
         {
             id: 'ACC-4', email: 'elif.demir@albayrakfinans.com.tr', pass: 'Ik!2026uzman', role: 'HR',
-            name: 'Elif Demir', title: 'İşe Alım ve Özlük Uzmanı', branch: 'HQ', active: true,
+            name: 'Elif Demir', title: 'İşe Alım ve Özlük Uzmanı', branch: 'ŞB-001', active: true,
             perms: ['emp_view', 'emp_add', 'leave_manage']
         },
         {
@@ -78,7 +78,7 @@
             ovLb: 'best', // 'best' | 'worst'
             emp: { q: '', status: 'ALL', dept: 'ALL', sort: 'net', dir: -1, page: 1, size: 12, openId: null },
             profLog: { sort: 'date', dir: -1, status: 'ALL' },
-            onb: { name: '', dept: 'Şube Operasyon', title: 'Müşteri Temsilcisi', branch: 'HQ', status: 'PRESENT', startDate: '2026-10-20', email: '' },
+            onb: { name: '', dept: 'Şube Operasyon', title: 'Müşteri Temsilcisi', branch: 'ŞB-001', status: 'PRESENT', startDate: '2026-10-20', email: '' },
             adm: {
                 filter: 'ALL',
                 role: 'HR',
@@ -92,7 +92,7 @@
             leave: { f: 'pending', type: 'ALL' }, alert: { sev: 'ALL', type: 'ALL', show: 'open' },
             tk: { f: 'open', type: 'ALL', q: '' }, dev: { q: '', status: 'ALL', ver: 'ALL' }, audit: { cat: 'ALL' },
             policies: { geofence30m: true, mockGpsBlock: true, singleDevice: true, autoTimeout: true },
-            simBranch: 'HQ', simDist: 14
+            simBranch: 'ŞB-001', simDist: 14, brQ: ''
         }
     };
     let fails = 0, lockUntil = 0, idleTimer = null, leaving = false;
@@ -1081,6 +1081,7 @@
                                 <tr><th>Departman / Birim</th><td>${pill(e.dept, 'ok')}</td><th>Unvan / Görev</th><td>${esc(e.title)}</td></tr>
                                 <tr><th>Kurumsal E-posta</th><td class="mono">${esc(corpEmail)}</td><th>İşe Başlama Tarihi</th><td class="mono">${esc(startDateStr)}</td></tr>
                                 <tr><th>Bağlı Olduğu Şube</th><td><b>${esc(b.name)}</b> (${esc(b.city)})</td><th>Şube Koordinat & Geofence</th><td class="mono">${b.lat.toFixed(4)}, ${b.lng.toFixed(4)} · ${b.radius}m Sınır</td></tr>
+                                <tr><th>Şube Açık Adresi</th><td><small style="display:block;line-height:1.35">${esc(b.address || (b.name + ' · ' + b.city))}</small></td><th>Şube Harita & Telefon</th><td><span class="mono">${esc(b.phone || '0850 222 0 252')}</span> · <button type="button" class="btn btn-soft btn-sm" style="height:24px;padding:0 8px;font-size:11px" data-act="br-map" data-code="${esc(b.code)}">${ic('pin')}Haritada Gör</button></td></tr>
                                 <tr><th>Kurumsal Wi-Fi SSID</th><td class="mono">${esc(b.wifi)}</td><th>Standart Vardiya Planı</th><td class="mono">08:30 – 17:30 (8,5 Saat · 1 Sa Öğle)</td></tr>
                                 <tr><th>Eşlenmiş Mobil Cihaz</th><td>${devObj ? esc(devObj.model + ' (' + devObj.os + ')') : esc(e.device || 'Kurumsal Android Cihaz · Android 14')}</td><th>Cihaz Durumu & Sürüm</th><td>${devObj ? pill(devStatusLabel + ' · v' + devObj.ver, devObj.status === 'BOUND' ? 'ok' : 'warn') : pill('Eşlendi (Aktif) · v2.4.1', 'ok')}</td></tr>
                                 <tr><th>Cihaz Kimlik Maskesi</th><td class="mono">${devObj ? esc(devObj.mask) + ' · Son: ' + esc(devObj.lastSeen || 'Aktif') : '9f3c••••81a2 · Aktif'}</td><th>Güncel Yoklama Durumu</th><td>${pill(STATUS[e.status][0], STATUS[e.status][1])}</td></tr>
@@ -1475,30 +1476,83 @@
     };
 
     IT.branches = {
-        title: 'Şubeler & 30m geofence doğrulama', sub: () => 'Konum doğrulama alanları, Wi-Fi BSSID/SSID doğrulaması ve canlı mesafe simülatörü', tools: {}, icon: 'building',
+        title: 'Şubeler, açık adresler & 30m harita doğrulama', sub: () => 'Türkiye genelindeki ' + D.BRANCHES.length + ' şubenin açık adresleri, harita konumu, Wi-Fi SSID ve canlı 30m geofence simülatörü', tools: {}, icon: 'building',
         render() {
             const simB = D.BRANCHES.find(b => b.code === S.ui.simBranch) || D.BRANCHES[0];
             const inside = S.ui.simDist <= simB.radius;
+            const q = (S.ui.brQ || '').toLocaleLowerCase('tr-TR').trim();
+            const filteredBranches = D.BRANCHES.filter(b => !q || (b.name + ' ' + b.city + ' ' + (b.district || '') + ' ' + (b.address || '') + ' ' + b.code).toLocaleLowerCase('tr-TR').includes(q));
+            const bbox = `${(simB.lng - 0.0045).toFixed(5)}%2C${(simB.lat - 0.0032).toFixed(5)}%2C${(simB.lng + 0.0045).toFixed(5)}%2C${(simB.lat + 0.0032).toFixed(5)}`;
+            const osmEmbedUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${simB.lat.toFixed(5)}%2C${simB.lng.toFixed(5)}`;
+            const gmapsUrl = (simB.googleMapUrl && simB.googleMapUrl.startsWith('https://')) ? simB.googleMapUrl : `https://www.google.com/maps/search/?api=1&query=${simB.lat},${simB.lng}`;
+            const pinOffsetPx = Math.min(72, Math.round((S.ui.simDist / 80) * 72));
             return `<div class="grid g-main">
                 <section class="card flush">
-                    <div class="toolbar"><div><b>${D.BRANCHES.length} lokasyon</b> <span class="muted">· standart yarıçap 30 m</span></div><span class="grow"></span><button class="btn btn-primary btn-sm" data-act="br-add">${ic('plus')}Şube ekle</button></div>
-                    <div class="table-wrap"><table><thead><tr><th>Şube</th><th>Koordinat</th><th>Yarıçap</th><th>Kurumsal Wi-Fi</th><th>Uptime</th><th>Personel</th></tr></thead><tbody>${D.BRANCHES.map((b, i) => `<tr style="--r:${i}"><td><div class="cell-user"><span class="ico-sq red">${ic('pin')}</span><div><b>${esc(b.name)}</b><small>${esc(b.city)} · <span class="mono">${b.code}</span></small></div></div></td><td class="mono">${b.lat.toFixed(4)}, ${b.lng.toFixed(4)}</td><td>${pill(b.radius + ' m', 'ok')}</td><td><span class="mono">${esc(b.wifi)}</span></td><td class="mono" style="color:var(--ok)"><b>%99,9</b></td><td class="mono">${D.EMPLOYEES.filter(e => e.branch === b.code).length}</td></tr>`).join('')}</tbody></table></div>
+                    <div class="toolbar">
+                        ${searchEl('br-q', S.ui.brQ || '', 'Şube adı, il, ilçe veya açık adres ara...')}
+                        <div><b>${filteredBranches.length} / ${D.BRANCHES.length} şube</b> <span class="muted">· 30 m geofence</span></div>
+                        <span class="grow"></span>
+                        <button class="btn btn-primary btn-sm" data-act="br-add">${ic('plus')}Şube ekle</button>
+                    </div>
+                    <div class="table-wrap" style="max-height:680px;overflow-y:auto"><table><thead><tr><th>Şube & Şehir</th><th>Açık Adres & Telefon</th><th>Koordinat & Sınır</th><th>Kurumsal Wi-Fi</th><th>Personel</th><th>Harita</th></tr></thead><tbody>${filteredBranches.map((b, i) => {
+                        const isSelected = b.code === simB.code;
+                        return `<tr style="--r:${i};${isSelected ? 'background:var(--red-soft)' : ''}">
+                            <td><div class="cell-user"><span class="ico-sq ${isSelected ? 'red' : ''}">${ic('pin')}</span><div><b>${esc(b.name)}</b><small>${esc(b.city)}${b.district ? ' / ' + esc(b.district) : ''} · <span class="mono">${esc(b.code)}</span></small></div></div></td>
+                            <td style="max-width:290px"><div style="font-size:12px;line-height:1.35;color:var(--ink)">${esc(b.address || (b.name + ' · ' + b.city))}</div><small class="mono muted">${esc(b.phone || '0850 222 0 252')}</small></td>
+                            <td class="mono">${b.lat.toFixed(4)}, ${b.lng.toFixed(4)}<div style="margin-top:3px">${pill(b.radius + ' m sınır', 'ok')}</div></td>
+                            <td><span class="mono" style="font-size:11.5px">${esc(b.wifi)}</span></td>
+                            <td class="mono"><b>${D.EMPLOYEES.filter(e => e.branch === b.code).length}</b> kişi</td>
+                            <td><div class="row-actions"><button type="button" class="btn ${isSelected ? 'btn-primary' : 'btn-soft'} btn-sm" data-act="br-map" data-code="${esc(b.code)}">${ic('pin')}Haritada Gör</button></div></td>
+                        </tr>`;
+                    }).join('') || `<tr><td colspan="6">${empty('Şube bulunamadı', 'Arama kriterinize uygun şube kaydı bulunmuyor.')}</td></tr>`}</tbody></table></div>
                 </section>
                 <section class="card">
-                    ${cardHead('30m Geofence Canlı Simülatörü', 'Mobil uygulamadaki konum doğrulama motorunun şube bazlı testi')}
+                    ${cardHead('Şube Haritası & 30m Geofence Canlı Simülatörü', simB.name + ' (' + simB.city + ') açık adresi, harita konumu ve mesafe testi')}
                     <div style="display:grid;gap:14px">
                         <div>
-                            <small class="muted" style="font-weight:600;display:block;margin-bottom:6px">Test Edilen Şube</small>
-                            ${selectEl('sim-branch', D.BRANCHES.map(b => ({ v: b.code, l: b.name, sub: b.radius + 'm' })), S.ui.simBranch, 'Şube seçin')}
+                            <small class="muted" style="font-weight:600;display:block;margin-bottom:6px">Haritada İncelenen & Test Edilen Şube (${D.BRANCHES.length} Şube)</small>
+                            ${selectEl('sim-branch', D.BRANCHES.map(b => ({ v: b.code, l: b.name, sub: b.city + ' · ' + b.radius + 'm' })), S.ui.simBranch, 'Şube seçin')}
+                        </div>
+                        <div style="padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--surface-2);display:grid;gap:6px">
+                            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+                                <b style="font-size:13px;color:var(--ink)">${esc(simB.name)}</b>
+                                ${pill(simB.city + (simB.district ? ' / ' + simB.district : ''), 'info')}
+                            </div>
+                            <div style="font-size:12px;color:var(--ink-2);line-height:1.45">${esc(simB.address || (simB.name + ' · ' + simB.city))}</div>
+                            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-top:4px;font-size:11.5px">
+                                <span class="mono muted">Tel: <b>${esc(simB.phone || '0850 222 0 252')}</b> · Koord: <b>${simB.lat.toFixed(4)}, ${simB.lng.toFixed(4)}</b></span>
+                                <a href="${esc(gmapsUrl)}" target="_blank" rel="noopener noreferrer" class="btn btn-soft btn-sm" style="height:26px;padding:0 10px;font-size:11px;text-decoration:none">${ic('pin')}Google Haritalar'da Aç ↗</a>
+                            </div>
+                        </div>
+                        <div style="position:relative;border-radius:14px;overflow:hidden;border:1px solid var(--line);height:210px;background:var(--surface-2)">
+                            <iframe title="${esc(simB.name)} Harita Konumu" src="${osmEmbedUrl}" style="width:100%;height:100%;border:0" loading="lazy"></iframe>
+                            <div style="position:absolute;left:10px;bottom:10px;background:rgba(15,17,21,0.84);color:#fff;padding:5px 10px;border-radius:8px;font-size:11px;backdrop-filter:blur(6px)" class="mono">
+                                Şube Pin: ${simB.lat.toFixed(4)}, ${simB.lng.toFixed(4)} · 30m Geofence
+                            </div>
+                        </div>
+                        <div style="padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--surface-2);display:flex;align-items:center;gap:14px">
+                            <svg role="img" aria-label="Canlı 30 metre geofence konum radarı" viewBox="0 0 180 180" style="width:118px;height:118px;flex-shrink:0;border-radius:50%;background:radial-gradient(circle, rgba(227,6,19,0.10) 0%, rgba(15,23,42,0.06) 100%);border:1px solid var(--line)">
+                                <circle cx="90" cy="90" r="76" fill="none" stroke="var(--line)" stroke-dasharray="3 3" />
+                                <circle cx="90" cy="90" r="34" fill="${inside ? 'rgba(16,185,129,0.14)' : 'rgba(227,6,19,0.12)'}" stroke="${inside ? 'var(--ok)' : 'var(--red)'}" stroke-width="2" stroke-dasharray="4 2" />
+                                <line x1="90" y1="90" x2="${90 + pinOffsetPx}" y2="90" stroke="${inside ? 'var(--ok)' : 'var(--bad)'}" stroke-width="2" />
+                                <circle cx="90" cy="90" r="6" fill="var(--red)" />
+                                <circle cx="${90 + pinOffsetPx}" cy="90" r="6" fill="${inside ? 'var(--ok)' : 'var(--bad)'}" stroke="#fff" stroke-width="2" />
+                                <text x="90" y="108" text-anchor="middle" font-size="9" font-weight="700" fill="var(--ink)">ŞUBE (0m)</text>
+                                <text x="90" y="50" text-anchor="middle" font-size="8.5" font-weight="700" fill="${inside ? 'var(--ok)' : 'var(--red)'}">30m Sınır</text>
+                            </svg>
+                            <div style="flex:1;min-width:0">
+                                <div style="font-size:12.5px;font-weight:700;color:var(--ink);margin-bottom:4px">Canlı Şube & Personel Konum Radarı</div>
+                                <div style="font-size:11.5px;color:var(--muted);line-height:1.4">Merkezdeki kırmızı nokta <b>${esc(simB.name)}</b> konumunu, hareketli nokta ise personelin şubeye olan <b>${S.ui.simDist} m</b> mesafesini gösterir.</div>
+                            </div>
                         </div>
                         <div class="net-meter">
                             <div class="net-meter-top">
                                 <span>Şube Merkezine Mesafe: <b class="mono">${S.ui.simDist} metre</b></span>
                                 ${pill(inside ? '30m Alan İçinde (Onaylı)' : 'Alan Dışı (Engellendi)', inside ? 'ok' : 'bad')}
                             </div>
-                            <input type="range" min="1" max="80" value="${S.ui.simDist}" data-bind="sim-dist" style="width:100%;accent-color:var(--red);cursor:pointer">
+                            <input type="range" min="1" max="80" value="${S.ui.simDist}" data-bind="sim-dist" aria-label="Şube merkezine mesafe (metre)" style="width:100%;accent-color:var(--red);cursor:pointer">
                             <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted)" class="mono">
-                                <span>0m (Merkez)</span><span>30m (Geofence Sınırı)</span><span>80m (Dış Alan)</span>
+                                <span>0m (Şube Merkezi)</span><span>30m (Geofence Sınırı)</span><span>80m (Dış Alan)</span>
                             </div>
                         </div>
                         <div class="kv">
@@ -1735,7 +1789,7 @@
         const allCnt = D.EMPLOYEES.length;
         const curName = S.branch === 'ALL' ? 'Tüm şubeler' : brName(S.branch);
         label.textContent = curName;
-        const items = [{ code: 'ALL', name: 'Tüm şubeler', city: '6 Lokasyon · Genel Görünüm', cnt: allCnt }].concat(
+        const items = [{ code: 'ALL', name: 'Tüm şubeler', city: D.BRANCHES.length + ' Lokasyon · Genel Görünüm', cnt: allCnt }].concat(
             D.BRANCHES.map(b => ({ code: b.code, name: b.name, city: b.city + ' · 30m Geofence', cnt: D.EMPLOYEES.filter(e => e.branch === b.code).length }))
         );
         menu.innerHTML = items.map(it => `<button type="button" class="cselect-item${S.branch === it.code ? ' is-selected' : ''}" data-act="branch-pick" data-v="${esc(it.code)}" role="option" aria-selected="${S.branch === it.code}">
@@ -2558,6 +2612,37 @@
         'dv-unbind': el => { const d = D.DEVICES.find(x => x.id === el.dataset.id); d.status = 'PENDING'; audit('Cihaz eşlemesi sıfırlandı', d.id, 'DEVICE'); A.toast('Eşleme sıfırlandı'); draw(false); },
         'dv-unblock': el => { const d = D.DEVICES.find(x => x.id === el.dataset.id); d.status = 'BOUND'; audit('Cihaz engeli kaldırıldı', d.id, 'DEVICE'); A.toast('Engel kaldırıldı'); draw(false); },
         'au-cat': el => { S.ui.audit.cat = el.dataset.v; draw(false); },
+        'br-map': el => {
+            const code = el.dataset.code || 'ŞB-001';
+            const b = D.BRANCHES.find(x => x.code === code) || D.BRANCHES[0];
+            S.ui.simBranch = b.code;
+            const bbox = `${(b.lng - 0.0045).toFixed(5)}%2C${(b.lat - 0.0032).toFixed(5)}%2C${(b.lng + 0.0045).toFixed(5)}%2C${(b.lat + 0.0032).toFixed(5)}`;
+            const osmEmbedUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${b.lat.toFixed(5)}%2C${b.lng.toFixed(5)}`;
+            const gmapsUrl = (b.googleMapUrl && b.googleMapUrl.startsWith('https://')) ? b.googleMapUrl : `https://www.google.com/maps/search/?api=1&query=${b.lat},${b.lng}`;
+            openModal(
+                b.name + ' · Harita & Açık Adres',
+                `<div style="display:grid;gap:14px">
+                    <div style="padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--surface-2);display:grid;gap:6px">
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+                            <b style="font-size:14px;color:var(--ink)">${esc(b.name)}</b>
+                            ${pill(b.city + (b.district ? ' / ' + b.district : ''), 'ok')}
+                        </div>
+                        <div style="font-size:12.5px;color:var(--ink-2);line-height:1.45">${esc(b.address || (b.name + ' · ' + b.city))}</div>
+                        <div style="display:flex;flex-wrap:wrap;gap:12px;font-size:11.5px;margin-top:4px" class="mono muted">
+                            <span>Telefon: <b>${esc(b.phone || '0850 222 0 252')}</b></span>
+                            <span>Koordinat: <b>${b.lat.toFixed(4)}, ${b.lng.toFixed(4)}</b></span>
+                            <span>Geofence: <b>${b.radius}m Sınır</b></span>
+                            <span>Wi-Fi: <b>${esc(b.wifi)}</b></span>
+                        </div>
+                    </div>
+                    <div style="position:relative;border-radius:14px;overflow:hidden;border:1px solid var(--line);height:290px;background:var(--surface-2)">
+                        <iframe title="${esc(b.name)} Harita" src="${osmEmbedUrl}" style="width:100%;height:100%;border:0" loading="lazy"></iframe>
+                    </div>
+                </div>`,
+                `<button class="btn btn-soft" data-act="modal-close">Kapat</button><a href="${esc(gmapsUrl)}" target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="text-decoration:none">${ic('pin')}Google Haritalar'da Aç ↗</a>`
+            );
+            draw(false);
+        },
         'br-add': () => openModal('Yeni şube', `<form class="form-grid" id="brForm" novalidate>
             <label class="field"><span>Şube adı</span><div class="input"><input id="brName" maxlength="60" placeholder="Örn. Antalya Muratpaşa Şubesi"></div></label>
             <label class="field"><span>Şehir</span><div class="input"><input id="brCity" maxlength="40"></div></label>
@@ -2795,6 +2880,7 @@
             'dv-ver': () => U.dev.ver = v,
             'sim-branch': () => U.simBranch = v,
             'sim-dist': () => U.simDist = +v,
+            'br-q': () => U.brQ = v,
             'onb-name': () => U.onb.name = v,
             'onb-email': () => U.onb.email = v,
             'onb-dept': () => U.onb.dept = v,
@@ -2817,7 +2903,7 @@
         const el = e.target.closest('[data-act]'); if (el && acts[el.dataset.act]) acts[el.dataset.act](el);
     }
     let bindDebounceTimer = null;
-    const DEBOUNCED_BINDS = { 'emp-q': 1, 'tk-q': 1, 'dv-q': 1 };
+    const DEBOUNCED_BINDS = { 'emp-q': 1, 'tk-q': 1, 'dv-q': 1, 'br-q': 1 };
     function onBind(e) {
         const t = e.target, id = t.dataset.bind; if (!id) return;
         const val = t.value;

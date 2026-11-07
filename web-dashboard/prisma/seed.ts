@@ -1,4 +1,6 @@
 import { PrismaClient } from "@prisma/client";
+import fs from "fs";
+import path from "path";
 import { hashPassword } from "../src/lib/auth";
 
 const prisma = new PrismaClient();
@@ -47,14 +49,65 @@ function trSlug(s: string): string {
     .replace(/^\.+|\.+$/g, "");
 }
 
-const BRANCHES_SEED = [
-  { code: "HQ", name: "Genel Merkez · Ataşehir", city: "İstanbul", lat: 41.11185, lng: 29.02235, radiusMeters: 30, wifiSsid: "ALBAYRAK_CORP", weight: 0.38 },
-  { code: "UMR", name: "Ümraniye Şubesi", city: "İstanbul", lat: 41.0165, lng: 29.1248, radiusMeters: 30, wifiSsid: "ALBAYRAK_UMR", weight: 0.14 },
-  { code: "KAD", name: "Kadıköy Şubesi", city: "İstanbul", lat: 40.9903, lng: 29.0275, radiusMeters: 30, wifiSsid: "ALBAYRAK_KAD", weight: 0.12 },
-  { code: "ANK", name: "Ankara Kızılay Şubesi", city: "Ankara", lat: 39.9208, lng: 32.8541, radiusMeters: 30, wifiSsid: "ALBAYRAK_ANK", weight: 0.14 },
-  { code: "IZM", name: "İzmir Konak Şubesi", city: "İzmir", lat: 38.4189, lng: 27.1287, radiusMeters: 30, wifiSsid: "ALBAYRAK_IZM", weight: 0.12 },
-  { code: "BUR", name: "Bursa Nilüfer Şubesi", city: "Bursa", lat: 40.2133, lng: 28.9807, radiusMeters: 30, wifiSsid: "ALBAYRAK_BUR", weight: 0.10 }
-];
+interface ScrapedBranchItem {
+  id: number;
+  name: string;
+  branch_code: string;
+  city: string;
+  district?: string;
+  address?: string;
+  phone?: string;
+  googleMapUrl?: string;
+  latitude: number;
+  longitude: number;
+  radius_meters: number;
+  wifi_ssid: string;
+}
+
+function loadBranchesSeed() {
+  const candidates = [
+    path.join(process.cwd(), "public", "assets", "branches.json"),
+    path.resolve(__dirname, "../public/assets/branches.json")
+  ];
+  const jsonPath = candidates.find((p) => fs.existsSync(p));
+  if (jsonPath) {
+    const raw = JSON.parse(fs.readFileSync(jsonPath, "utf-8")) as ScrapedBranchItem[];
+    return raw.map((b, idx) => ({
+      code: b.branch_code || `ŞB-${String(idx + 1).padStart(3, "0")}`,
+      name: b.name,
+      city: b.city,
+      district: b.district || b.city,
+      address: b.address || "",
+      phone: b.phone || "444 88 61",
+      googleMapUrl:
+        b.googleMapUrl ||
+        `https://www.google.com/maps/search/?api=1&query=${b.latitude},${b.longitude}`,
+      lat: b.latitude,
+      lng: b.longitude,
+      radiusMeters: b.radius_meters || 30,
+      wifiSsid: b.wifi_ssid || `ALBAYRAK_${idx + 1}_WIFI`,
+      weight: idx === 0 ? 0.16 : 0.84 / Math.max(1, raw.length - 1)
+    }));
+  }
+  return [
+    {
+      code: "ŞB-001",
+      name: "Albayrak Finans Genel Müdürlük (Ataşehir)",
+      city: "İstanbul",
+      district: "Ataşehir",
+      address: "Yenişehir Mah. Kızılcık Sok. Albayrak Plaza No:1/35 34779 Ataşehir / İstanbul",
+      phone: "444 88 61",
+      googleMapUrl: "https://www.google.com/maps/search/?api=1&query=40.995454,29.140893",
+      lat: 40.995454,
+      lng: 29.140893,
+      radiusMeters: 30,
+      wifiSsid: "ALBAYRAK_GM_SECURE",
+      weight: 1.0
+    }
+  ];
+}
+
+const BRANCHES_SEED = loadBranchesSeed();
 
 const SHIFTS_SEED = [
   { code: "STD-0830", name: "Standart Kurumsal Mesai (08:30 – 17:30)", startMin: 510, endMin: 1050, breakMin: 60, graceMin: 5, isFlexible: false },
@@ -113,6 +166,19 @@ const DEVICES = [
 async function main() {
   console.log("PostgreSQL 18 finans_pdks veritabanı tohumlama (seed) başlatılıyor...");
 
+  const existingBranchCount = await prisma.branch.count();
+  const existingEmpCount = await prisma.employee.count();
+  const shouldReseedEmployees = existingEmpCount < 500 || existingBranchCount < 50;
+
+  if (shouldReseedEmployees) {
+    await prisma.accessLog.deleteMany();
+    await prisma.dailyAttendance.deleteMany();
+    await prisma.leaveRequest.deleteMany();
+    await prisma.securityAlert.deleteMany();
+    await prisma.employee.deleteMany();
+    await prisma.branch.deleteMany();
+  }
+
   for (const b of BRANCHES_SEED) {
     await prisma.branch.upsert({
       where: { code: b.code },
@@ -131,13 +197,7 @@ async function main() {
     shifts.push(created);
   }
 
-  const existingEmpCount = await prisma.employee.count();
-  if (existingEmpCount < 500) {
-    await prisma.accessLog.deleteMany();
-    await prisma.dailyAttendance.deleteMany();
-    await prisma.leaveRequest.deleteMany();
-    await prisma.securityAlert.deleteMany();
-    await prisma.employee.deleteMany();
+  if (shouldReseedEmployees) {
 
     const rnd = createRng(20261020);
     const pick = <T,>(arr: T[]): T => arr[Math.floor(rnd() * arr.length)];
@@ -407,7 +467,7 @@ async function main() {
       role: "DEPT_MANAGER",
       name: "Hakan Özdemir",
       title: "Bireysel Finansman Departman Müdürü",
-      branchCode: "HQ",
+      branchCode: "ŞB-001",
       managedDept: "Bireysel Finansman",
       employeeSicil: "FN-1012",
       active: true,
@@ -420,7 +480,7 @@ async function main() {
       role: "PERSONNEL",
       name: allEmployees[0]?.name || "Ahmet Yılmaz",
       title: allEmployees[0]?.title || "Finans Uzmanı",
-      branchCode: allEmployees[0]?.branchCode || "HQ",
+      branchCode: allEmployees[0]?.branchCode || "ŞB-001",
       managedDept: allEmployees[0]?.dept || "Bireysel Finansman",
       employeeSicil: allEmployees[0]?.sicil || "FN-1001",
       active: true,

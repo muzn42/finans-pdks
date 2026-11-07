@@ -88,9 +88,7 @@ private enum class NavTab(val title: String, val icon: ImageVector) {
     ATTENDANCE("Yoklama", Icons.Default.LocationOn),
     RECORDS("Kayıtlar", Icons.Default.History),
     REPORT("Analiz", Icons.Default.Insights),
-    PROFILE("Profil", Icons.Default.Person),
-    HR_MANAGEMENT("İK Portalı", Icons.Default.PeopleAlt),
-    IT_SECURITY("BT & Destek", Icons.Default.Shield)
+    PROFILE("Profil", Icons.Default.Person)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -136,36 +134,16 @@ fun PdksApp(viewModel: MainViewModel = viewModel()) {
     var isViewingNotifications by remember { mutableStateOf(false) }
 
     LaunchedEffect(currentRole) {
-        selectedTab = when (currentRole) {
-            UserRole.PERSONNEL -> NavTab.ATTENDANCE
-            UserRole.HR -> NavTab.HR_MANAGEMENT
-            UserRole.IT -> NavTab.IT_SECURITY
-        }
+        selectedTab = NavTab.ATTENDANCE
     }
 
-    val availableTabs = remember(currentRole) {
-        when (currentRole) {
-            UserRole.PERSONNEL -> listOf(
-                NavTab.ATTENDANCE,
-                NavTab.RECORDS,
-                NavTab.REPORT,
-                NavTab.PROFILE
-            )
-            UserRole.HR -> listOf(
-                NavTab.HR_MANAGEMENT,
-                NavTab.ATTENDANCE,
-                NavTab.RECORDS,
-                NavTab.REPORT,
-                NavTab.PROFILE
-            )
-            UserRole.IT -> listOf(
-                NavTab.IT_SECURITY,
-                NavTab.ATTENDANCE,
-                NavTab.RECORDS,
-                NavTab.REPORT,
-                NavTab.PROFILE
-            )
-        }
+    val availableTabs = remember {
+        listOf(
+            NavTab.ATTENDANCE,
+            NavTab.RECORDS,
+            NavTab.REPORT,
+            NavTab.PROFILE
+        )
     }
 
     Scaffold(
@@ -351,8 +329,6 @@ fun PdksApp(viewModel: MainViewModel = viewModel()) {
                 ) { tab ->
                     when (tab) {
                         NavTab.ATTENDANCE -> PersonnelScreen(viewModel = viewModel)
-                        NavTab.HR_MANAGEMENT -> HrScreen(viewModel = viewModel)
-                        NavTab.IT_SECURITY -> ItSecurityScreen(viewModel = viewModel)
                         NavTab.RECORDS -> RecordsScreen(viewModel = viewModel)
                         NavTab.REPORT -> PersonalReportScreen(viewModel = viewModel)
                         NavTab.PROFILE -> ProfileScreen(

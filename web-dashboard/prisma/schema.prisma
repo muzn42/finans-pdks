@@ -12,6 +12,10 @@ model Branch {
   code         String     @unique
   name         String
   city         String
+  district     String     @default("")
+  address      String     @default("")
+  phone        String     @default("444 88 61")
+  googleMapUrl String     @default("") @map("google_map_url")
   lat          Float
   lng          Float
   radiusMeters Float      @default(30.0) @map("radius_meters")

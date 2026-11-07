@@ -5,9 +5,22 @@ import { z } from "zod";
 export const dynamic = "force-dynamic";
 
 const BranchCreateSchema = z.object({
-  code: z.string().trim().min(2).max(10),
-  name: z.string().trim().min(3).max(100),
+  code: z.string().trim().min(2).max(12),
+  name: z.string().trim().min(3).max(120),
   city: z.string().trim().min(2).max(60),
+  district: z.string().trim().max(60).optional().default(""),
+  address: z.string().trim().max(260).optional().default(""),
+  phone: z.string().trim().max(32).optional().default("444 88 61"),
+  googleMapUrl: z
+    .string()
+    .trim()
+    .max(300)
+    .refine(
+      (u) => !u || u.startsWith("https://"),
+      "Yalnızca güvenli https:// harita bağlantısı kabul edilir."
+    )
+    .optional()
+    .default(""),
   lat: z.coerce.number().min(-90).max(90),
   lng: z.coerce.number().min(-180).max(180),
   radius: z.coerce.number().min(10).max(200).default(30),
@@ -23,13 +36,24 @@ export async function GET() {
       branches: rows.map((b) => ({
         id: b.id,
         code: b.code,
+        branch_code: b.code,
+        branchCode: b.code,
         name: b.name,
         city: b.city,
+        district: b.district,
+        address: b.address,
+        phone: b.phone,
+        googleMapUrl: b.googleMapUrl,
         lat: b.lat,
         lng: b.lng,
+        latitude: b.lat,
+        longitude: b.lng,
         radius: b.radiusMeters,
         radius_meters: b.radiusMeters,
-        wifi: b.wifiSsid
+        radiusMeters: b.radiusMeters,
+        wifi: b.wifiSsid,
+        wifi_ssid: b.wifiSsid,
+        wifiSsid: b.wifiSsid
       }))
     });
   } catch (err) {
@@ -60,6 +84,12 @@ export async function POST(req: NextRequest) {
       update: {
         name: d.name,
         city: d.city,
+        district: d.district,
+        address: d.address,
+        phone: d.phone,
+        googleMapUrl:
+          d.googleMapUrl ||
+          `https://www.google.com/maps/search/?api=1&query=${d.lat},${d.lng}`,
         lat: d.lat,
         lng: d.lng,
         radiusMeters: d.radius,
@@ -69,11 +99,17 @@ export async function POST(req: NextRequest) {
         code: d.code.toUpperCase(),
         name: d.name,
         city: d.city,
+        district: d.district,
+        address: d.address,
+        phone: d.phone,
+        googleMapUrl:
+          d.googleMapUrl ||
+          `https://www.google.com/maps/search/?api=1&query=${d.lat},${d.lng}`,
         lat: d.lat,
         lng: d.lng,
         radiusMeters: d.radius,
         wifiSsid: d.wifi,
-        weight: 0.08
+        weight: 0.02
       }
     });
 

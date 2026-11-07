@@ -164,7 +164,7 @@ object MockDataGenerator {
                 branchId = 1,
                 deviceId = "PIXEL-8-99D1",
                 phone = "+90 536 400 8090",
-                role = "HR",
+                role = "PERSONNEL",
                 password = "123"
             )
         )
@@ -179,7 +179,7 @@ object MockDataGenerator {
                 branchId = 1,
                 deviceId = "NOTE-20-C10A",
                 phone = "+90 537 500 1122",
-                role = "IT",
+                role = "PERSONNEL",
                 password = "123"
             )
         )
@@ -216,13 +216,9 @@ object MockDataGenerator {
             val (deptName, titles) = DEPARTMENTS_AND_TITLES[deptIdx]
             val title = titles[(i / DEPARTMENTS_AND_TITLES.size) % titles.size]
 
-            val role = when {
-                deptName.contains("İnsan Kaynakları") -> "HR"
-                deptName.contains("Bilgi Teknolojileri") -> "IT"
-                else -> "PERSONNEL"
-            }
+            val role = "PERSONNEL"
 
-            val branchId = ((i % 50) + 1).toLong()
+            val branchId = ((i % 54) + 1).toLong()
             val asciiFirst = turkishToAscii(first)
             val asciiLast = turkishToAscii(last)
             val email = "$asciiFirst.$asciiLast$i@albayrakfinans.com.tr"

@@ -14,16 +14,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.EmployeeEntity
-import com.example.data.local.UserRole
 import com.example.ui.MainViewModel
 import com.example.ui.components.*
 import com.example.ui.theme.*
-import java.util.Locale
 
 @Composable
 fun PersonalReportScreen(viewModel: MainViewModel) {
     val context = LocalContext.current
-    val currentRole by viewModel.currentRole.collectAsState()
     val selectedEmployee by viewModel.selectedEmployee.collectAsState()
     val employees by viewModel.employees.collectAsState()
     val allRecords by viewModel.records.collectAsState()
@@ -32,21 +29,20 @@ fun PersonalReportScreen(viewModel: MainViewModel) {
     var selectedPeriodDays by remember { mutableIntStateOf(30) } // 1, 7, 30, 60
     var customFromDate by remember { mutableStateOf("") }
     var customToDate by remember { mutableStateOf("") }
-    var modalDeepEmployee by remember { mutableStateOf<EmployeeDeepAnalytics?>(null) }
 
     val activeEmp = remember(selectedEmployee, employees) {
         selectedEmployee ?: employees.firstOrNull() ?: EmployeeEntity(
             id = 1L,
-            employeeCode = "FN-1001",
+            employeeCode = "FN-1048",
             password = "",
             branchId = 1L,
             fullName = "Ahmet Yılmaz",
-            department = "Finans & Muhasebe",
-            title = "Kıdemli Uzman",
+            department = "Tasarruf Finansman Satış & Portföy",
+            title = "Kıdemli Tasarruf Danışmanı",
             role = "PERSONNEL",
             email = "ahmet.yilmaz@albayrakfinans.com.tr",
-            phone = "0532 100 10 01",
-            deviceId = "FN-DEV-9842"
+            phone = "+90 532 100 2030",
+            deviceId = "SM-S928B-883A"
         )
     }
 
@@ -66,24 +62,6 @@ fun PersonalReportScreen(viewModel: MainViewModel) {
         )
     }
 
-    val allEmployeeAnalytics = remember(
-        employees,
-        allRecords,
-        selectedPeriodDays,
-        customFromDate,
-        customToDate
-    ) {
-        employees.map { emp ->
-            computeEmployeeDeepAnalytics(
-                emp = emp,
-                allRecords = allRecords,
-                periodDays = selectedPeriodDays,
-                customFromDate = customFromDate,
-                customToDate = customToDate
-            )
-        }
-    }
-
     val punctualityPct = myDeepAnalytics.complianceScore
     val geofenceRate = myDeepAnalytics.geofencePct
     val trendSeries = remember(myDeepAnalytics) {
@@ -98,7 +76,7 @@ fun PersonalReportScreen(viewModel: MainViewModel) {
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        item {
+        item(key = "report_header") {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -106,7 +84,7 @@ fun PersonalReportScreen(viewModel: MainViewModel) {
             ) {
                 Column(modifier = Modifier.weight(1f).padding(end = 10.dp)) {
                     Text(
-                        text = "Performans, Mesai & Net Bakiye Analizi",
+                        text = "Kişisel Performans & Net Bakiye Analizi",
                         color = InkPrimary,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.ExtraBold,
@@ -131,7 +109,7 @@ fun PersonalReportScreen(viewModel: MainViewModel) {
         }
 
         // 1. Üst Süre (Bugün, 7g, 30g, 60g) ve Özel Tarih Seçici Filtre
-        item {
+        item(key = "report_filter") {
             MinimalPeriodAndDateFilterBar(
                 selectedDays = selectedPeriodDays,
                 customFromDate = customFromDate,
@@ -149,7 +127,7 @@ fun PersonalReportScreen(viewModel: MainViewModel) {
         }
 
         // 2. Dörtlü Minimalist KPI Grid (Dakiklik, Net Bakiye, Ek Mesai, Gecikme)
-        item {
+        item(key = "report_kpis") {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -200,8 +178,8 @@ fun PersonalReportScreen(viewModel: MainViewModel) {
             }
         }
 
-        // 3. Derin Personel Profil Analizi (Net Süre Terazisi, En Çok Geç/Mesai Günü, Pzt-Cum Kırılımı)
-        item {
+        // 3. Derin Kişisel PDKS Analizi (Net Süre Terazisi, En Çok Geç/Mesai Günü, Pzt-Cum Kırılımı)
+        item(key = "report_deep_card") {
             AnimatedEntryBox(index = 0) {
                 EmployeeDeepProfileAnalysisCard(
                     analytics = myDeepAnalytics,
@@ -212,46 +190,9 @@ fun PersonalReportScreen(viewModel: MainViewModel) {
             }
         }
 
-        // 4. Kurumsal Ek Mesai & Net Süre Bakiyesi (Ek Mesai − Gecikme) Ligi
-        if (allEmployeeAnalytics.isNotEmpty()) {
-            item {
-                AnimatedEntryBox(index = 1) {
-                    MinimalOvertimeAndNetLeaderboardsCard(
-                        analyticsList = allEmployeeAnalytics,
-                        periodLabel = myDeepAnalytics.periodLabel,
-                        onSelectEmployee = { modalDeepEmployee = it },
-                        onExportLeaderboardExcel = {
-                            exportFormattedExcelReport(
-                                context = context,
-                                fileNamePrefix = "Albayrak_Mesai_Net_Bakiye_Ligi",
-                                title = "Ek Mesai & Net Süre Bakiyesi (Mesai − Gecikme) Lig Raporu",
-                                subtitle = "Dönem: ${myDeepAnalytics.periodLabel}",
-                                kpis = listOf(
-                                    ReportKpiItem("Dönem", myDeepAnalytics.periodLabel, "${allEmployeeAnalytics.size} Personel")
-                                ),
-                                headers = listOf("Sicil No", "Ad Soyad", "Departman", "Ek Mesai", "Gecikme", "Net Bakiye", "En Çok Geç Günü", "En Çok Mesai Günü"),
-                                rows = allEmployeeAnalytics.sortedByDescending { it.netBalanceMin }.map { a ->
-                                    listOf(
-                                        a.emp.employeeCode,
-                                        a.emp.fullName,
-                                        a.emp.department,
-                                        "+${a.totalOvertimeMin} dk",
-                                        "−${a.totalLateMin} dk",
-                                        formatSignedMinutes(a.netBalanceMin),
-                                        a.mostLateDay.dowName,
-                                        a.mostOvertimeDay.dowName
-                                    )
-                                }
-                            )
-                        }
-                    )
-                }
-            }
-        }
-
-        // 5. Günlük Mesai Süresi Trend Grafiği
-        item {
-            AnimatedEntryBox(index = 2) {
+        // 4. Günlük Mesai Süresi Trend Grafiği
+        item(key = "report_trend_chart") {
+            AnimatedEntryBox(index = 1) {
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = CardSurface,
@@ -281,10 +222,10 @@ fun PersonalReportScreen(viewModel: MainViewModel) {
             }
         }
 
-        // 6. Departman Kıyaslama Çubukları
-        item {
+        // 5. Departman Kıyaslama Çubukları
+        item(key = "report_dept_comparison") {
             val deptName = activeEmp.department
-            AnimatedEntryBox(index = 3) {
+            AnimatedEntryBox(index = 2) {
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = CardSurface,
@@ -322,36 +263,5 @@ fun PersonalReportScreen(viewModel: MainViewModel) {
                 }
             }
         }
-    }
-
-    modalDeepEmployee?.let { modalAn ->
-        AlertDialog(
-            onDismissRequest = { modalDeepEmployee = null },
-            containerColor = BgCanvas,
-            shape = RoundedCornerShape(16.dp),
-            title = {
-                Text(
-                    text = "${modalAn.emp.fullName} · Derin Analiz",
-                    color = InkPrimary,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.ExtraBold
-                )
-            },
-            text = {
-                EmployeeDeepProfileAnalysisCard(
-                    analytics = modalAn,
-                    onExportPersonalDeepExcel = {
-                        exportEmployeeDeepExcelReport(context, modalAn)
-                    }
-                )
-            },
-            confirmButton = {
-                MinimalBasicButton(
-                    text = "Kapat",
-                    onClick = { modalDeepEmployee = null },
-                    variant = MinimalButtonVariant.DARK
-                )
-            }
-        )
     }
 }
