@@ -443,8 +443,29 @@
         { t: 'Dün', who: 'Murat Doğan', act: 'Yeni şube geofence tanımlandı', target: 'BUR', cat: 'SYSTEM' }
     ];
 
-    // Yeni işe başlayan personelleri localStorage üzerinden geri yükle ve ekleme fonksiyonu sun
+    // Yeni işe başlayan, düzenlenen veya silinen personelleri localStorage üzerinden geri yükle
+    function persistLocalState() {
+        try {
+            const custom = EMPLOYEES.filter(x => x.isNewHire);
+            localStorage.setItem('atf_custom_employees', JSON.stringify(custom));
+        } catch (_) {}
+    }
+
     try {
+        const deletedIds = JSON.parse(localStorage.getItem('atf_deleted_emp_ids') || '[]');
+        if (Array.isArray(deletedIds) && deletedIds.length) {
+            for (let i = EMPLOYEES.length - 1; i >= 0; i--) {
+                if (deletedIds.includes(EMPLOYEES[i].id)) EMPLOYEES.splice(i, 1);
+            }
+        }
+        const updatedMap = JSON.parse(localStorage.getItem('atf_updated_employees') || '{}');
+        if (updatedMap && typeof updatedMap === 'object') {
+            EMPLOYEES.forEach((e, idx) => {
+                if (updatedMap[e.id]) {
+                    EMPLOYEES[idx] = Object.assign({}, e, updatedMap[e.id]);
+                }
+            });
+        }
         const savedEmps = JSON.parse(localStorage.getItem('atf_custom_employees') || '[]');
         if (Array.isArray(savedEmps)) {
             savedEmps.forEach(ce => {
@@ -460,7 +481,48 @@
         leaderboardCache.clear();
     }
 
-    function addEmployee(o) {
+    const API_BASE = '/api/v1/employees';
+
+    function syncEmployeesFromBackend(onSync) {
+        if (typeof fetch !== 'function' || (typeof location !== 'undefined' && location.protocol === 'file:')) return;
+        fetch(API_BASE + '?size=2000', { headers: { 'Accept': 'application/json' } })
+            .then(r => (r.ok ? r.json() : null))
+            .then(data => {
+                if (!data || !Array.isArray(data.items) || !data.items.length) return;
+                EMPLOYEES.length = 0;
+                data.items.forEach(item => {
+                    EMPLOYEES.push(Object.assign({
+                        id: item.id,
+                        sicil: item.sicil,
+                        name: item.name,
+                        dept: item.dept,
+                        title: item.title,
+                        branch: item.branch || 'HQ',
+                        status: item.status || 'PRESENT',
+                        inMin: item.inMin != null ? item.inMin : null,
+                        outMin: item.outMin != null ? item.outMin : null,
+                        checkIn: item.checkIn || (item.inMin != null ? hhmm(item.inMin) : null),
+                        checkOut: item.checkOut || (item.outMin != null ? hhmm(item.outMin) : null),
+                        lateMin: item.lateMin || 0,
+                        overtimeMin: item.overtimeMin || 0,
+                        dist: item.dist != null ? item.dist : null,
+                        tone: item.tone || (1 + (item.id % 5)),
+                        proneLateDow: item.proneLateDow || 1,
+                        proneOtDow: item.proneOtDow || 3,
+                        workHabitBias: item.workHabitBias != null ? item.workHabitBias : 0.65,
+                        email: item.email || '',
+                        phone: item.phone || '',
+                        startDate: item.startDate || '2026-10-20',
+                        isNewHire: !!item.isNewHire
+                    }));
+                });
+                clearAnalyticsCache();
+                if (typeof onSync === 'function') onSync(EMPLOYEES);
+            })
+            .catch(() => {});
+    }
+
+    function addEmployee(o, onSync) {
         const maxId = EMPLOYEES.reduce((m, x) => Math.max(m, x.id), 1500);
         const nextId = maxId + 1;
         const sicil = 'FN-' + nextId;
@@ -502,16 +564,146 @@
             mask: 'n' + (nextId % 9) + 'f…' + (nextId % 90 + 10)
         });
         clearAnalyticsCache();
-        try {
-            const custom = EMPLOYEES.filter(x => x.isNewHire);
-            localStorage.setItem('atf_custom_employees', JSON.stringify(custom));
-        } catch (_) {}
+        persistLocalState();
+
+        if (typeof fetch === 'function' && (typeof location === 'undefined' || location.protocol !== 'file:')) {
+            fetch(API_BASE, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body: JSON.stringify({
+                    name: newEmp.name,
+                    dept: newEmp.dept,
+                    title: newEmp.title,
+                    branch: newEmp.branch,
+                    status: newEmp.status,
+                    email: newEmp.email,
+                    startDate: newEmp.startDate
+                })
+            })
+                .then(r => (r.ok ? r.json() : null))
+                .then(res => {
+                    if (res && res.employee) {
+                        const idx = EMPLOYEES.findIndex(x => x.id === newEmp.id);
+                        if (idx >= 0) {
+                            EMPLOYEES[idx] = Object.assign({}, EMPLOYEES[idx], res.employee);
+                            clearAnalyticsCache();
+                            if (typeof onSync === 'function') onSync(EMPLOYEES[idx]);
+                        }
+                    }
+                })
+                .catch(() => {});
+        }
         return newEmp;
+    }
+
+    function updateEmployee(empId, patch, onSync) {
+        const idx = EMPLOYEES.findIndex(x => x.id === +empId);
+        if (idx < 0) return null;
+        const current = EMPLOYEES[idx];
+        const nextStatus = patch.status || current.status;
+        let inMin = current.inMin;
+        let outMin = current.outMin;
+        let lateMin = current.lateMin;
+        let overtimeMin = current.overtimeMin;
+        let dist = current.dist;
+
+        if (patch.status && patch.status !== current.status) {
+            if (nextStatus === 'LEAVE' || nextStatus === 'ABSENT') {
+                inMin = null;
+                outMin = null;
+                lateMin = 0;
+                overtimeMin = 0;
+                dist = null;
+            } else if (inMin == null) {
+                inMin = nextStatus === 'PRESENT' ? 505 : 552;
+                outMin = 1060;
+                lateMin = nextStatus === 'LATE' ? 12 : 0;
+                overtimeMin = nextStatus === 'PRESENT' ? 15 : 0;
+                dist = 7.8;
+            }
+        }
+
+        const updated = Object.assign({}, current, {
+            name: patch.name != null ? patch.name : current.name,
+            dept: patch.dept != null ? patch.dept : current.dept,
+            title: patch.title != null ? patch.title : current.title,
+            branch: patch.branch != null ? patch.branch : current.branch,
+            status: nextStatus,
+            email: patch.email != null ? patch.email : (current.email || ''),
+            startDate: patch.startDate != null ? patch.startDate : (current.startDate || '2026-10-20'),
+            inMin,
+            outMin,
+            checkIn: inMin == null ? null : hhmm(inMin),
+            checkOut: outMin == null ? null : hhmm(outMin),
+            lateMin,
+            overtimeMin,
+            dist
+        });
+        EMPLOYEES[idx] = updated;
+        clearAnalyticsCache();
+        persistLocalState();
+
+        try {
+            const updatedMap = JSON.parse(localStorage.getItem('atf_updated_employees') || '{}');
+            updatedMap[updated.id] = updated;
+            localStorage.setItem('atf_updated_employees', JSON.stringify(updatedMap));
+        } catch (_) {}
+
+        if (typeof fetch === 'function' && (typeof location === 'undefined' || location.protocol !== 'file:')) {
+            fetch(`${API_BASE}/${encodeURIComponent(updated.id)}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body: JSON.stringify(patch)
+            })
+                .then(r => (r.ok ? r.json() : null))
+                .then(res => {
+                    if (res && res.employee) {
+                        const i2 = EMPLOYEES.findIndex(x => x.id === updated.id);
+                        if (i2 >= 0) {
+                            EMPLOYEES[i2] = Object.assign({}, EMPLOYEES[i2], res.employee);
+                            clearAnalyticsCache();
+                            if (typeof onSync === 'function') onSync(EMPLOYEES[i2]);
+                        }
+                    }
+                })
+                .catch(() => {});
+        }
+        return updated;
+    }
+
+    function deleteEmployee(empId, onSync) {
+        const idx = EMPLOYEES.findIndex(x => x.id === +empId);
+        if (idx < 0) return null;
+        const removed = EMPLOYEES.splice(idx, 1)[0];
+        for (let i = DEVICES.length - 1; i >= 0; i--) {
+            if (DEVICES[i].empId === removed.id) DEVICES.splice(i, 1);
+        }
+        clearAnalyticsCache();
+        persistLocalState();
+
+        try {
+            const deletedIds = JSON.parse(localStorage.getItem('atf_deleted_emp_ids') || '[]');
+            if (!deletedIds.includes(removed.id)) deletedIds.push(removed.id);
+            localStorage.setItem('atf_deleted_emp_ids', JSON.stringify(deletedIds));
+        } catch (_) {}
+
+        if (typeof fetch === 'function' && (typeof location === 'undefined' || location.protocol !== 'file:')) {
+            fetch(`${API_BASE}/${encodeURIComponent(removed.id)}`, {
+                method: 'DELETE',
+                headers: { 'Accept': 'application/json' }
+            })
+                .then(r => (r.ok ? r.json() : null))
+                .then(res => {
+                    if (res && typeof onSync === 'function') onSync(removed);
+                })
+                .catch(() => {});
+        }
+        return removed;
     }
 
     g.ATF.DATA = {
         BRANCHES, DEPTS, TITLES, EMPLOYEES, DAYS, LEAVES, LEAVE_TYPES, ALERTS, ALERT_TYPES,
         TICKETS, TICKET_TYPES, DEVICES, AUDIT, hhmm, fmtDurMin, resolveDays, empAnalytics, computeLeaderboards,
-        addEmployee, clearAnalyticsCache
+        addEmployee, updateEmployee, deleteEmployee, syncEmployeesFromBackend, clearAnalyticsCache
     };
 })(window);

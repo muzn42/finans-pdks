@@ -20,7 +20,10 @@ import urllib.request
 import urllib.parse
 from datetime import datetime
 from http.server import HTTPServer, BaseHTTPRequestHandler
+import mimetypes
 import socketserver
+
+import employee_crud
 
 # Windows CP1254 terminal çıktısı için UTF-8 yapılandırması
 if hasattr(sys.stdout, "reconfigure"):
@@ -29,8 +32,10 @@ if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 HOST = "0.0.0.0"
-PORT = 8080
-CACHE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cached_branches.json")
+PORT = int(os.environ.get("PDKS_PORT", "8080"))
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+WEB_DASHBOARD_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", "web-dashboard"))
+CACHE_FILE = os.path.join(BASE_DIR, "cached_branches.json")
 
 # Bellekte tutulan aktif şubeler ve kayıtlar
 ACTIVE_BRANCHES = []
@@ -942,12 +947,18 @@ def render_dashboard_html():
         <div class="guide-box">
             <h3>🔌 Kurumsal REST API Endpoint'leri</h3>
             <pre>
-GET  /health                  -> Sunucu sağlık durumu (JSON)
-GET  /api/v1/branches         -> 50 Şubenin güncel listesi, koordinatları ve 30m geofence (JSON)
-POST /api/v1/branches/refresh -> https://albayrakfinans.com.tr/subelerimiz üzerinden canlı web scraping
-POST /api/v1/auth/login       -> JWT kimlik doğrulama simülasyonu
-POST /api/v1/attendance/sync  -> Mobil cihazdaki devam kayıtları ve alarmların toplu aktarımı
-POST /api/v1/attendance/record-> Tekil anlık giriş/çıkış bildirimi
+GET    /health                       -> Sunucu sağlık durumu (JSON)
+GET    /api/v1/branches              -> 50 Şubenin güncel listesi, koordinatları ve 30m geofence (JSON)
+POST   /api/v1/branches/refresh      -> https://albayrakfinans.com.tr/subelerimiz üzerinden canlı web scraping
+GET    /api/v1/employees             -> Personel listesi (Arama, departman, şube, durum filtreli & sayfalamalı)
+GET    /api/v1/employees/{id|sicil}  -> Tekil personel detayı (ID veya FN-XXXX sicil ile)
+POST   /api/v1/employees             -> Yeni personel oluşturma (Create - SQLite kalıcı kayıt)
+PUT    /api/v1/employees/{id|sicil}  -> Personel bilgilerini güncelleme (Update - SQLite kalıcı kayıt)
+PATCH  /api/v1/employees/{id|sicil}  -> Personel kısmi güncelleme (Patch - SQLite kalıcı kayıt)
+DELETE /api/v1/employees/{id|sicil}  -> Personel kaydını silme (Delete - SQLite kalıcı kayıt)
+POST   /api/v1/auth/login            -> JWT kimlik doğrulama simülasyonu
+POST   /api/v1/attendance/sync       -> Mobil cihazdaki devam kayıtları ve alarmların toplu aktarımı
+POST   /api/v1/attendance/record     -> Tekil anlık giriş/çıkış bildirimi
             </pre>
         </div>
     </div>
@@ -1000,13 +1011,45 @@ POST /api/v1/attendance/record-> Tekil anlık giriş/çıkış bildirimi
 
 class PdksMockHandler(BaseHTTPRequestHandler):
 
-    def _set_headers(self, status=200, content_type="application/json; charset=utf-8"):
+    def _set_headers(self, status=200, content_type="application/json; charset=utf-8", no_cache=True):
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept")
+        if no_cache:
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Expires", "0")
         self.end_headers()
+
+    def _read_json_body(self):
+        content_length = int(self.headers.get("Content-Length", 0))
+        if content_length <= 0:
+            return {}
+        body_bytes = self.rfile.read(content_length)
+        try:
+            return json.loads(body_bytes.decode("utf-8"))
+        except Exception:
+            return None
+
+    def _serve_static_web_dashboard(self, rel_path):
+        clean_rel = rel_path.lstrip("/").replace("/", os.sep)
+        if not clean_rel:
+            clean_rel = "index.html"
+        full_path = os.path.abspath(os.path.join(WEB_DASHBOARD_DIR, clean_rel))
+        if not full_path.startswith(WEB_DASHBOARD_DIR) or not os.path.isfile(full_path):
+            return False
+        ctype, _ = mimetypes.guess_type(full_path)
+        if not ctype:
+            ctype = "application/octet-stream"
+        if ctype.startswith(("text/", "application/javascript", "application/json")):
+            ctype = f"{ctype}; charset=utf-8"
+        is_media = full_path.endswith((".webp", ".png", ".svg", ".woff2", ".mp3", ".wav"))
+        self._set_headers(200, ctype, no_cache=not is_media)
+        with open(full_path, "rb") as f:
+            self.wfile.write(f.read())
+        return True
 
     def do_OPTIONS(self):
         self._set_headers(200)
@@ -1016,10 +1059,18 @@ class PdksMockHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         now_str = datetime.now().strftime("%H:%M:%S")
-        path = self.path.split("?")[0]
+        parsed_url = urllib.parse.urlparse(self.path)
+        path = parsed_url.path
+        query_params = urllib.parse.parse_qs(parsed_url.query)
 
-        # Web Dashboard veya Health Check
-        if path in ["/", "/dashboard"]:
+        if path == "/dashboard":
+            html = render_dashboard_html()
+            self._set_headers(200, "text/html; charset=utf-8")
+            self.wfile.write(html.encode("utf-8"))
+            print(f"[{now_str}] [SERVER-DASHBOARD] Sunucu kontrol paneli sunuldu -> 200 OK")
+            return
+
+        if path == "/":
             accept = self.headers.get("Accept", "")
             if "application/json" in accept and "text/html" not in accept:
                 self._set_headers(200, "application/json; charset=utf-8")
@@ -1033,11 +1084,12 @@ class PdksMockHandler(BaseHTTPRequestHandler):
                     "geofence_rule": "30 metre"
                 }
                 self.wfile.write(json.dumps(res, ensure_ascii=False).encode("utf-8"))
-            else:
-                html = render_dashboard_html()
-                self._set_headers(200, "text/html; charset=utf-8")
-                self.wfile.write(html.encode("utf-8"))
-            print(f"[{now_str}] [WEB-DASHBOARD] Kontrol paneli sunuldu -> 200 OK")
+                return
+            if self._serve_static_web_dashboard("index.html"):
+                return
+            html = render_dashboard_html()
+            self._set_headers(200, "text/html; charset=utf-8")
+            self.wfile.write(html.encode("utf-8"))
             return
 
         if path in ["/health", "/api/v1/health"]:
@@ -1055,6 +1107,38 @@ class PdksMockHandler(BaseHTTPRequestHandler):
             print(f"[{now_str}] [HEALTH-CHECK] Sağlık kontrolü -> 200 OK")
             return
 
+        # ==================== PERSONEL CRUD: READ (GET) ====================
+        if path in ["/api/v1/employees", "/api/v1/employees/"]:
+            q = (query_params.get("q") or [""])[0]
+            dept = (query_params.get("dept") or ["ALL"])[0]
+            branch = (query_params.get("branch") or ["ALL"])[0]
+            status = (query_params.get("status") or ["ALL"])[0]
+            try:
+                page = int((query_params.get("page") or ["1"])[0])
+            except ValueError:
+                page = 1
+            try:
+                size = int((query_params.get("size") or ["1000"])[0])
+            except ValueError:
+                size = 1000
+            data = employee_crud.list_employees(q=q, dept=dept, branch=branch, status=status, page=page, size=size)
+            self._set_headers(200, "application/json; charset=utf-8")
+            self.wfile.write(json.dumps(data, ensure_ascii=False).encode("utf-8"))
+            print(f"[{now_str}] [CRUD-LIST] Personel listesi döndürüldü ({len(data['items'])}/{data['total']} kayıt) -> 200 OK")
+            return
+
+        if path.startswith("/api/v1/employees/"):
+            ident = urllib.parse.unquote(path[len("/api/v1/employees/"):].strip("/"))
+            emp_obj = employee_crud.get_employee(ident)
+            if not emp_obj:
+                self._set_headers(404, "application/json; charset=utf-8")
+                self.wfile.write(json.dumps({"success": False, "error": f"Personel bulunamadı: {ident}"}, ensure_ascii=False).encode("utf-8"))
+                return
+            self._set_headers(200, "application/json; charset=utf-8")
+            self.wfile.write(json.dumps({"success": True, "employee": emp_obj}, ensure_ascii=False).encode("utf-8"))
+            print(f"[{now_str}] [CRUD-GET] Personel detayı döndürüldü ({emp_obj['sicil']} - {emp_obj['name']}) -> 200 OK")
+            return
+
         if path == "/api/v1/branches":
             self._set_headers(200, "application/json; charset=utf-8")
             with BRANCHES_LOCK:
@@ -1063,7 +1147,6 @@ class PdksMockHandler(BaseHTTPRequestHandler):
             print(f"[{now_str}] [SUBELER] Güncel şube listesi teslim edildi ({len(branches)} şube, 30m Geofence, Ataşehir GM) -> 200 OK")
             return
 
-        # Personel Raporu & Devam Kayıtları API'si (Sunucudan Canlı Rapor)
         if path == "/api/v1/attendance/records" or path.startswith("/api/v1/reports/employee/"):
             emp_id = 1
             if path.startswith("/api/v1/reports/employee/"):
@@ -1072,8 +1155,6 @@ class PdksMockHandler(BaseHTTPRequestHandler):
                 except Exception:
                     emp_id = 1
             else:
-                parsed_url = urllib.parse.urlparse(self.path)
-                query_params = urllib.parse.parse_qs(parsed_url.query)
                 emp_param = query_params.get("employee_id") or query_params.get("employeeId")
                 if emp_param:
                     try:
@@ -1092,6 +1173,9 @@ class PdksMockHandler(BaseHTTPRequestHandler):
             self.end_headers()
             return
 
+        if self._serve_static_web_dashboard(path):
+            return
+
         self._set_headers(404, "application/json; charset=utf-8")
         self.wfile.write(json.dumps({"error": f"Endpoint bulunamadı: {path}"}, ensure_ascii=False).encode("utf-8"))
         print(f"[{now_str}] [GET 404] Tanımsız yol: {path}")
@@ -1099,14 +1183,26 @@ class PdksMockHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         now_str = datetime.now().strftime("%H:%M:%S")
         path = self.path.split("?")[0]
+        body = self._read_json_body()
+        if body is None:
+            self._set_headers(400, "application/json; charset=utf-8")
+            self.wfile.write(json.dumps({"success": False, "error": "Geçersiz JSON veri formatı."}, ensure_ascii=False).encode("utf-8"))
+            return
 
-        content_length = int(self.headers.get("Content-Length", 0))
-        body_bytes = self.rfile.read(content_length) if content_length > 0 else b"{}"
-
-        try:
-            body = json.loads(body_bytes.decode("utf-8"))
-        except Exception:
-            body = {}
+        # ==================== PERSONEL CRUD: CREATE (POST) ====================
+        if path in ["/api/v1/employees", "/api/v1/employees/"]:
+            status_code, res = employee_crud.create_employee(body)
+            self._set_headers(status_code, "application/json; charset=utf-8")
+            self.wfile.write(json.dumps(res, ensure_ascii=False).encode("utf-8"))
+            if status_code == 201:
+                emp_obj = res["employee"]
+                EMPLOYEE_METADATA[emp_obj["id"]] = {
+                    "name": emp_obj["name"],
+                    "branch_id": 1,
+                    "branch_name": emp_obj["branchName"],
+                }
+                print(f"[{now_str}] [CRUD-CREATE] Yeni personel eklendi: {emp_obj['sicil']} - {emp_obj['name']} -> 201 Created")
+            return
 
         if path == "/api/v1/branches/refresh":
             success = scrape_albayrak_branches()
@@ -1125,14 +1221,15 @@ class PdksMockHandler(BaseHTTPRequestHandler):
             dev_id = body.get("device_id", "emulator-device")
             print(f"[{now_str}] [GIRIS TALEBI] Sicil: '{emp_code}' | Cihaz: '{dev_id}'")
 
+            emp_match = employee_crud.get_employee(emp_code) if emp_code else None
             res = {
                 "token": f"atf-jwt-session-{int(time.time())}",
                 "employee": {
-                    "id": 1,
-                    "employee_code": emp_code or "FN-1048",
-                    "full_name": "Ahmet Yılmaz",
-                    "department": "Tasarruf Danışmanlığı",
-                    "title": "Kıdemli Tasarruf Danışmanı",
+                    "id": emp_match["id"] if emp_match else 1,
+                    "employee_code": emp_match["sicil"] if emp_match else (emp_code or "FN-1048"),
+                    "full_name": emp_match["name"] if emp_match else "Ahmet Yılmaz",
+                    "department": emp_match["dept"] if emp_match else "Tasarruf Danışmanlığı",
+                    "title": emp_match["title"] if emp_match else "Kıdemli Tasarruf Danışmanı",
                     "branch_id": 1,
                     "role": "PERSONNEL"
                 },
@@ -1211,10 +1308,57 @@ class PdksMockHandler(BaseHTTPRequestHandler):
         self.wfile.write(json.dumps({"error": f"POST endpoint bulunamadı: {path}"}, ensure_ascii=False).encode("utf-8"))
         print(f"[{now_str}] [POST 404] Tanımsız yol: {path}")
 
+    def _handle_update_employee(self):
+        now_str = datetime.now().strftime("%H:%M:%S")
+        path = self.path.split("?")[0]
+        if not path.startswith("/api/v1/employees/"):
+            self._set_headers(404, "application/json; charset=utf-8")
+            self.wfile.write(json.dumps({"success": False, "error": f"Endpoint bulunamadı: {path}"}, ensure_ascii=False).encode("utf-8"))
+            return
+        body = self._read_json_body()
+        if body is None:
+            self._set_headers(400, "application/json; charset=utf-8")
+            self.wfile.write(json.dumps({"success": False, "error": "Geçersiz JSON veri formatı."}, ensure_ascii=False).encode("utf-8"))
+            return
+        ident = urllib.parse.unquote(path[len("/api/v1/employees/"):].strip("/"))
+        status_code, res = employee_crud.update_employee(ident, body)
+        self._set_headers(status_code, "application/json; charset=utf-8")
+        self.wfile.write(json.dumps(res, ensure_ascii=False).encode("utf-8"))
+        if status_code == 200:
+            emp_obj = res["employee"]
+            EMPLOYEE_METADATA[emp_obj["id"]] = {
+                "name": emp_obj["name"],
+                "branch_id": 1,
+                "branch_name": emp_obj["branchName"],
+            }
+            print(f"[{now_str}] [CRUD-UPDATE] Personel güncellendi: {emp_obj['sicil']} - {emp_obj['name']} -> 200 OK")
+
+    def do_PUT(self):
+        self._handle_update_employee()
+
+    def do_PATCH(self):
+        self._handle_update_employee()
+
+    def do_DELETE(self):
+        now_str = datetime.now().strftime("%H:%M:%S")
+        path = self.path.split("?")[0]
+        if not path.startswith("/api/v1/employees/"):
+            self._set_headers(404, "application/json; charset=utf-8")
+            self.wfile.write(json.dumps({"success": False, "error": f"Endpoint bulunamadı: {path}"}, ensure_ascii=False).encode("utf-8"))
+            return
+        ident = urllib.parse.unquote(path[len("/api/v1/employees/"):].strip("/"))
+        status_code, res = employee_crud.delete_employee(ident)
+        self._set_headers(status_code, "application/json; charset=utf-8")
+        self.wfile.write(json.dumps(res, ensure_ascii=False).encode("utf-8"))
+        if status_code == 200:
+            EMPLOYEE_METADATA.pop(res["deletedId"], None)
+            print(f"[{now_str}] [CRUD-DELETE] Personel silindi: {res['sicil']} (ID={res['deletedId']}) -> 200 OK")
+
 class ThreadingSimpleServer(socketserver.ThreadingMixIn, HTTPServer):
     pass
 
 def run():
+    employee_crud.init_db()
     scheduler_thread = threading.Thread(target=branch_scheduler_worker, daemon=True)
     scheduler_thread.start()
 

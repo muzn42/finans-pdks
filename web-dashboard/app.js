@@ -439,6 +439,12 @@
                 <button type="button" class="btn btn-dark btn-sm" data-act="export-one" data-id="${e.id}">
                     ${ic('file')} Dikey PDKS Karnesi (.xlsx)
                 </button>
+                <button type="button" class="btn btn-soft btn-sm" data-act="emp-edit" data-id="${e.id}">
+                    ${ic('tool')} Bilgileri Düzenle
+                </button>
+                <button type="button" class="btn btn-bad btn-sm" data-act="emp-delete" data-id="${e.id}">
+                    ${ic('x')} Personeli Sil
+                </button>
                 <span class="grow"></span>
                 <button type="button" class="btn btn-ghost btn-sm" data-act="emp-collapse">
                     Detayları kapat
@@ -575,7 +581,7 @@
                 </section>
 
                 <section class="card flush">
-                    ${cardHead('Son İşe Başlayan & Yeni Eklenen Personeller', 'Satıra tıklayarak personelin PDKS profil karnesini açabilirsiniz', `<button class="btn btn-soft btn-sm" data-go="employees">Tüm Liste</button>`)}
+                    ${cardHead('Son İşe Başlayan & Yeni Eklenen Personeller (CRUD)', 'Satıra tıklayarak profil karnesini açabilir, sağdaki butonlarla düzenleyebilir veya silebilirsiniz', `<button class="btn btn-soft btn-sm" data-go="employees">Tüm Liste</button>`)}
                     <div class="list" style="margin-top:4px">
                         ${newHires.map(e => `<div class="list-item clickable" data-act="emp-open" data-id="${e.id}" tabindex="0" role="button">
                             ${avatar(e)}
@@ -584,8 +590,10 @@
                                 <small><span class="mono">${esc(e.sicil)}</span> · ${esc(e.title)} · ${esc(e.dept)}</small>
                                 <small class="muted" style="display:block">${esc(brName(e.branch))} ${e.startDate ? '· Başlangıç: ' + esc(e.startDate) : ''}</small>
                             </div>
-                            <div style="text-align:right">
+                            <div class="row-acts" onclick="event.stopPropagation()">
                                 ${pill(STATUS[e.status][0], STATUS[e.status][1])}
+                                <button type="button" class="btn btn-soft btn-sm" data-act="emp-edit" data-id="${e.id}" title="Bilgileri düzenle">${ic('tool')}Düzenle</button>
+                                <button type="button" class="btn btn-bad btn-sm" data-act="emp-delete" data-id="${e.id}" title="Personeli sil">${ic('x')}Sil</button>
                             </div>
                         </div>`).join('')}
                     </div>
@@ -917,6 +925,8 @@
                 </div>
                 <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
                     <span class="muted" style="font-size:12px;display:inline-flex;align-items:center;gap:6px">${ic('expand')} Kutuların sağ üstündeki büyütme ikonuna tıklayarak grafikleri büyütebilirsiniz</span>
+                    <button type="button" class="btn btn-soft btn-sm" data-act="emp-edit" data-id="${e.id}">${ic('tool')} Bilgileri Düzenle</button>
+                    <button type="button" class="btn btn-bad btn-sm" data-act="emp-delete" data-id="${e.id}">${ic('x')} Personeli Sil</button>
                     <button type="button" class="dnd-hint" data-act="dnd-reset">${ic('refresh')} Düzeni Sıfırla</button>
                     ${dlBtn('export-one', e.name + ' · Dikey PDKS Karnesi (.xlsx)', { cls: 'btn-primary btn-sm', id: e.id })}
                 </div>
@@ -2577,12 +2587,102 @@
                 email: (u.email || '').trim(),
                 startDate: u.startDate,
                 status: u.status
-            });
+            }, () => draw(false));
             audit('Yeni personel işe giriş kaydı oluşturuldu (' + created.name + ')', created.sicil, 'HR');
             u.name = '';
             u.email = '';
             A.toast(created.name + ' (' + created.sicil + ') PDKS sistemine eklendi');
             draw(false);
+        },
+        'emp-edit': el => {
+            const e = emp(+el.dataset.id);
+            if (!e) return;
+            const corpEmail = e.email || (e.name.toLocaleLowerCase('tr-TR')
+                .replace(/ğ/g, 'g').replace(/ü/g, 'u').replace(/ş/g, 's')
+                .replace(/ı/g, 'i').replace(/ö/g, 'o').replace(/ç/g, 'c')
+                .replace(/[^a-z0-9]+/g, '.') + '@albayrakfinans.com.tr');
+            const startDateVal = (e.startDate && /^\d{4}-\d{2}-\d{2}$/.test(e.startDate)) ? e.startDate : '2026-10-20';
+            openModal(
+                'Personel Bilgilerini Düzenle · ' + e.sicil,
+                `<form class="form-grid" id="empEditForm" onsubmit="return false" novalidate>
+                    <div class="grid g-2">
+                        <label class="field"><span>Ad Soyad *</span><div class="input"><input id="editEmpName" value="${esc(e.name)}" maxlength="80" required></div></label>
+                        <label class="field"><span>Sicil No (Sabit)</span><div class="input" style="background:var(--surface-2)"><input value="${esc(e.sicil)}" readonly class="mono"></div></label>
+                    </div>
+                    <div class="grid g-2">
+                        <label class="field"><span>Departman / Birim</span><div class="select" style="width:100%"><select id="editEmpDept" style="width:100%;max-width:none">${D.DEPTS.map(d => `<option value="${esc(d)}"${d === e.dept ? ' selected' : ''}>${esc(d)}</option>`).join('')}</select></div></label>
+                        <label class="field"><span>Ünvan / Görev</span><div class="select" style="width:100%"><select id="editEmpTitle" style="width:100%;max-width:none">${(D.TITLES || ['Finans Uzmanı', 'Müşteri Temsilcisi', 'Operasyon Uzmanı', 'Takım Lideri', 'Uzman Yardımcısı', 'Şube Müdür Yrd.', 'Analist']).map(t => `<option value="${esc(t)}"${t === e.title ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></div></label>
+                    </div>
+                    <div class="grid g-2">
+                        <label class="field"><span>Atandığı Şube (30m Geofence)</span><div class="select" style="width:100%"><select id="editEmpBranch" style="width:100%;max-width:none">${D.BRANCHES.map(b => `<option value="${esc(b.code)}"${b.code === e.branch ? ' selected' : ''}>${esc(b.name)} (${esc(b.city)})</option>`).join('')}</select></div></label>
+                        <label class="field"><span>Güncel Yoklama Durumu</span><div class="select" style="width:100%"><select id="editEmpStatus" style="width:100%;max-width:none">
+                            <option value="PRESENT"${e.status === 'PRESENT' ? ' selected' : ''}>Ofiste (Zamanında)</option>
+                            <option value="LATE"${e.status === 'LATE' ? ' selected' : ''}>Geç Kaldı</option>
+                            <option value="LEAVE"${e.status === 'LEAVE' ? ' selected' : ''}>İzinli / Raporlu</option>
+                            <option value="ABSENT"${e.status === 'ABSENT' ? ' selected' : ''}>Devamsız</option>
+                        </select></div></label>
+                    </div>
+                    <div class="grid g-2">
+                        <label class="field"><span>Kurumsal E-posta</span><div class="input"><input id="editEmpEmail" type="email" value="${esc(corpEmail)}"></div></label>
+                        <label class="field"><span>İşe Başlama Tarihi</span><div class="input"><input id="editEmpStart" type="date" value="${esc(startDateVal)}"></div></label>
+                    </div>
+                    <p class="form-error" id="editEmpErr" hidden></p>
+                </form>`,
+                `<button class="btn btn-soft" data-act="modal-close">Vazgeç</button><button class="btn btn-primary" data-act="emp-edit-save" data-id="${e.id}">${ic('check')} Değişiklikleri Kaydet</button>`
+            );
+        },
+        'emp-edit-save': el => {
+            const id = +el.dataset.id;
+            const e = emp(id);
+            if (!e) return;
+            const name = ($('#editEmpName').value || '').trim();
+            const dept = $('#editEmpDept').value;
+            const title = $('#editEmpTitle').value;
+            const branch = $('#editEmpBranch').value;
+            const status = $('#editEmpStatus').value;
+            const email = ($('#editEmpEmail').value || '').trim();
+            const startDate = ($('#editEmpStart').value || '').trim();
+            const err = $('#editEmpErr');
+            if (name.length < 3 || !name.includes(' ')) {
+                err.textContent = 'Personel ad ve soyadı en az 3 karakter olmalı ve boşluk içermelidir.';
+                err.hidden = false;
+                return;
+            }
+            const updated = D.updateEmployee(id, { name, dept, title, branch, status, email, startDate }, () => draw(false));
+            if (updated) {
+                audit('Personel bilgileri güncellendi (' + updated.name + ')', updated.sicil, 'HR');
+                closeModal();
+                A.toast(updated.name + ' (' + updated.sicil + ') bilgileri güncellendi');
+                draw(false);
+            }
+        },
+        'emp-delete': el => {
+            const e = emp(+el.dataset.id);
+            if (!e) return;
+            openModal(
+                'Personel Kaydını Sil · ' + e.sicil,
+                `<p><b>${esc(e.name)}</b> (<span class="mono">${esc(e.sicil)}</span> · ${esc(e.dept)}) personelini PDKS veritabanından kalıcı olarak silmek istediğinize emin misiniz?</p>
+                <p class="muted" style="font-size:12.5px">Bu işlem personelin aktif kadro kaydını ve cihaz eşlemesini kaldırır ve denetim günlüğüne (Audit Log) kaydedilir.</p>`,
+                `<button class="btn btn-soft" data-act="modal-close">Vazgeç</button><button class="btn btn-bad" data-act="emp-delete-confirm" data-id="${e.id}">${ic('x')} Evet, Personeli Sil</button>`
+            );
+        },
+        'emp-delete-confirm': el => {
+            const id = +el.dataset.id;
+            const e = emp(id);
+            if (!e) return;
+            const removed = D.deleteEmployee(id, () => draw(false));
+            if (removed) {
+                audit('Personel PDKS kaydı silindi (' + removed.name + ')', removed.sicil, 'HR');
+                if (S.ui.emp.openId === id) S.ui.emp.openId = null;
+                closeModal();
+                A.toast(removed.name + ' (' + removed.sicil + ') kaydı silindi');
+                if (S.page === 'profile' && S.openEmpId === id) {
+                    S.openEmpId = D.EMPLOYEES[0] ? D.EMPLOYEES[0].id : null;
+                    go('employees');
+                } else {
+                    draw(false);
+                }
+            }
         },
         'adm-role-pick': el => {
             const r = el.dataset.v;
@@ -2791,6 +2891,9 @@
     function init() {
         A.hydrate(document); $('#authLogo').innerHTML = A.LOGO; $('#sideLogo').innerHTML = A.LOGO; $('#authLogo').style.color = '#fff'; $('#sideLogo').style.color = 'var(--charcoal)';
         syncTheme();
+        if (D.syncEmployeesFromBackend) {
+            D.syncEmployeesFromBackend(() => { if (S.user) draw(false); });
+        }
         $('#themeBtn').onclick = () => { const t = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'; localStorage.setItem('atf_theme', t); syncTheme(); if (S.user) draw(false); };
 
         $('#portalSeg').addEventListener('click', e => { const b = e.target.closest('.seg-btn'); if (!b) return; $$('#portalSeg .seg-btn').forEach(x => { x.classList.toggle('is-active', x === b); x.setAttribute('aria-selected', x === b); }); S.portal = b.dataset.portal; A.placeSeg($('#portalSeg')); $('#loginError').hidden = true; });
