@@ -2,6 +2,8 @@
 .gradle
 .kotlin
 /local.properties
+/.idea/
+/gradle/gradle-daemon-jvm.properties
 /.idea/caches
 /.idea/libraries
 /.idea/modules.xml
