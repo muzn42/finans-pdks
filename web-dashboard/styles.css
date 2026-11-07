@@ -1083,28 +1083,93 @@ tr.detail-row > td {
    ========================================================================= */
 .profile-screen { display: grid; gap: 16px; }
 
-.profile-hero {
-    display: grid; gap: 18px;
-}
-.profile-hero-in {
+.profile-banner {
     display: flex; align-items: center; justify-content: space-between;
-    gap: 18px; flex-wrap: wrap; padding-bottom: 16px; border-bottom: 1px solid var(--line);
+    gap: 20px; flex-wrap: wrap; padding: 20px 24px;
 }
 .profile-hero-id {
-    display: flex; align-items: center; gap: 16px; min-width: 0; flex: 1 1 320px;
+    display: flex; align-items: center; gap: 16px; min-width: 0; flex: 1 1 360px;
 }
-.profile-hero .avatar.lg { width: 64px; height: 64px; font-size: 20px; flex: none; }
+.profile-banner .avatar.lg { width: 60px; height: 60px; font-size: 19px; flex: none; }
 .profile-hero-txt { min-width: 0; flex: 1; }
 .profile-hero-txt h2 {
-    font-size: 21px; font-weight: 800;
+    font-size: 20px; font-weight: 800;
     letter-spacing: -.02em; line-height: 1.2; color: var(--ink);
 }
 .profile-hero-txt p {
-    font-size: 13px; color: var(--ink-2); margin-top: 3px; font-weight: 500;
+    font-size: 13px; color: var(--ink-2); margin-top: 4px; font-weight: 500;
 }
 .profile-hero-txt .mono { font-size: 12.5px; color: var(--muted); font-weight: 600; }
-.profile-hero-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 9px; align-items: center; }
+.profile-hero-tags { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 10px; align-items: center; }
 .profile-hero-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+/* 3 Bağımsız Yönetici Özet Kartı (Kutu içinde kutu olmadan, ferah hiyerarşi) */
+.profile-exec-card {
+    display: flex; flex-direction: column; justify-content: space-between; gap: 12px;
+}
+.profile-exec-val {
+    font-size: 22px; font-weight: 800; letter-spacing: -.02em; color: var(--ink);
+    font-variant-numeric: tabular-nums; line-height: 1.2;
+}
+.profile-exec-val.ok { color: var(--ok); }
+.profile-exec-val.warn { color: var(--warn); }
+.profile-exec-val.bad { color: var(--bad); }
+.profile-exec-rows {
+    display: grid; gap: 6px; padding-top: 10px; border-top: 1px solid var(--line-2);
+    font-size: 12.5px;
+}
+.profile-exec-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+}
+.profile-exec-row span { color: var(--muted); font-weight: 500; }
+.profile-exec-row b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
+
+/* Küçük KPI kutularında metin ve sparkline üst üste binmesini önle */
+.kpi-foot {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    min-width: 0;
+}
+.kpi-foot > span {
+    min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.kpi-foot .spark { flex: none; transition: transform .2s var(--ease); }
+.kpi-foot .spark:hover { transform: scale(1.06); }
+
+/* Küçük kutular büyütüldüğünde (.span-wide) açılan interaktif grafik paneli */
+.card.kpi.span-wide .kpi-foot .spark { display: none; }
+.card.kpi.span-wide .kpi-foot > span { white-space: normal; }
+.kpi-expanded-panel {
+    margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line-2);
+    display: grid; gap: 12px; animation: detailIn .32s var(--ease) both;
+}
+.kpi-exp-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;
+}
+.kpi-exp-head b { display: block; font-size: 13.5px; font-weight: 700; color: var(--ink); }
+.kpi-exp-head small { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.kpi-exp-stats { display: flex; gap: 8px; flex-wrap: wrap; }
+.kpi-exp-stat {
+    padding: 6px 11px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--line-2);
+    display: flex; flex-direction: column; gap: 1px; min-width: 88px;
+}
+.kpi-exp-stat small { font-size: 10.5px; color: var(--muted); font-weight: 600; }
+.kpi-exp-stat b { font-size: 13px; font-weight: 700; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.kpi-exp-chart { min-height: 195px; position: relative; }
+
+/* Mevcut grafik kartları büyütüldüğünde (.span-wide) içindeki grafik de büyüsün */
+.card.span-wide .chart svg { max-height: 310px; }
+.card.span-wide .donut-wrap { gap: 28px; }
+
+/* Sıralanabilir tablo sütun başlıkları (th.th-sort) */
+th.th-sort {
+    cursor: pointer; user-select: none; transition: color .15s, background-color .15s;
+}
+th.th-sort:hover { color: var(--red); background: var(--surface-2); }
+th.th-sort.is-sorted { color: var(--red); font-weight: 700; }
+th.th-sort .sort-ind {
+    display: inline-block; margin-left: 4px; font-size: 10px; opacity: .45;
+}
+th.th-sort.is-sorted .sort-ind { opacity: 1; color: var(--red); }
 
 /* Excel'deki 2 Sütunlu Sicil ve Tahakkuk Cetveli ile Birebir Uyumlu Anahtar-Değer Tablosu */
 .pdks-kv-table {
@@ -1117,7 +1182,7 @@ tr.detail-row > td {
 .pdks-kv-table tr:last-child { border-bottom: 0; }
 .pdks-kv-table tr:hover { background: var(--surface-2); }
 .pdks-kv-table th {
-    width: 38%; padding: 10px 18px; text-align: left;
+    width: 24%; padding: 10px 16px; text-align: left;
     font-family: var(--font); font-size: 12px; font-weight: 600;
     text-transform: none; letter-spacing: 0;
     color: var(--ink-2); background: var(--surface-2);
@@ -1125,15 +1190,16 @@ tr.detail-row > td {
     white-space: nowrap;
 }
 .pdks-kv-table td {
-    padding: 10px 18px; font-size: 13px; font-weight: 600;
+    width: 26%; padding: 10px 16px; font-size: 12.5px; font-weight: 600;
     color: var(--ink); white-space: normal; line-height: 1.4;
-    border-bottom: 0;
+    border-right: 1px solid var(--line-2); border-bottom: 0;
 }
+.pdks-kv-table td:last-child { border-right: 0; }
 .pdks-kv-table td b { font-weight: 700; }
 .pdks-kv-table td.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 12.5px; }
 
 @media (max-width: 760px) {
-    .profile-hero .avatar.lg { width: 52px; height: 52px; font-size: 17px; }
+    .profile-banner .avatar.lg { width: 52px; height: 52px; font-size: 17px; }
     .profile-hero-txt h2 { font-size: 18px; }
     .profile-hero-actions { width: 100%; }
     .pdks-kv-table th, .pdks-kv-table td { padding: 9px 12px; font-size: 12px; }

@@ -174,22 +174,22 @@
         if (!host) return;
         const W = 640, H = o.h || 250, L = 40, R = 10, T = 14, B = 26, iw = W - L - R, ih = H - T - B, ticks = 4;
         const all = o.series.flatMap(s => s.data), n = o.labels.length;
-        const yMin = o.yMin != null ? o.yMin : 0;
-        const step = niceStep(((o.yMax != null ? o.yMax : Math.max(...all)) - yMin) / ticks);
+        const yMin = o.yMin != null ? o.yMin : Math.min(0, ...all);
+        const step = niceStep(((o.yMax != null ? o.yMax : Math.max(...all, yMin + 1)) - yMin) / ticks);
         const max = yMin + step * ticks;
         const x = i => L + (n === 1 ? iw / 2 : i * iw / (n - 1));
-        const y = v => T + ih - ((v - yMin) / (max - yMin)) * ih;
-        const id = 'ag' + (++uid), yf = o.yFmt || (v => v);
-        let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${ATF.esc(o.aria || 'Grafik')}"><defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#E31E24" stop-opacity=".22"/><stop offset="1" stop-color="#E31E24" stop-opacity="0"/></linearGradient></defs>`;
+        const y = v => T + ih - ((v - yMin) / ((max - yMin) || 1)) * ih;
+        const id = 'ag' + (++uid), yf = o.yFmt || (v => v), col = o.color || '#E31E24';
+        let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${ATF.esc(o.aria || 'Grafik')}"><defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${col}" stop-opacity=".22"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></linearGradient></defs>`;
         for (let t = 0; t <= ticks; t++) { const v = yMin + step * t, yy = y(v); s += `<line class="grid-line" x1="${L}" x2="${W - R}" y1="${yy}" y2="${yy}"/><text class="ax" x="${L - 8}" y="${yy + 4}" text-anchor="end">${yf(+v.toFixed(2))}</text>`; }
         const every = Math.ceil(n / 8);
         o.labels.forEach((l, i) => { if (i % every === 0 || i === n - 1) s += `<text class="ax" x="${x(i)}" y="${H - 6}" text-anchor="${i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle'}">${ATF.esc(l)}</text>`; });
         o.series.forEach((se, k) => {
             const pts = se.data.map((v, i) => [x(i), y(v)]), d = smooth(pts, T, T + ih);
             if (k === 0) s += `<path class="fade" d="${d} L${x(n - 1)},${T + ih} L${x(0)},${T + ih} Z" fill="url(#${id})"/>`;
-            s += `<path class="area-line draw${k ? ' alt' : ''}" d="${d}"/>`;
+            s += `<path class="area-line draw${k ? ' alt' : ''}" d="${d}"${k === 0 && o.color ? ` style="stroke:${col}"` : ''}/>`;
         });
-        s += `<line class="hover-line" y1="${T}" y2="${T + ih}"/><circle class="hover-dot" r="5"/><rect class="hit" x="${L}" y="0" width="${iw}" height="${H}" fill="transparent"/></svg>`;
+        s += `<line class="hover-line" y1="${T}" y2="${T + ih}"/><circle class="hover-dot" r="5"${o.color ? ` style="stroke:${col}"` : ''}/><rect class="hit" x="${L}" y="0" width="${iw}" height="${H}" fill="transparent"/></svg>`;
         host.classList.add('chart'); host.innerHTML = s;
         const svg = host.querySelector('svg'), dot = svg.querySelector('.hover-dot'), line = svg.querySelector('.hover-line'), tip = tipBox(host);
         svg.querySelectorAll('.draw').forEach(p => p.style.setProperty('--len', Math.ceil(typeof p.getTotalLength === 'function' ? p.getTotalLength() : 640)));
@@ -262,9 +262,99 @@
     };
 
     ATF.spark = function (vals, color) {
-        const W = 84, H = 30, mx = Math.max(...vals), mn = Math.min(...vals), rg = (mx - mn) || 1;
-        const pts = vals.map((v, i) => [i * W / (vals.length - 1), H - 3 - ((v - mn) / rg) * (H - 6)]);
-        return `<svg class="spark" viewBox="0 0 ${W} ${H}"><path d="${smooth(pts, 0, H)}" fill="none" stroke="${color || '#E31E24'}" stroke-width="2" stroke-linecap="round"/></svg>`;
+        const clean = (vals && vals.length ? vals : [0, 1]).map(v => Number.isFinite(+v) ? +(+v).toFixed(2) : 0);
+        const W = 84, H = 30, mx = Math.max(...clean), mn = Math.min(...clean), rg = (mx - mn) || 1;
+        const pts = clean.map((v, i) => [i * W / Math.max(1, clean.length - 1), H - 3 - ((v - mn) / rg) * (H - 6)]);
+        const col = color || '#E31E24';
+        return `<svg class="spark" data-vals="${clean.join(',')}" data-color="${ATF.esc(col)}" viewBox="0 0 ${W} ${H}"><path d="${smooth(pts, 0, H)}" fill="none" stroke="${col}" stroke-width="2" stroke-linecap="round"/></svg>`;
+    };
+
+    /**
+     * Küçük kutular (KPI veya mini kartlar) büyütüldüğünde (.span-wide),
+     * içindeki mini sparkline grafiğini tam genişlikli, eksenli, referans çizgili ve
+     * fareyle üzerine gelindiğinde (hover) detaylı veri kutucuğu (tooltip) gösteren
+     * interaktif bir alan grafiğine dönüştürür; küçültüldüğünde eski haline döndürür.
+     */
+    ATF.syncCardExpansion = function (card) {
+        if (!card) return;
+        const isWide = card.classList.contains('span-wide');
+        const existing = card.querySelector('.kpi-expanded-panel');
+        if (!card.classList.contains('kpi')) return;
+
+        if (!isWide) {
+            if (existing) existing.remove();
+            return;
+        }
+        if (existing) return;
+
+        const spk = card.querySelector('.spark[data-vals]');
+        const countEl = card.querySelector('[data-count]');
+        const baseVal = countEl ? (+countEl.dataset.count || 0) : 0;
+        let rawVals = spk
+            ? spk.dataset.vals.split(',').map(Number).filter(Number.isFinite)
+            : [];
+        if (rawVals.length < 2) {
+            // Sparkline olmayan KPI kutuları için son 14 iş günü etrafında deterministik seri üret
+            rawVals = Array.from({ length: 14 }, (_, i) => +(baseVal * (0.92 + Math.sin(i * 0.9) * 0.06 + (i / 14) * 0.04)).toFixed(1));
+        }
+
+        // Eğer değerler 0..1 arası oran ise (örn. HR.overview katılım/gecikme oranı), yüzdeye çevir
+        const maxAbs = Math.max(...rawVals.map(Math.abs));
+        const unitEl = card.querySelector('.kpi-val small');
+        const unitTxt = unitEl ? unitEl.textContent.trim() : '';
+        const isFractionRatio = maxAbs <= 1 && baseVal > 1.5;
+        const vals = isFractionRatio ? rawVals.map(v => +(v * 100).toFixed(1)) : rawVals;
+
+        const col = (spk && spk.dataset.color) || '#E31E24';
+        const titleTxt = (card.querySelector('.kpi-label') && card.querySelector('.kpi-label').textContent.trim()) || 'Gösterge';
+        const days = (g.ATF && g.ATF.DATA && Array.isArray(g.ATF.DATA.DAYS)) ? g.ATF.DATA.DAYS.slice(-vals.length) : [];
+        const labels = vals.map((_, i) => days[i] ? days[i].label : ('G-' + (vals.length - i)));
+        const fullDates = vals.map((_, i) => days[i] ? `${days[i].fullDate} (${days[i].dowName})` : ('Gün ' + (i + 1)));
+
+        const minV = +Math.min(...vals).toFixed(1);
+        const maxV = +Math.max(...vals).toFixed(1);
+        const avgV = +(vals.reduce((a, b) => a + b, 0) / (vals.length || 1)).toFixed(1);
+        const lastV = +vals[vals.length - 1].toFixed(1);
+        const fmtV = v => String(+Number(v).toFixed(1)).replace('.', ',') + (isFractionRatio ? '%' : (unitTxt ? ' ' + unitTxt : ''));
+
+        const panel = document.createElement('div');
+        panel.className = 'kpi-expanded-panel';
+        panel.innerHTML = `
+            <div class="kpi-exp-head">
+                <div>
+                    <b>${ATF.esc(titleTxt)} — İnteraktif Dönem Trendi ve Sapma Analizi</b>
+                    <small class="muted">Grafik üzerinde gezinerek gün bazlı değerleri ve dönem ortalamasıyla (${ATF.esc(fmtV(avgV))}) farkını inceleyebilirsiniz</small>
+                </div>
+                <div class="kpi-exp-stats">
+                    <span class="kpi-exp-stat"><small>En Düşük</small><b>${ATF.esc(fmtV(minV))}</b></span>
+                    <span class="kpi-exp-stat"><small>Dönem Ort.</small><b>${ATF.esc(fmtV(avgV))}</b></span>
+                    <span class="kpi-exp-stat"><small>En Yüksek</small><b>${ATF.esc(fmtV(maxV))}</b></span>
+                    <span class="kpi-exp-stat"><small>Son Kayıt</small><b style="color:${ATF.esc(col)}">${ATF.esc(fmtV(lastV))}</b></span>
+                </div>
+            </div>
+            <div class="kpi-exp-chart"></div>
+        `;
+        card.appendChild(panel);
+
+        const chartHost = panel.querySelector('.kpi-exp-chart');
+        const padRange = Math.max(1, (maxV - minV) * 0.2);
+        ATF.areaChart(chartHost, {
+            labels,
+            series: [
+                { data: vals },
+                { data: vals.map(() => avgV) }
+            ],
+            yMin: minV >= 0 ? Math.max(0, Math.floor(minV - padRange)) : Math.floor(minV - padRange),
+            yMax: Math.ceil(maxV + padRange),
+            h: 195,
+            color: col,
+            yFmt: v => fmtV(v),
+            tip: (i, sv) => {
+                const diff = +(sv[0] - avgV).toFixed(1);
+                const diffStr = (diff > 0 ? '+' : '') + String(diff).replace('.', ',');
+                return `<b>${ATF.esc(fullDates[i])}</b>Değer: <b>${ATF.esc(fmtV(sv[0]))}</b> · Ort: ${ATF.esc(fmtV(avgV))} (${diffStr})`;
+            }
+        });
     };
 
     /* ---------- Segment kontrol göstergesi ---------- */
@@ -325,22 +415,38 @@
             cards.forEach((card, ci) => {
                 if (!card.dataset.wid) card.dataset.wid = gKey + '-w' + ci;
                 const wid = card.dataset.wid;
-                if (saved.spans && saved.spans[wid]) card.classList.add('span-wide');
+                if (saved.spans && saved.spans[wid]) {
+                    card.classList.add('span-wide');
+                    ATF.syncCardExpansion(card);
+                }
 
                 // Sürükleme tutamacı ve genişletme butonu ekle
                 if (!card.querySelector('.dnd-bar')) {
                     const bar = document.createElement('div');
                     bar.className = 'dnd-bar';
                     bar.innerHTML = `
-                        <button type="button" class="dnd-btn dnd-span" title="Kart genişliğini değiştir" aria-label="Boyutlandır">${ATF.ic('expand')}</button>
+                        <button type="button" class="dnd-btn dnd-span" title="Kartı büyüt / interaktif grafiği aç" aria-label="Boyutlandır">${ATF.ic('expand')}</button>
                         <span class="dnd-handle" title="Sürükleyip yerini değiştirin">${ATF.ic('grip')}</span>
                     `;
                     card.appendChild(bar);
                     bar.querySelector('.dnd-span').addEventListener('click', e => {
                         e.stopPropagation();
                         card.classList.toggle('span-wide');
+                        ATF.syncCardExpansion(card);
                         saveState();
-                        ATF.toast(card.classList.contains('span-wide') ? 'Kart genişletildi' : 'Kart varsayılan boyuta döndü');
+                        ATF.toast(card.classList.contains('span-wide') ? 'Kart büyütüldü · İnteraktif grafik aktif' : 'Kart varsayılan boyuta döndü');
+                    });
+                }
+                const spk = card.querySelector('.spark');
+                if (spk && !spk.__expBound) {
+                    spk.__expBound = true;
+                    spk.style.cursor = 'zoom-in';
+                    spk.setAttribute('title', 'Büyütmek ve interaktif grafiği açmak için tıklayın');
+                    spk.addEventListener('click', e => {
+                        e.stopPropagation();
+                        card.classList.toggle('span-wide');
+                        ATF.syncCardExpansion(card);
+                        saveState();
                     });
                 }
                 card.setAttribute('draggable', 'true');
