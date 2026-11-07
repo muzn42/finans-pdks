@@ -185,6 +185,9 @@ fun LoginScreen(viewModel: MainViewModel) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = 10.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
@@ -194,18 +197,22 @@ fun LoginScreen(viewModel: MainViewModel) {
                                 modifier = Modifier.size(38.dp)
                             )
 
-                            Column {
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = "Albayrak Finans",
                                     color = Color.White,
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.Bold,
-                                    letterSpacing = (-0.3).sp
+                                    letterSpacing = (-0.3).sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
-                                    text = "Mobil Personel Yoklama & Kariyer Portalı",
-                                    color = Color.White.copy(alpha = 0.60f),
-                                    fontSize = 11.sp
+                                    text = "Mobil Personel Yoklama Portalı",
+                                    color = Color.White.copy(alpha = 0.65f),
+                                    fontSize = 11.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
@@ -226,10 +233,12 @@ fun LoginScreen(viewModel: MainViewModel) {
                                     .background(StatusOk)
                             )
                             Text(
-                                text = "${branches.size.coerceAtLeast(54)} Şube · 30m Harita",
+                                text = "${branches.size.coerceAtLeast(54)} Şube · 30m",
                                 color = Color.White.copy(alpha = 0.90f),
                                 fontSize = 10.sp,
-                                fontWeight = FontWeight.SemiBold
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
                     }
@@ -284,9 +293,13 @@ fun LoginScreen(viewModel: MainViewModel) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalAlignment = Alignment.Top
                         ) {
-                            Column {
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(end = 10.dp)
+                            ) {
                                 Text(
                                     text = "Personel Girişi",
                                     color = InkPrimary,
@@ -294,23 +307,27 @@ fun LoginScreen(viewModel: MainViewModel) {
                                     fontWeight = FontWeight.Bold,
                                     letterSpacing = (-0.4).sp
                                 )
+                                Spacer(modifier = Modifier.height(2.dp))
                                 Text(
                                     text = "Kurumsal sicil numaranız veya e-postanız ile oturum açın",
                                     color = InkMuted,
-                                    fontSize = 11.5.sp
+                                    fontSize = 11.5.sp,
+                                    lineHeight = 15.sp
                                 )
                             }
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(8.dp))
                                     .background(AlbayrakRedLight)
-                                    .padding(horizontal = 9.dp, vertical = 4.dp)
+                                    .padding(horizontal = 9.dp, vertical = 5.dp)
                             ) {
                                 Text(
                                     text = "Sadece Personel",
                                     color = AlbayrakRed,
                                     fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    softWrap = false
                                 )
                             }
                         }
@@ -541,19 +558,27 @@ fun LoginScreen(viewModel: MainViewModel) {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Column {
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(end = 10.dp)
+                                ) {
                                     Text(
                                         text = "Personel Olarak Giriş Yap",
                                         color = Color.White,
                                         fontSize = 14.sp,
                                         fontWeight = FontWeight.Bold,
-                                        letterSpacing = (-0.2).sp
+                                        letterSpacing = (-0.2).sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
                                         text = "Sicil: $username · 30m Harita & Yoklama",
                                         color = Color.White.copy(alpha = 0.65f),
                                         fontSize = 10.sp,
-                                        fontFamily = FontFamily.Monospace
+                                        fontFamily = FontFamily.Monospace,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
 
@@ -685,7 +710,12 @@ private fun MinimalLoginField(
                 text = label,
                 color = InkSecondary,
                 fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(end = 8.dp),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
             if (headerRightText != null && onHeaderRightClick != null) {
                 Text(
@@ -693,6 +723,8 @@ private fun MinimalLoginField(
                     color = AlbayrakRed,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    softWrap = false,
                     modifier = Modifier
                         .clip(RoundedCornerShape(4.dp))
                         .clickable { onHeaderRightClick() }

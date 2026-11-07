@@ -223,12 +223,18 @@ fun PersonnelScreen(viewModel: MainViewModel) {
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = 8.dp)
+                        ) {
                             Text(
                                 text = dateFormatter.format(Date(currentTimeMillis)),
                                 color = InkMuted,
                                 fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                             Spacer(modifier = Modifier.height(3.dp))
                             MinimalStatusBadge(
@@ -1136,52 +1142,58 @@ private fun BranchAndUserLiveMapCard(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Başlık + Şube Değiştir Butonu
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Şube Haritası & Canlı Konumum",
-                        color = InkPrimary,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "Şubenin haritadaki yeri, açık adresi ve sizin şubeye mesafeniz",
-                        color = InkMuted,
-                        fontSize = 11.sp
-                    )
-                }
-
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(AlbayrakRedLight)
-                        .clickable { onOpenBranchSelector() }
-                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                // Başlık + Şube Değiştir Butonu
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(end = 10.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.SwapHoriz,
-                            contentDescription = "Şube Seç",
-                            tint = AlbayrakRed,
-                            modifier = Modifier.size(14.dp)
-                        )
                         Text(
-                            text = "Şube Seç ($totalBranchCount)",
-                            color = AlbayrakRed,
-                            fontSize = 11.sp,
+                            text = "Şube Haritası & Canlı Konumum",
+                            color = InkPrimary,
+                            fontSize = 15.sp,
                             fontWeight = FontWeight.Bold
                         )
+                        Text(
+                            text = "Şubenin haritadaki yeri, açık adresi ve sizin şubeye mesafeniz",
+                            color = InkMuted,
+                            fontSize = 11.sp
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(AlbayrakRedLight)
+                            .clickable { onOpenBranchSelector() }
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.SwapHoriz,
+                                contentDescription = "Şube Seç",
+                                tint = AlbayrakRed,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                text = "Şube Seç ($totalBranchCount)",
+                                color = AlbayrakRed,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
                     }
                 }
-            }
 
             // Seçili Şube Açık Adres & İletişim Kutusu
             if (branch != null) {
@@ -1241,14 +1253,21 @@ private fun BranchAndUserLiveMapCard(
                             text = "Tel: ${branch.phone} · Wi-Fi: ${branch.wifiSsid}",
                             color = InkMuted,
                             fontSize = 10.5.sp,
-                            fontFamily = FontFamily.Monospace
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = 8.dp),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Text(
                             text = String.format(Locale.US, "%.4f, %.4f", branch.latitude, branch.longitude),
                             color = InkPrimary,
                             fontSize = 10.5.sp,
                             fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.SemiBold
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }
@@ -1464,6 +1483,7 @@ private fun BranchAndUserLiveMapCard(
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .padding(10.dp)
+                        .widthIn(max = 235.dp)
                         .clip(RoundedCornerShape(9.dp))
                         .background(AlbayrakDarkSurface.copy(alpha = 0.86f))
                         .padding(horizontal = 10.dp, vertical = 7.dp),
@@ -1569,7 +1589,12 @@ private fun BranchAndUserLiveMapCard(
                         ),
                         color = Color.White.copy(alpha = 0.85f),
                         fontSize = 10.sp,
-                        fontFamily = FontFamily.Monospace
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(end = 8.dp),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
 
                     if (branch != null) {
@@ -1589,10 +1614,12 @@ private fun BranchAndUserLiveMapCard(
                                 modifier = Modifier.size(12.dp)
                             )
                             Text(
-                                text = "Google Haritalar'da Yol Tarifi Aç",
+                                text = "Google Haritalar'da Aç",
                                 color = Color.White,
                                 fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
                     }
@@ -1610,14 +1637,21 @@ private fun BranchAndUserLiveMapCard(
                         text = "Harita Üzerinde Konum & Mesafe Testi",
                         color = InkSecondary,
                         fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(end = 8.dp),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         text = String.format(Locale.US, "%.1f metre", distanceMeters),
                         color = if (isWithinRadius) StatusOk else StatusBad,
                         fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
 
@@ -1638,23 +1672,27 @@ private fun BranchAndUserLiveMapCard(
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     SmallSimChip(
-                        label = "Şube İçi (2.5m)",
+                        label = "2.5m İçi",
                         active = distanceMeters <= 10.0 && userLocation.isSimulated,
+                        modifier = Modifier.weight(1f),
                         onClick = { onSimulateDistance(2.5) }
                     )
                     SmallSimChip(
-                        label = "Sınırda (26m)",
+                        label = "26m Sınır",
                         active = distanceMeters in 10.1..30.0 && userLocation.isSimulated,
+                        modifier = Modifier.weight(1f),
                         onClick = { onSimulateDistance(26.0) }
                     )
                     SmallSimChip(
-                        label = "Alan Dışı (75m)",
+                        label = "75m Dış",
                         active = !isWithinRadius && userLocation.isSimulated,
+                        modifier = Modifier.weight(1f),
                         onClick = { onSimulateDistance(75.0) }
                     )
                     SmallSimChip(
                         label = "Canlı GPS",
                         active = !userLocation.isSimulated,
+                        modifier = Modifier.weight(1f),
                         onClick = onStartRealGps
                     )
                 }
@@ -1667,21 +1705,25 @@ private fun BranchAndUserLiveMapCard(
 private fun SmallSimChip(
     label: String,
     active: Boolean,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     Box(
-        modifier = Modifier
+        modifier = modifier
             .clip(RoundedCornerShape(6.dp))
             .background(if (active) InkPrimary else SubtleSurface)
             .clickable { onClick() }
-            .padding(horizontal = 8.dp, vertical = 5.dp)
+            .padding(horizontal = 6.dp, vertical = 6.dp),
+        contentAlignment = Alignment.Center
     ) {
         Text(
             text = label,
             color = if (active) Color.White else InkSecondary,
             fontSize = 10.sp,
             fontWeight = FontWeight.SemiBold,
-            textAlign = TextAlign.Center
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            softWrap = false
         )
     }
 }
