@@ -1578,9 +1578,10 @@
                         ${searchEl('br-q', S.ui.brQ || '', 'Şube adı, il, ilçe veya açık adres ara...')}
                         <div><b>${filteredBranches.length} / ${D.BRANCHES.length} şube</b> <span class="muted">· 30 m geofence</span></div>
                         <span class="grow"></span>
+                        <button class="btn btn-soft btn-sm" data-act="br-sync-web">${ic('download')}Web'den Şubeleri Güncelle</button>
                         <button class="btn btn-primary btn-sm" data-act="br-add">${ic('plus')}Şube ekle</button>
                     </div>
-                    <div class="table-wrap" style="max-height:680px;overflow-y:auto"><table><thead><tr><th>Şube & Şehir</th><th>Açık Adres & Telefon</th><th>Koordinat & Sınır</th><th>Kurumsal Wi-Fi</th><th>Personel</th><th>Harita</th></tr></thead><tbody>${filteredBranches.map((b, i) => {
+                    <div class="table-wrap" style="max-height:680px;overflow-y:auto"><table><thead><tr><th>Şube & Şehir</th><th>Açık Adres & Telefon</th><th>Koordinat & Sınır</th><th>Kurumsal Wi-Fi</th><th>Personel</th><th>İşlem</th></tr></thead><tbody>${filteredBranches.map((b, i) => {
                         const isSelected = b.code === simB.code;
                         return `<tr style="--r:${i};${isSelected ? 'background:var(--red-soft)' : ''}">
                             <td><div class="cell-user"><span class="ico-sq ${isSelected ? 'red' : ''}">${ic('pin')}</span><div><b>${esc(b.name)}</b><small>${esc(b.city)}${b.district ? ' / ' + esc(b.district) : ''} · <span class="mono">${esc(b.code)}</span></small></div></div></td>
@@ -1588,7 +1589,11 @@
                             <td class="mono">${b.lat.toFixed(4)}, ${b.lng.toFixed(4)}<div style="margin-top:3px">${pill(b.radius + ' m sınır', 'ok')}</div></td>
                             <td><span class="mono" style="font-size:11.5px">${esc(b.wifi)}</span></td>
                             <td class="mono"><b>${D.EMPLOYEES.filter(e => e.branch === b.code).length}</b> kişi</td>
-                            <td><div class="row-actions"><button type="button" class="btn ${isSelected ? 'btn-primary' : 'btn-soft'} btn-sm" data-act="br-map" data-code="${esc(b.code)}">${ic('pin')}Haritada Gör</button></div></td>
+                            <td><div class="row-actions">
+                                <button type="button" class="btn ${isSelected ? 'btn-primary' : 'btn-soft'} btn-sm" data-act="br-map" data-code="${esc(b.code)}">${ic('pin')}Harita</button>
+                                <button type="button" class="btn btn-soft btn-sm" data-act="br-edit" data-code="${esc(b.code)}">${ic('tool')}Düzenle</button>
+                                <button type="button" class="btn btn-bad btn-sm" data-act="br-delete" data-code="${esc(b.code)}">${ic('x')}Sil</button>
+                            </div></td>
                         </tr>`;
                     }).join('') || `<tr><td colspan="6">${empty('Şube bulunamadı', 'Arama kriterinize uygun şube kaydı bulunmuyor.')}</td></tr>`}</tbody></table></div>
                 </section>
@@ -1863,7 +1868,7 @@
         const now = Date.now();
         if (now - shiftsSyncDrawAt < 250) return;
         shiftsSyncDrawAt = now;
-        if (onShiftsPage()) draw(false);
+        if (S.user && (S.page === 'shifts' || S.page === 'branches')) draw(false);
     }
     const syncGuard = fn => (...args) => {
         const out = fn(...args);
@@ -2315,6 +2320,76 @@
         const m = $('#modal'); m.classList.add('on'); m.setAttribute('aria-hidden', 'false'); (m.querySelector('input') || $('#modalClose')).focus();
     }
     function closeModal() { const m = $('#modal'); m.classList.remove('on'); m.setAttribute('aria-hidden', 'true'); }
+
+    /* Şube ekle/düzenle modalı için ortak form (POST / PUT aynı alanları kullanır) */
+    function branchFormHtml(b) {
+        const v = k => (b && b[k] != null ? b[k] : '');
+        return `<form class="form-grid" id="brForm" novalidate>
+            <label class="field"><span>Şube kodu</span><div class="input"><input id="brCode" maxlength="12" value="${esc(v('code'))}" placeholder="ŞB-055"${b ? ' readonly' : ''}></div></label>
+            <label class="field"><span>Şube adı</span><div class="input"><input id="brName" maxlength="120" value="${esc(v('name'))}" placeholder="Örn. Antalya Muratpaşa Şubesi"></div></label>
+            <div class="grid g-2">
+                <label class="field"><span>Şehir</span><div class="input"><input id="brCity" maxlength="60" value="${esc(v('city'))}"></div></label>
+                <label class="field"><span>İlçe</span><div class="input"><input id="brDistrict" maxlength="60" value="${esc(v('district'))}"></div></label>
+            </div>
+            <label class="field"><span>Açık adres</span><div class="input"><input id="brAddress" maxlength="260" value="${esc(v('address'))}" placeholder="Mahalle, cadde, no, ilçe / il"></div></label>
+            <div class="grid g-2">
+                <label class="field"><span>Telefon</span><div class="input"><input id="brPhone" maxlength="32" value="${esc(v('phone'))}" placeholder="444 88 61"></div></label>
+                <label class="field"><span>Kurumsal Wi-Fi (SSID)</span><div class="input"><input id="brWifi" maxlength="64" value="${esc(v('wifi'))}" placeholder="ALBAYRAK_55_WIFI"></div></label>
+            </div>
+            <div class="grid g-2">
+                <label class="field"><span>Enlem</span><div class="input"><input id="brLat" inputmode="decimal" value="${esc(v('lat'))}" placeholder="36.8841"></div></label>
+                <label class="field"><span>Boylam</span><div class="input"><input id="brLng" inputmode="decimal" value="${esc(v('lng'))}" placeholder="30.7056"></div></label>
+            </div>
+            <div class="grid g-2">
+                <label class="field"><span>Yarıçap (m)</span><div class="input"><input id="brRad" inputmode="numeric" value="${esc(v('radius') || 30)}"></div></label>
+                <label class="field"><span>Google Haritalar bağlantısı</span><div class="input"><input id="brMap" maxlength="300" value="${esc(v('googleMapUrl'))}" placeholder="https://maps.app.goo.gl/..."></div></label>
+            </div>
+            <p class="form-error" id="brErr" hidden></p>
+        </form>`;
+    }
+    function branchFormValues() {
+        const v = id => { const n = $('#' + id); return n ? n.value.trim() : ''; };
+        return {
+            code: v('brCode').toUpperCase(),
+            name: v('brName'),
+            city: v('brCity'),
+            district: v('brDistrict'),
+            address: v('brAddress'),
+            phone: v('brPhone') || '444 88 61',
+            lat: parseFloat(v('brLat').replace(',', '.')),
+            lng: parseFloat(v('brLng').replace(',', '.')),
+            radius: parseInt(v('brRad'), 10),
+            wifi: v('brWifi'),
+            googleMapUrl: v('brMap')
+        };
+    }
+    function branchFormError(d) {
+        if (!d.name || d.name.length < 3) return 'Şube adı en az 3 karakter olmalı.';
+        if (!d.city || d.city.length < 2) return 'Şehir gerekli.';
+        if (!(d.lat >= -90 && d.lat <= 90)) return 'Enlem −90 ile 90 arasında olmalı.';
+        if (!(d.lng >= -180 && d.lng <= 180)) return 'Boylam −180 ile 180 arasında olmalı.';
+        if (!(d.radius >= 10 && d.radius <= 200)) return 'Yarıçap 10–200 m arasında olmalı.';
+        if (!d.wifi || d.wifi.length < 3) return 'Kurumsal Wi-Fi (SSID) en az 3 karakter olmalı.';
+        if (d.code && !/^[A-Z0-9ÇĞİÖŞÜ-]{2,12}$/.test(d.code)) return 'Şube kodu 2–12 karakter olmalı (örn. ŞB-055).';
+        if (d.googleMapUrl && !d.googleMapUrl.startsWith('https://')) return 'Harita bağlantısı https:// ile başlamalı.';
+        return '';
+    }
+    function showBranchError(msg) {
+        const err = $('#brErr');
+        if (err) { err.textContent = msg; err.hidden = false; }
+        else A.toast(msg, 'err');
+    }
+    function nextBranchCode() {
+        const max = D.BRANCHES.reduce((m, b) => {
+            const n = (String(b.code).match(/(\d+)$/) || [])[1];
+            return Math.max(m, n ? +n : 0);
+        }, 0);
+        return 'ŞB-' + String(max + 1).padStart(3, '0');
+    }
+    async function refreshBranches() {
+        const synced = await D.syncAllFromPostgres({ force: true });
+        if (!synced) draw(false);
+    }
 
     /* Personel Profiline Girince Tüm İnce Detayları Gösteren Derin Analiz Çekmecesi */
     function empDrawer(id, keepOpen) {
@@ -2987,19 +3062,102 @@
             );
             draw(false);
         },
-        'br-add': () => openModal('Yeni şube', `<form class="form-grid" id="brForm" novalidate>
-            <label class="field"><span>Şube adı</span><div class="input"><input id="brName" maxlength="60" placeholder="Örn. Antalya Muratpaşa Şubesi"></div></label>
-            <label class="field"><span>Şehir</span><div class="input"><input id="brCity" maxlength="40"></div></label>
-            <div class="grid g-2"><label class="field"><span>Enlem</span><div class="input"><input id="brLat" inputmode="decimal" placeholder="36.8841"></div></label><label class="field"><span>Boylam</span><div class="input"><input id="brLng" inputmode="decimal" placeholder="30.7056"></div></label></div>
-            <div class="grid g-2"><label class="field"><span>Yarıçap (m)</span><div class="input"><input id="brRad" inputmode="numeric" value="30"></div></label><label class="field"><span>Wi-Fi adı</span><div class="input"><input id="brWifi" maxlength="40"></div></label></div>
-            <p class="form-error" id="brErr" hidden></p></form>`, '<button class="btn btn-soft" data-act="modal-close">Vazgeç</button><button class="btn btn-primary" data-act="br-save">Kaydet</button>'),
-        'br-save': () => {
-            const v = id => $('#' + id).value.trim(), lat = parseFloat(v('brLat').replace(',', '.')), lng = parseFloat(v('brLng').replace(',', '.')), rad = parseInt(v('brRad'), 10), err = $('#brErr');
-            const bad = !v('brName') ? 'Şube adı gerekli.' : !(lat >= -90 && lat <= 90) ? 'Enlem −90 ile 90 arasında olmalı.' : !(lng >= -180 && lng <= 180) ? 'Boylam −180 ile 180 arasında olmalı.' : !(rad >= 10 && rad <= 100) ? 'Yarıçap 10–100 m arasında olmalı.' : '';
-            if (bad) { err.textContent = bad; err.hidden = false; return; }
-            const code = (v('brName').replace(/[^A-Za-zÇĞİÖŞÜçğıöşü]/g, '').slice(0, 3) || 'SUB').toLocaleUpperCase('tr-TR') + (D.BRANCHES.length + 1);
-            D.BRANCHES.push({ code, name: v('brName'), city: v('brCity') || '—', lat, lng, radius: rad, wifi: v('brWifi') || '—', w: 0 }); audit('Yeni şube geofence tanımlandı', code, 'SYSTEM'); closeModal(); A.toast('Şube eklendi · ' + rad + ' m'); draw(false);
+        'br-add': () => openModal('Yeni şube', branchFormHtml(null),
+            '<button class="btn btn-soft" data-act="modal-close">Vazgeç</button><button class="btn btn-primary" data-act="br-save">PostgreSQL\'e Kaydet</button>'),
+        'br-save': syncGuard(async el => {
+            const d = branchFormValues();
+            d.code = d.code || nextBranchCode();
+            const bad = branchFormError(d);
+            if (bad) { showBranchError(bad); return; }
+            if (el) el.disabled = true;
+            try {
+                const res = await postJson('/api/v1/branches', {
+                    code: d.code, name: d.name, city: d.city, district: d.district,
+                    address: d.address, phone: d.phone, googleMapUrl: d.googleMapUrl || undefined,
+                    lat: d.lat, lng: d.lng, radius: d.radius, wifi: d.wifi
+                });
+                closeModal();
+                A.toast(res.message || 'Şube PostgreSQL branches tablosuna kaydedildi.', 'ok');
+                await refreshBranches();
+            } catch (err) {
+                showBranchError(String((err && err.message) || err));
+                if (el) el.disabled = false;
+            }
+        }),
+        'br-edit': el => {
+            const b = D.BRANCHES.find(x => x.code === el.dataset.code);
+            if (!b) return;
+            openModal(b.name + ' · Şubeyi düzenle', branchFormHtml(b),
+                '<button class="btn btn-soft" data-act="modal-close">Vazgeç</button>' +
+                `<button class="btn btn-primary" data-act="br-update" data-code="${esc(b.code)}">Değişiklikleri Kaydet</button>`);
         },
+        'br-update': syncGuard(async el => {
+            const code = el.dataset.code;
+            const d = branchFormValues();
+            const bad = branchFormError(d);
+            if (bad) { showBranchError(bad); return; }
+            if (el) el.disabled = true;
+            try {
+                const res = await postJson('/api/v1/branches/' + encodeURIComponent(code), {
+                    name: d.name, city: d.city, district: d.district, address: d.address,
+                    phone: d.phone, googleMapUrl: d.googleMapUrl || '',
+                    lat: d.lat, lng: d.lng, radius: d.radius, wifi: d.wifi
+                }, 'PATCH');
+                closeModal();
+                A.toast(res.message || 'Şube güncellendi.', 'ok');
+                await refreshBranches();
+            } catch (err) {
+                showBranchError(String((err && err.message) || err));
+                if (el) el.disabled = false;
+            }
+        }),
+        'br-delete': el => {
+            const b = D.BRANCHES.find(x => x.code === el.dataset.code);
+            if (!b) return;
+            const empCount = D.EMPLOYEES.filter(e => e.branch === b.code).length;
+            openModal('Şubeyi sil', `
+                <p><b>${esc(b.name)}</b> (<span class="mono">${esc(b.code)}</span>) şubesini silmek üzeresiniz.</p>
+                ${empCount
+                    ? `<p class="shifts-feedback bad" style="margin-top:12px">${ic('alert')}<span>Bu şubede <b>${empCount} personel</b> kayıtlı. Personeli başka bir şubeye aktarmadan silme işlemi PostgreSQL tarafından reddedilir.</span></p>`
+                    : '<p class="muted" style="margin-top:8px;font-size:12.5px">Bu işlem geri alınamaz ve denetim günlüğüne yazılır.</p>'}`,
+                `<button class="btn btn-soft" data-act="modal-close">Vazgeç</button><button class="btn btn-bad" data-act="br-delete-confirm" data-code="${esc(b.code)}">${ic('x')}Kalıcı Olarak Sil</button>`);
+        },
+        'br-delete-confirm': syncGuard(async el => {
+            const code = el.dataset.code;
+            if (el) el.disabled = true;
+            try {
+                const res = await postJson('/api/v1/branches/' + encodeURIComponent(code), null, 'DELETE');
+                closeModal();
+                A.toast(res.message || 'Şube silindi.', 'ok');
+                await refreshBranches();
+            } catch (err) {
+                A.toast(String((err && err.message) || err), 'err');
+                if (el) el.disabled = false;
+            }
+        }),
+        'br-sync-web': syncGuard(async el => {
+            if (el) el.disabled = true;
+            A.toast('albayrakfinans.com.tr üzerinden canlı şube verisi çekiliyor…', 'info');
+            try {
+                const res = await postJson('/api/v1/branches/sync', {});
+                const added = res.added || [], updated = res.updated || [];
+                openModal('Canlı şube senkronizasyonu tamamlandı', `
+                    <p><b>${res.total || 0} şube</b> canlı kaynaktan alındı.</p>
+                    <div class="grid g-3 mt">
+                        <div class="hi-card ok"><small>Yeni eklenen</small><b>${added.length}</b><span>PostgreSQL branches</span></div>
+                        <div class="hi-card warn"><small>Güncellenen</small><b>${updated.length}</b><span>adres / telefon / koordinat</span></div>
+                        <div class="hi-card"><small>Değişmeyen</small><b>${res.unchanged || 0}</b><span>zaten güncel</span></div>
+                    </div>
+                    ${added.length ? `<h4 style="margin:16px 0 6px;font-size:13px">Eklenen şubeler</h4><div class="list">${added.map(x => `<div class="list-item"><span class="ico-sq ok">${ic('plus')}</span><div class="grow"><b>${esc(x)}</b></div></div>`).join('')}</div>` : ''}
+                    ${updated.length ? `<h4 style="margin:16px 0 6px;font-size:13px">Güncellenen şubeler</h4><div class="list">${updated.map(x => `<div class="list-item"><span class="ico-sq warn">${ic('refresh')}</span><div class="grow"><b>${esc(x)}</b></div></div>`).join('')}</div>` : ''}`,
+                    '<button class="btn btn-primary" data-act="modal-close">Tamam</button>');
+                await refreshBranches();
+            } catch (err) {
+                A.toast(String((err && err.message) || err), 'err');
+            } finally {
+                if (el) el.disabled = false;
+            }
+        }),
         'onb-submit': () => {
             const u = S.ui.onb;
             const name = (u.name || '').trim();
