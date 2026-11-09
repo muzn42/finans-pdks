@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
           ? "LUNCH_IN"
           : "CHECK_IN"),
       source: raw.source || "MOBILE_GEOFENCE",
-      branchCode: raw.branchCode || raw.branch_code || "HQ",
+      branchCode: raw.branchCode || raw.branch_code || "ŞB-001",
       distanceMeters: Number(raw.distanceMeters ?? raw.distance_meters ?? 5.2),
       isMockGps: Boolean(raw.isMockGps ?? raw.is_mock ?? false),
       clockHhmm: raw.clockHhmm,

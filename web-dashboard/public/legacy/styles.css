@@ -1279,3 +1279,36 @@ th.th-sort.is-sorted .sort-ind { opacity: 1; color: var(--red); }
     .profile-hero-actions { width: 100%; }
     .pdks-kv-table th, .pdks-kv-table td { padding: 9px 12px; font-size: 12px; }
 }
+
+/* =========================================================================
+   VARDİYA & CANLI AKIŞ (PostgreSQL 18 + Prisma + SSE) — sol menü sekmesi
+   ========================================================================= */
+.shifts-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
+.shifts-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.shifts-feedback { display: flex; align-items: flex-start; gap: 9px; margin-top: 14px; padding: 11px 14px; border-radius: 12px; border: 1px solid var(--line); font-size: 12.5px; line-height: 1.5; }
+.shifts-feedback.ok { background: var(--ok-soft); border-color: color-mix(in srgb, var(--ok) 30%, var(--line)); color: var(--ok); }
+.shifts-feedback.bad { background: var(--bad-soft); border-color: color-mix(in srgb, var(--bad) 30%, var(--line)); color: var(--bad); }
+.shifts-feedback .ic { width: 16px; height: 16px; flex: none; margin-top: 1px; }
+.shift-form { display: grid; gap: 12px; }
+.shift-form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
+.shift-form .input { height: 38px; }
+.shift-form .input select, .shift-form .input input[type="date"], .shift-form .input input[type="time"], .shift-form .input input[type="number"] { border: 0; outline: 0; background: transparent; color: var(--ink); height: 100%; min-width: 0; width: 100%; font-weight: 600; font-size: 13px; }
+.shift-form input[type="range"] { width: 100%; accent-color: var(--red); margin-top: 8px; }
+.shift-check { display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; font-size: 12px; color: var(--ink-2); }
+.shift-check input { accent-color: var(--red); margin-top: 2px; }
+.shift-list { display: grid; gap: 8px; }
+.shift-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--surface-2); }
+.shift-item b { font-size: 12.5px; }
+.shift-item small { display: block; font-size: 11px; color: var(--muted); margin-top: 2px; }
+.live-feed { display: grid; gap: 8px; max-height: 360px; overflow-y: auto; padding-right: 4px; scrollbar-width: thin; }
+.live-item { display: flex; align-items: flex-start; gap: 9px; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--surface-2); font-size: 12px; }
+.live-item b { display: block; font-size: 12.5px; color: var(--ink); }
+.live-item small { display: block; color: var(--ink-2); margin-top: 2px; line-height: 1.45; }
+.live-item .live-dot { width: 8px; height: 8px; border-radius: 999px; flex: none; margin-top: 5px; background: var(--ok); }
+.live-item.warn .live-dot { background: var(--warn); }
+.live-item.bad .live-dot { background: var(--bad); }
+.mt-sm { margin-top: 12px; }
+@media (max-width: 760px) {
+    .shifts-head { align-items: flex-start; }
+    .shift-form-row { grid-template-columns: minmax(0, 1fr); }
+}

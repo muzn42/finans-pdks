@@ -611,6 +611,196 @@
             .catch(() => {});
     }
 
+    /* =========================================================================
+       PostgreSQL 18 + Prisma gerçek veri katmanı (/api/v1/bootstrap + SSE)
+       Web panelindeki tüm ekranlar bu katmandan beslenir; demo üretimi yalnızca
+       API erişilemediğinde yedek olarak kalır.
+       ========================================================================= */
+    const SHIFTS = [];
+    const ACCESS_LOGS = [];
+    const SYNC = { ok: false, inFlight: false, lastSync: null, error: null, sse: 'idle', events: [] };
+
+    const trDate = iso => {
+        if (!iso) return '';
+        const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
+        return m ? `${m[3]}.${m[2]}.${m[1]}` : String(iso);
+    };
+    const legacyStatus = s => String(s || 'PENDING').toLowerCase();
+
+    function mapEmployeeRow(item) {
+        return {
+            id: item.id,
+            sicil: item.sicil,
+            name: item.name,
+            dept: item.dept,
+            title: item.title,
+            branch: item.branch || 'ŞB-001',
+            shiftId: item.shiftId || null,
+            shiftName: item.shiftName || '',
+            shiftStartMin: item.shiftStartMin != null ? item.shiftStartMin : 510,
+            shiftEndMin: item.shiftEndMin != null ? item.shiftEndMin : 1050,
+            status: item.status || 'PRESENT',
+            inMin: item.inMin != null ? item.inMin : null,
+            outMin: item.outMin != null ? item.outMin : null,
+            checkIn: item.checkIn || (item.inMin != null ? hhmm(item.inMin) : null),
+            checkOut: item.checkOut || (item.outMin != null ? hhmm(item.outMin) : null),
+            lateMin: item.lateMin || 0,
+            overtimeMin: item.overtimeMin || 0,
+            dist: item.dist != null ? item.dist : null,
+            tone: item.tone || (1 + (item.id % 5)),
+            proneLateDow: item.proneLateDow || 1,
+            proneOtDow: item.proneOtDow || 3,
+            workHabitBias: item.workHabitBias != null ? item.workHabitBias : 0.65,
+            email: item.email || '',
+            phone: item.phone || '',
+            startDate: item.hireDate || item.startDate || '2026-10-20',
+            leaveUsed: item.leaveUsed != null ? item.leaveUsed : 0,
+            leaveTotal: item.leaveTotal != null ? item.leaveTotal : 14,
+            isNewHire: !!item.isNewHire
+        };
+    }
+
+    function applyBootstrap(d) {
+        if (!d || d.status !== 'success') return false;
+        const previousEmployees = EMPLOYEES.slice();
+
+        if (Array.isArray(d.branches) && d.branches.length) {
+            BRANCHES.length = 0;
+            d.branches.forEach((b, i) => BRANCHES.push({
+                id: b.id != null ? b.id : i + 1,
+                code: b.code,
+                name: b.name,
+                city: b.city || '',
+                district: b.district || '',
+                address: b.address || '',
+                phone: b.phone || '',
+                googleMapUrl: b.googleMapUrl || '',
+                lat: +b.lat,
+                lng: +b.lng,
+                radius: b.radius != null ? +b.radius : 30,
+                wifi: b.wifi || '',
+                w: b.w != null ? +b.w : (b.code === 'ŞB-001' ? 0.16 : 0.01585)
+            }));
+        }
+
+        SHIFTS.length = 0;
+        (d.shifts || []).forEach(s => SHIFTS.push(Object.assign({}, s)));
+
+        if (Array.isArray(d.employees) && d.employees.length) {
+            EMPLOYEES.length = 0;
+            d.employees.forEach(item => EMPLOYEES.push(mapEmployeeRow(item)));
+            syncEmployeeReferences(previousEmployees);
+        }
+
+        if (Array.isArray(d.leaves)) {
+            LEAVES.length = 0;
+            d.leaves.forEach(l => LEAVES.push({
+                id: l.dbId != null ? l.dbId : l.id,
+                code: l.id,
+                empId: l.empId,
+                type: l.type,
+                days: l.days,
+                from: trDate(l.start),
+                to: trDate(l.end),
+                reason: l.note || '',
+                status: legacyStatus(l.status),
+                ago: l.createdAtIstanbul || '',
+                isHourly: !!l.isHourly,
+                startClock: l.startClock,
+                endClock: l.endClock,
+                durationMin: l.durationMin,
+                sicil: l.sicil,
+                name: l.name
+            }));
+        }
+
+        if (Array.isArray(d.alerts)) {
+            ALERTS.length = 0;
+            d.alerts.forEach((a, i) => ALERTS.push({
+                id: i + 1,
+                dbId: a.dbId,
+                code: a.id,
+                type: a.type,
+                sev: a.sev,
+                empId: a.empId,
+                branch: a.branch,
+                ago: a.time,
+                dist: a.dist,
+                status: a.status,
+                resolved: a.status === 'RESOLVED' || a.status === 'CLOSED'
+            }));
+        }
+
+        if (Array.isArray(d.accessLogs)) {
+            ACCESS_LOGS.length = 0;
+            d.accessLogs.forEach(a => ACCESS_LOGS.push(Object.assign({}, a)));
+        }
+
+        if (Array.isArray(d.audits) && d.audits.length) {
+            AUDIT.length = 0;
+            d.audits.forEach(a => AUDIT.push({
+                t: a.time,
+                who: a.actor || 'Sistem',
+                act: a.action,
+                target: a.target || '',
+                cat: String(a.role || 'SYSTEM').toUpperCase() === 'SYSTEM' ? 'SYSTEM' : 'ACCOUNT'
+            }));
+        }
+
+        clearAnalyticsCache();
+        SYNC.ok = true;
+        SYNC.error = null;
+        SYNC.lastSync = new Date().toISOString();
+        try { g.dispatchEvent(new CustomEvent('atf:sync', { detail: { source: 'bootstrap' } })); } catch (_) {}
+        return true;
+    }
+
+    let syncPromise = null;
+    function syncAllFromPostgres(opts) {
+        if (typeof fetch !== 'function') return Promise.resolve(false);
+        if (typeof location !== 'undefined' && location.protocol === 'file:') return Promise.resolve(false);
+        if (syncPromise && !(opts && opts.force)) return syncPromise;
+        SYNC.inFlight = true;
+        syncPromise = fetch('/api/v1/bootstrap', { cache: 'no-store', headers: { Accept: 'application/json' } })
+            .then(r => (r.ok ? r.json() : Promise.reject(new Error('PostgreSQL yanıtı: HTTP ' + r.status))))
+            .then(d => applyBootstrap(d))
+            .catch(err => {
+                SYNC.error = String((err && err.message) || err);
+                return false;
+            })
+            .finally(() => {
+                SYNC.inFlight = false;
+                syncPromise = null;
+            });
+        return syncPromise;
+    }
+
+    let sseSource = null, sseRefetchTimer = null;
+    function startRealtimeStream() {
+        if (typeof EventSource !== 'function' || sseSource) return;
+        try {
+            sseSource = new EventSource('/api/v1/events/stream');
+            sseSource.addEventListener('connected', () => { SYNC.sse = 'open'; });
+            sseSource.addEventListener('pdks_event', e => {
+                SYNC.sse = 'open';
+                let evt = null;
+                try { evt = JSON.parse(e.data); } catch (_) {}
+                if (evt) {
+                    SYNC.events = [evt].concat(SYNC.events).slice(0, 40);
+                    if (A.toast && document.body.classList.contains('in-app')) {
+                        A.toast('[Canlı] ' + (evt.title || 'PDKS') + ': ' + (evt.message || ''), evt.severity || 'info');
+                    }
+                    try { g.dispatchEvent(new CustomEvent('atf:live-event', { detail: evt })); } catch (_) {}
+                }
+                clearTimeout(sseRefetchTimer);
+                sseRefetchTimer = setTimeout(() => { syncAllFromPostgres({ force: true }); }, 320);
+            });
+            sseSource.onerror = () => { SYNC.sse = 'retry'; };
+        } catch (_) {
+            SYNC.sse = 'off';
+        }
+    }
+
     function addEmployee(o, onSync) {
         const maxId = EMPLOYEES.reduce((m, x) => Math.max(m, x.id), 1500);
         const nextId = maxId + 1;
@@ -804,7 +994,8 @@
 
     g.ATF.DATA = {
         BRANCHES, DEPTS, TITLES, EMPLOYEES, DAYS, LEAVES, LEAVE_TYPES, ALERTS, ALERT_TYPES,
-        TICKETS, TICKET_TYPES, DEVICES, AUDIT, hhmm, fmtDurMin, resolveDays, empAnalytics, computeLeaderboards,
-        addEmployee, updateEmployee, deleteEmployee, syncEmployeesFromBackend, clearAnalyticsCache
+        TICKETS, TICKET_TYPES, DEVICES, AUDIT, SHIFTS, ACCESS_LOGS, SYNC, hhmm, fmtDurMin, resolveDays,
+        empAnalytics, computeLeaderboards, addEmployee, updateEmployee, deleteEmployee,
+        syncEmployeesFromBackend, syncAllFromPostgres, startRealtimeStream, clearAnalyticsCache
     };
 })(window);

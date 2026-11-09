@@ -92,7 +92,14 @@
             leave: { f: 'pending', type: 'ALL' }, alert: { sev: 'ALL', type: 'ALL', show: 'open' },
             tk: { f: 'open', type: 'ALL', q: '' }, dev: { q: '', status: 'ALL', ver: 'ALL' }, audit: { cat: 'ALL' },
             policies: { geofence30m: true, mockGpsBlock: true, singleDevice: true, autoTimeout: true },
-            simBranch: 'ŞB-001', simDist: 14, brQ: '', branchRank: { q: '', limit: 10 }
+            simBranch: 'ŞB-001', simDist: 14, brQ: '', branchRank: { q: '', limit: 10 },
+            shifts: {
+                empId: null, event: 'CHECK_IN', source: 'MOBILE_GEOFENCE', clock: '08:28', dist: 8, mock: false,
+                lvType: 'Saatlik izin', lvDate: '', lvStart: '08:30', lvEnd: '10:00', lvDays: 1,
+                lvNote: 'Resmi kurum ve noter işlemi için sabah saatlik izin talebi.',
+                shCode: '', shName: '', shStart: '08:30', shEnd: '17:30', shGrace: 5,
+                feedback: null
+            }
         }
     };
     let fails = 0, lockUntil = 0, idleTimer = null, leaving = false;
@@ -634,8 +641,9 @@
             const tone = { pending: ['Bekliyor', 'warn'], approved: ['Onaylandı', 'ok'], rejected: ['Reddedildi', 'bad'] };
             return `<section class="card flush"><div class="toolbar">${chips([{ v: 'pending', l: 'Bekleyen', n: cnt('pending') }, { v: 'approved', l: 'Onaylanan', n: cnt('approved') }, { v: 'rejected', l: 'Reddedilen', n: cnt('rejected') }, { v: 'all', l: 'Tümü', n: D.LEAVES.length }], u.f, 'leave-filter')}
                 <span class="grow"></span>${selectEl('leave-type', [{ v: 'ALL', l: 'Tüm türler' }].concat(D.LEAVE_TYPES.map(t => ({ v: t, l: t }))), u.type, 'Talep türü')}
+                <button type="button" class="btn btn-primary btn-sm" data-act="leave-hourly-open">${ic('plus')} Saatlik izin ekle</button>
                 ${dlBtn('export-leaves', 'İzin Raporu (.xlsx)', { cls: 'btn-soft btn-sm' })}</div>
-                <div class="list">${L.length ? L.map(l => { const e = emp(l.empId), t = tone[l.status]; return `<div class="list-item" style="animation:rowIn .45s var(--ease) both">${avatar(e)}<div class="grow"><b>${esc(e.name)} <span class="muted" style="font-weight:500">· ${esc(e.dept)}</span></b><small>${esc(l.type)} · ${l.days} gün · ${l.from} · “${esc(l.reason)}”</small></div><span class="muted" style="font-size:12px">${l.ago}</span>${pill(t[0], t[1])}
+                <div class="list">${L.length ? L.map(l => { const e = emp(l.empId), t = tone[l.status]; return `<div class="list-item" style="animation:rowIn .45s var(--ease) both">${avatar(e)}<div class="grow"><b>${esc(e.name)} <span class="muted" style="font-weight:500">· ${esc(e.dept)}</span></b><small>${esc(l.type)}${l.isHourly && l.startClock ? ' · ' + esc(l.startClock) + '–' + esc(l.endClock) + ' (saatlik)' : ' · ' + l.days + ' gün'} · ${esc(l.from)} · “${esc(l.reason)}”</small></div><span class="muted" style="font-size:12px">${esc(l.ago)}</span>${pill(t[0], t[1])}
                 ${l.status === 'pending' ? `<div class="row-actions"><button class="btn btn-ok btn-sm" data-act="leave-act" data-id="${l.id}" data-v="approved">${ic('check')}Onayla</button><button class="btn btn-bad btn-sm" data-act="leave-act" data-id="${l.id}" data-v="rejected">${ic('x')}Reddet</button></div>` : ''}</div>`; }).join('') : empty('Bu filtrede talep yok')}</div></section>`;
         }
     };
@@ -1834,21 +1842,256 @@
         }
     };
 
+    /* =========================================================================
+       VARDİYA & CANLI AKIŞ — PostgreSQL 18 + Prisma + SSE tek ekran
+       (Eski sağ alt yüzen LiveRealtimeHub çekmecesinin sol menüye taşınmış hâli)
+       ========================================================================= */
+    async function postJson(url, payload, method) {
+        const res = await fetch(url, {
+            method: method || 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        let json = null;
+        try { json = await res.json(); } catch (_) { }
+        if (!res.ok) throw new Error((json && json.message) || 'İşlem başarısız (HTTP ' + res.status + ')');
+        return json || {};
+    }
+    const onShiftsPage = () => !!(S.user && S.page === 'shifts' && PAGES[S.user.role] && PAGES[S.user.role].shifts);
+    let shiftsSyncDrawAt = 0;
+    function scheduleShiftsSyncDraw() {
+        const now = Date.now();
+        if (now - shiftsSyncDrawAt < 250) return;
+        shiftsSyncDrawAt = now;
+        if (onShiftsPage()) draw(false);
+    }
+    const syncGuard = fn => (...args) => {
+        const out = fn(...args);
+        if (out && typeof out.then === 'function') out.catch(err => A.toast(String(err && err.message || err), 'err'));
+        return out;
+    };
+
+    function shiftsPage(roleKey) {
+        const perspective = roleKey === 'IT' ? 'BT güvenlik perspektifi' : 'İK yönetim perspektifi';
+        return {
+            title: 'Vardiya & canlı akış',
+            sub: () => 'PostgreSQL 18 + Prisma + SSE · ' + perspective + (D.SYNC && D.SYNC.lastSync ? ' · son eşitleme ' + new Date(D.SYNC.lastSync).toLocaleTimeString('tr-TR') : ' · canlı veri bekleniyor'),
+            tools: {},
+            icon: 'activity',
+            render() {
+                const E = D.EMPLOYEES, logs = D.ACCESS_LOGS || [], shifts = D.SHIFTS || [], sync = D.SYNC || {};
+                const u = S.ui.shifts;
+                const present = E.filter(e => e.status === 'PRESENT' || e.status === 'LATE').length;
+                const late = E.filter(e => e.status === 'LATE').length;
+                const leave = E.filter(e => e.status === 'LEAVE').length;
+                const pending = D.LEAVES.filter(l => l.status === 'pending');
+                const hourly = D.LEAVES.filter(l => l.isHourly).length;
+                const latestDate = logs.reduce((m, l) => (l.dateIstanbul && l.dateIstanbul > m ? l.dateIstanbul : m), '');
+                const lastDay = latestDate ? logs.filter(l => l.dateIstanbul === latestDate) : logs;
+                const sseTone = sync.sse === 'open' ? 'ok' : sync.sse === 'retry' ? 'warn' : 'mute';
+                const sseLabel = sync.sse === 'open' ? 'SSE canlı' : sync.sse === 'retry' ? 'SSE yeniden bağlanıyor' : 'SSE bekliyor';
+                const fb = u.feedback;
+                const empOptions = sel => E.slice().sort((a, b) => a.sicil.localeCompare(b.sicil, 'tr'))
+                    .map(e => `<option value="${e.id}"${+sel === e.id ? ' selected' : ''}>${esc(e.sicil)} · ${esc(e.name)} (${esc(e.dept)} · ${esc(e.branch)})</option>`).join('');
+                const selEmp = u.empId || (E[0] && E[0].id) || '';
+                const EVENT_LABEL = { CHECK_IN: 'Sabah giriş', LUNCH_OUT: 'Öğle çıkış', LUNCH_IN: 'Öğle dönüş', BREAK_OUT: 'Mola çıkış', BREAK_IN: 'Mola dönüş', CHECK_OUT: 'Akşam çıkış' };
+                const liveEvents = (sync.events || []).slice(0, 12);
+                const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Istanbul' });
+
+                return `<div class="grid g-4">
+                    ${kpi({ label: 'Şu an içeride', val: present, unit: 'personel', icon: 'check', tone: 'ok', foot: E.length + ' aktif kadro · PostgreSQL' })}
+                    ${kpi({ label: 'Bugün geç kalan', val: late, unit: 'kişi', icon: 'clock', tone: 'warn', foot: 'Vardiya toleransı aşımı' })}
+                    ${kpi({ label: 'İzinli / raporlu', val: leave, unit: 'kişi', icon: 'calendar', tone: 'info', foot: hourly + ' saatlik izin kaydı' })}
+                    ${kpi({ label: 'Gün içi ham geçiş', val: logs.length, unit: 'AccessLog', icon: 'activity', tone: '', foot: (latestDate ? trShort(latestDate) : 'kayıt yok') + ' · ' + lastDay.length + ' geçiş' })}
+                </div>
+
+                <div class="shifts-head mt">
+                    <div class="shifts-meta">
+                        <span class="pill ${sseTone}" id="shSsePill">${sseLabel}</span>
+                        <span class="pill ${sync.ok ? 'ok' : sync.error ? 'bad' : 'mute'}">${sync.ok ? 'PostgreSQL 18 · Prisma bağlı' : sync.error ? 'Bağlantı hatası' : 'Veri bekleniyor'}</span>
+                        ${sync.error ? `<span class="muted" style="font-size:11.5px">${esc(sync.error)}</span>` : ''}
+                    </div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                        <button type="button" class="btn btn-soft btn-sm" data-act="shifts-refresh">${ic('refresh')} Verileri Yenile</button>
+                        ${dlBtn('export-it', 'Geçiş Kayıtları (.xlsx)', { cls: 'btn-dark btn-sm' })}
+                    </div>
+                </div>
+
+                ${fb ? `<div class="shifts-feedback ${fb.tone}" role="status">${ic(fb.tone === 'ok' ? 'check' : 'alert')}<span>${esc(fb.text)}</span></div>` : ''}
+
+                <div class="grid g-main mt">
+                    <section class="card">
+                        ${cardHead('Canlı kart / QR / 30 m geofence geçiş testi', 'Kayıt doğrudan PostgreSQL access_logs tablosuna yazılır ve SSE ile yayınlanır')}
+                        <div class="shift-form">
+                            <label class="field"><span>Personel</span><div class="input"><select id="shEmp">${empOptions(selEmp)}</select></div></label>
+                            <div class="shift-form-row">
+                                <label class="field"><span>Geçiş hareketi</span><div class="input"><select id="shEvent">
+                                    ${Object.keys(EVENT_LABEL).map(k => `<option value="${k}"${u.event === k ? ' selected' : ''}>${EVENT_LABEL[k]} (${k})</option>`).join('')}
+                                </select></div></label>
+                                <label class="field"><span>Okuma kaynağı</span><div class="input"><select id="shSource">
+                                    <option value="MOBILE_GEOFENCE"${u.source === 'MOBILE_GEOFENCE' ? ' selected' : ''}>Mobil 30 m geofence</option>
+                                    <option value="QR_TURNSTILE"${u.source === 'QR_TURNSTILE' ? ' selected' : ''}>QR / kapı okuyucu</option>
+                                    <option value="WEB_MANUAL"${u.source === 'WEB_MANUAL' ? ' selected' : ''}>İK manuel kayıt</option>
+                                </select></div></label>
+                            </div>
+                            <div class="shift-form-row">
+                                <label class="field"><span>İşlem saati (GMT+3)</span><div class="input"><input id="shClock" type="time" value="${esc(u.clock)}"></div></label>
+                                <label class="field"><span>Şube mesafesi: <b id="shDistOut">${u.dist} m</b> (sınır 30 m)</span><input id="shDist" type="range" min="1" max="95" step="0.5" value="${u.dist}"></label>
+                            </div>
+                            <label class="shift-check"><input id="shMock" type="checkbox"${u.mock ? ' checked' : ''}> <span><b>Sahte GPS (mock location)</b> simülasyonu · anında blokaj + güvenlik alarmı</span></label>
+                            <button type="button" class="btn btn-primary btn-block" data-act="shifts-sim">${ic('activity')} Geçişi Gönder (SSE yayınla)</button>
+                        </div>
+                    </section>
+
+                    <section class="card">
+                        ${cardHead('Canlı SSE bildirim akışı', 'Sayfa yenilenmeden düşen son olaylar', `<span class="pill ${sseTone}">${liveEvents.length} olay</span>`)}
+                        <div class="live-feed">
+                            ${liveEvents.length ? liveEvents.map(ev => `<div class="live-item ${esc(ev.severity || 'info')}">
+                                <span class="live-dot"></span>
+                                <div class="grow"><b>${esc(ev.title || 'PDKS olayı')}</b><small>${esc(ev.message || '')}</small></div>
+                                <span class="mono muted" style="font-size:11px">${esc(new Date(ev.timestampUtc).toLocaleTimeString('tr-TR', { timeZone: 'Europe/Istanbul' }))}</span>
+                            </div>`).join('') : `<div class="empty" style="padding:34px 12px"><b>Henüz canlı olay yok</b>Soldaki testten bir giriş/çıkış tetikleyin; sayfa yenilenmeden buraya düşer.</div>`}
+                        </div>
+                    </section>
+                </div>
+
+                <div class="grid g-main mt">
+                    <section class="card flush">
+                        ${cardHead('Gün içi ham geçiş kayıtları (access_logs)', 'İlk giriş checkIn, son çıkış checkOut olarak işlenir · ' + logs.length + ' kayıt', '')}
+                        <div class="table-wrap">
+                            <table>
+                                <thead><tr><th>Personel</th><th>Hareket</th><th>Kaynak</th><th>Mesafe</th><th>TR saati (GMT+3)</th></tr></thead>
+                                <tbody>${logs.slice(0, 40).map(log => `<tr>
+                                    <td><b>${esc(log.name)}</b><div class="muted" style="font-size:11px">${esc(log.sicil)} · ${esc(log.dept)} · ${esc(log.branch)}</div></td>
+                                    <td>${pill(EVENT_LABEL[log.eventType] || log.eventType, log.eventType === 'CHECK_IN' ? 'ok' : log.eventType === 'CHECK_OUT' ? 'info' : 'mute')}</td>
+                                    <td class="mono" style="font-size:11.5px">${esc(log.source)}</td>
+                                    <td class="mono">${(+log.distanceMeters || 0).toFixed(1)} m ${log.isMockGps ? pill('Mock GPS', 'bad') : ''}</td>
+                                    <td class="mono">${esc(log.dateIstanbul)} ${esc(log.timeIstanbul)}</td>
+                                </tr>`).join('') || `<tr><td colspan="5">${empty('Geçiş kaydı yok', 'Simülatörden bir geçiş gönderin.')}</td></tr>`}</tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <section class="card">
+                        ${cardHead('Vardiya şablonları (shifts)', 'Kurumsal mesai, mola ve tolerans tanımları')}
+                        <div class="shift-list">
+                            ${shifts.map(s => `<div class="shift-item">
+                                <div class="grow"><b>${esc(s.name)}</b><small>${esc(s.code)} · Hoşgörü ${s.graceMin} dk · Mola ${s.breakMin} dk</small></div>
+                                <span class="pill info mono">${A.pad(Math.floor(s.startMin / 60))}:${A.pad(s.startMin % 60)} – ${A.pad(Math.floor(s.endMin / 60))}:${A.pad(s.endMin % 60)}</span>
+                            </div>`).join('') || empty('Vardiya tanımı yok')}
+                        </div>
+                        <div class="shift-form mt-sm">
+                            <div class="shift-form-row">
+                                <label class="field"><span>Kod</span><div class="input"><input id="shCode" value="${esc(u.shCode)}" placeholder="GECE-01"></div></label>
+                                <label class="field"><span>Ad</span><div class="input"><input id="shName" value="${esc(u.shName)}" placeholder="Gece vardiyası"></div></label>
+                            </div>
+                            <div class="shift-form-row">
+                                <label class="field"><span>Başlangıç</span><div class="input"><input id="shStart" type="time" value="${esc(u.shStart)}"></div></label>
+                                <label class="field"><span>Bitiş</span><div class="input"><input id="shEnd" type="time" value="${esc(u.shEnd)}"></div></label>
+                                <label class="field"><span>Tolerans (dk)</span><div class="input"><input id="shGrace" type="number" min="0" max="60" value="${u.shGrace}"></div></label>
+                            </div>
+                            <button type="button" class="btn btn-soft btn-block" data-act="shifts-add">${ic('plus')} Yeni vardiya şablonu ekle</button>
+                        </div>
+                    </section>
+                </div>
+
+                <div class="grid g-main mt">
+                    <section class="card">
+                        ${cardHead('Saatlik izin & izin talebi oluştur', 'Saatlik izin onaylandığında personelin günlük gecikme dakikasından otomatik düşer')}
+                        <div class="shift-form">
+                            <label class="field"><span>Personel</span><div class="input"><select id="shLvEmp">${empOptions(selEmp)}</select></div></label>
+                            <div class="shift-form-row">
+                                <label class="field"><span>İzin türü</span><div class="input"><select id="shLvType">
+                                    ${['Saatlik izin', 'Yıllık izin', 'Mazeret izni', 'Sağlık raporu', 'Saha görevi'].map(t => `<option value="${t}"${u.lvType === t ? ' selected' : ''}>${t}</option>`).join('')}
+                                </select></div></label>
+                                <label class="field"><span>Tarih</span><div class="input"><input id="shLvDate" type="date" value="${esc(u.lvDate || today)}"></div></label>
+                            </div>
+                            <div class="shift-form-row">
+                                <label class="field"><span>Başlangıç saati</span><div class="input"><input id="shLvStart" type="time" value="${esc(u.lvStart)}"></div></label>
+                                <label class="field"><span>Bitiş saati</span><div class="input"><input id="shLvEnd" type="time" value="${esc(u.lvEnd)}"></div></label>
+                                <label class="field"><span>Gün (tam gün)</span><div class="input"><input id="shLvDays" type="number" min="1" max="30" value="${u.lvDays}"></div></label>
+                            </div>
+                            <label class="field"><span>Mazeret / açıklama</span><div class="input"><input id="shLvNote" value="${esc(u.lvNote)}"></div></label>
+                            <button type="button" class="btn btn-primary btn-block" data-act="shifts-leave-create">${ic('plus')} İzin talebini PostgreSQL'e kaydet</button>
+                        </div>
+                    </section>
+
+                    <section class="card flush">
+                        ${cardHead('İzin onay akışı', 'Pending → Approved / Rejected · ' + pending.length + ' bekleyen', '')}
+                        <div class="list">
+                            ${D.LEAVES.slice(0, 24).map(l => {
+                                const empRow = E.find(e => e.id === l.empId);
+                                const tone = l.status === 'approved' ? ['Onaylandı', 'ok'] : l.status === 'rejected' ? ['Reddedildi', 'bad'] : ['Bekliyor', 'warn'];
+                                return `<div class="list-item">
+                                    <div class="grow">
+                                        <b>${esc(empRow ? empRow.name : (l.name || 'Bilinmeyen personel'))} <span class="muted" style="font-weight:500">· ${esc(l.type)}${l.isHourly && l.startClock ? ` · ${esc(l.startClock)}–${esc(l.endClock)}` : ''}</span></b>
+                                        <small>${esc(l.from)}${l.reason ? ' · “' + esc(l.reason) + '”' : ''} ${l.code ? '· <span class="mono">' + esc(l.code) + '</span>' : ''}</small>
+                                    </div>
+                                    ${pill(tone[0], tone[1])}
+                                    ${l.status === 'pending' && l.code ? `<div class="row-actions">
+                                        <button class="btn btn-ok btn-sm" data-act="shifts-leave-decide" data-code="${esc(l.code)}" data-v="approved">${ic('check')}Onayla</button>
+                                        <button class="btn btn-bad btn-sm" data-act="shifts-leave-decide" data-code="${esc(l.code)}" data-v="rejected">${ic('x')}Reddet</button>
+                                    </div>` : ''}
+                                </div>`;
+                            }).join('') || empty('İzin talebi yok')}
+                        </div>
+                    </section>
+                </div>
+
+                <div class="grid g-2 mt">
+                    <section class="card">${cardHead('Departman bazlı ek mesai & gecikme', 'PostgreSQL canlı puantaj verisinden toplam dakika')}<div id="shDeptChart"></div></section>
+                    <section class="card">${cardHead('Departman aktif katılımı', 'İçeride / geç kalan dağılımı')}<div id="shPresentChart"></div></section>
+                </div>`;
+            },
+            mount() {
+                const byDept = new Map();
+                D.EMPLOYEES.forEach(e => {
+                    const cur = byDept.get(e.dept) || { dept: String(e.dept || '').replace(' Finansmanı', '').replace(' Finansman', ''), overtimeMin: 0, lateMin: 0, present: 0, late: 0 };
+                    cur.overtimeMin += e.overtimeMin || 0;
+                    cur.lateMin += e.lateMin || 0;
+                    if (e.status === 'PRESENT' || e.status === 'LATE') cur.present++;
+                    if (e.status === 'LATE') cur.late++;
+                    byDept.set(e.dept, cur);
+                });
+                const rows = Array.from(byDept.values()).sort((a, b) => (b.overtimeMin + b.lateMin) - (a.overtimeMin + a.lateMin)).slice(0, 8);
+                if (rows.length) {
+                    A.barChart($('#shDeptChart'), {
+                        data: rows.map(r => ({ label: r.dept.split(' ')[0], value: Math.round((r.overtimeMin + r.lateMin) / 60), name: r.dept, ot: r.overtimeMin, late: r.lateMin })),
+                        yFmt: v => v + ' sa',
+                        tip: d => `<b>${esc(d.name)}</b>Ek mesai: ${fmtMinDur(d.ot)} · Gecikme: ${fmtMinDur(d.late)}`
+                    });
+                    A.barChart($('#shPresentChart'), {
+                        data: rows.map(r => ({ label: r.dept.split(' ')[0], value: r.present, name: r.dept, late: r.late })),
+                        color: '#1C1D1F',
+                        tip: d => `<b>${esc(d.name)}</b>Aktif: ${d.value} · Geç kalan: ${d.late}`
+                    });
+                }
+                const dist = $('#shDist');
+                if (dist) dist.addEventListener('input', () => { const out = $('#shDistOut'); if (out) out.textContent = (+dist.value).toFixed(1) + ' m'; });
+            }
+        };
+    }
+    function trShort(iso) {
+        const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+        return m ? `${m[3]}.${m[2]}` : String(iso || '');
+    }
+
     const PAGES = {
-        HR: { overview: HR.overview, employees: HR.employees, onboarding: HR.onboarding, leaves: HR.leaves, analytics: HR.analytics, reports: HR.reports, profile: HR.profile },
-        IT: { overview: IT.overview, support: IT.support, security: IT.security, devices: IT.devices, branches: IT.branches, audit: IT.audit },
-        ADMIN: { overview: ADMIN.overview, permissions: ADMIN.permissions, branches: IT.branches, audit: IT.audit }
+        HR: { overview: HR.overview, employees: HR.employees, onboarding: HR.onboarding, leaves: HR.leaves, shifts: shiftsPage('HR'), analytics: HR.analytics, reports: HR.reports, profile: HR.profile },
+        IT: { overview: IT.overview, support: IT.support, security: IT.security, devices: IT.devices, shifts: shiftsPage('IT'), branches: IT.branches, audit: IT.audit },
+        ADMIN: { overview: ADMIN.overview, permissions: ADMIN.permissions, branches: IT.branches, shifts: shiftsPage('IT'), audit: IT.audit }
     };
     const NAV = {
-        HR: [['Genel', ['overview', 'employees', 'onboarding', 'leaves']], ['Analiz', ['analytics', 'reports']]],
-        IT: [['İzleme', ['overview', 'security']], ['Yönetim', ['support', 'devices', 'branches', 'audit']]],
-        ADMIN: [['Yetkilendirme', ['overview', 'permissions']], ['Sistem Denetimi', ['branches', 'audit']]]
+        HR: [['Genel', ['overview', 'employees', 'onboarding', 'leaves']], ['Operasyon', ['shifts']], ['Analiz', ['analytics', 'reports']]],
+        IT: [['İzleme', ['overview', 'security']], ['Operasyon', ['shifts']], ['Yönetim', ['support', 'devices', 'branches', 'audit']]],
+        ADMIN: [['Yetkilendirme', ['overview', 'permissions']], ['Operasyon', ['shifts']], ['Sistem Denetimi', ['branches', 'audit']]]
     };
     const NAV_LABEL = {
         overview: 'Genel bakış',
         employees: 'Personel & yoklama',
         onboarding: 'Personel ekle (İşe giriş)',
         leaves: 'İzin talepleri',
+        shifts: 'Vardiya & canlı akış',
         analytics: 'Analitik',
         reports: 'Raporlar',
         security: 'Güvenlik radarı',
@@ -2669,7 +2912,25 @@
             draw(false);
         },
         'leave-filter': el => { S.ui.leave.f = el.dataset.v; draw(false); },
-        'leave-act': el => { const l = D.LEAVES.find(x => x.id === +el.dataset.id); l.status = el.dataset.v; audit(l.status === 'approved' ? 'İzin talebi onaylandı' : 'İzin talebi reddedildi', 'LV-' + l.id, 'HR'); A.toast(l.status === 'approved' ? 'Talep onaylandı' : 'Talep reddedildi'); draw(false); },
+        'leave-act': syncGuard(async el => {
+            const l = D.LEAVES.find(x => x.id === +el.dataset.id); if (!l) return;
+            const status = el.dataset.v === 'approved' ? 'APPROVED' : 'REJECTED';
+            el.disabled = true;
+            if (l.code) {
+                try {
+                    await postJson('/api/v1/leaves', { code: l.code, status }, 'PATCH');
+                } catch (err) {
+                    A.toast(String((err && err.message) || err), 'err');
+                    el.disabled = false;
+                    return;
+                }
+            }
+            l.status = el.dataset.v;
+            audit(l.status === 'approved' ? 'İzin talebi onaylandı' : 'İzin talebi reddedildi', l.code || ('LV-' + l.id), 'HR');
+            A.toast(l.status === 'approved' ? 'Talep onaylandı' : 'Talep reddedildi');
+            const synced = await D.syncAllFromPostgres({ force: true });
+            if (!synced) draw(false);
+        }),
         'dnd-reset': () => A.resetDragLayout(dndKey(), () => draw(true)),
         'export-emps': el => A.runDownload(el, exportEmpsExcel),
         'export-leaderboards': el => A.runDownload(el, exportLeaderboardsExcel),
@@ -2944,6 +3205,145 @@
             acts['adm-edit-perms'](el);
             draw(false);
         },
+        'shifts-refresh': syncGuard(async () => {
+            A.toast('PostgreSQL verileri yenileniyor…', 'info');
+            await D.syncAllFromPostgres({ force: true });
+            if (D.SYNC.ok) A.toast('PostgreSQL 18 verileri güncellendi.', 'ok');
+            else A.toast('Veri alınamadı: ' + (D.SYNC.error || 'bilinmeyen hata'), 'err');
+            if (onShiftsPage()) draw(false);
+        }),
+        'shifts-sim': syncGuard(async el => {
+            const val = id => { const n = $('#' + id); return n ? n.value : ''; };
+            const u = S.ui.shifts;
+            Object.assign(u, {
+                empId: +val('shEmp') || null,
+                event: val('shEvent') || 'CHECK_IN',
+                source: val('shSource') || 'MOBILE_GEOFENCE',
+                clock: val('shClock') || '08:28',
+                dist: +val('shDist') || 8,
+                mock: !!($('#shMock') && $('#shMock').checked)
+            });
+            if (!u.empId) { A.toast('Önce bir personel seçin.', 'err'); return; }
+            const simEmp = D.EMPLOYEES.find(e => e.id === u.empId);
+            if (el) el.disabled = true;
+            try {
+                const res = await postJson('/api/v1/access-logs', {
+                    employeeId: u.empId, eventType: u.event, source: u.source,
+                    branchCode: (simEmp && simEmp.branch) || 'ŞB-001',
+                    distanceMeters: u.dist, isMockGps: u.mock, clockHhmm: u.clock
+                });
+                u.feedback = { tone: 'ok', text: res.message || 'Geçiş PostgreSQL access_logs tablosuna kaydedildi.' };
+                A.toast(u.feedback.text, 'ok');
+            } catch (err) {
+                u.feedback = { tone: 'bad', text: String((err && err.message) || err) };
+                A.toast(u.feedback.text, 'err');
+            } finally {
+                const synced = await D.syncAllFromPostgres({ force: true });
+                if (!synced && onShiftsPage()) draw(false);
+            }
+        }),
+        'shifts-add': syncGuard(async el => {
+            const val = id => { const n = $('#' + id); return n ? n.value : ''; };
+            const u = S.ui.shifts;
+            Object.assign(u, { shCode: val('shCode'), shName: val('shName'), shStart: val('shStart'), shEnd: val('shEnd'), shGrace: +val('shGrace') || 0 });
+            if (!u.shStart || !u.shEnd) { A.toast('Başlangıç ve bitiş saati zorunludur.', 'err'); return; }
+            if (el) el.disabled = true;
+            try {
+                const res = await postJson('/api/v1/shifts', {
+                    code: u.shCode || ('SH-' + Math.floor(100 + Math.random() * 900)),
+                    name: u.shName || 'Özel şube vardiyası',
+                    startClock: u.shStart, endClock: u.shEnd, graceMin: u.shGrace
+                });
+                u.feedback = { tone: 'ok', text: res.message || 'Vardiya şablonu PostgreSQL shifts tablosuna eklendi.' };
+                u.shCode = ''; u.shName = '';
+                A.toast(u.feedback.text, 'ok');
+            } catch (err) {
+                u.feedback = { tone: 'bad', text: String((err && err.message) || err) };
+                A.toast(u.feedback.text, 'err');
+            } finally {
+                const synced = await D.syncAllFromPostgres({ force: true });
+                if (!synced && onShiftsPage()) draw(false);
+            }
+        }),
+        'shifts-leave-create': syncGuard(async el => {
+            const val = id => { const n = $('#' + id); return n ? n.value : ''; };
+            const u = S.ui.shifts;
+            Object.assign(u, {
+                empId: +val('shLvEmp') || u.empId, lvType: val('shLvType') || 'Saatlik izin',
+                lvDate: val('shLvDate'), lvStart: val('shLvStart'), lvEnd: val('shLvEnd'),
+                lvDays: +val('shLvDays') || 1, lvNote: val('shLvNote')
+            });
+            if (!u.empId || !u.lvDate) { A.toast('Personel ve tarih zorunludur.', 'err'); return; }
+            const isHourly = u.lvType === 'Saatlik izin';
+            if (el) el.disabled = true;
+            try {
+                const res = await postJson('/api/v1/leaves', {
+                    employeeId: u.empId, leaveType: u.lvType, isHourly,
+                    startDate: u.lvDate, endDate: u.lvDate,
+                    startClock: isHourly ? u.lvStart : null, endClock: isHourly ? u.lvEnd : null,
+                    days: isHourly ? 0.2 : u.lvDays, note: u.lvNote
+                });
+                u.feedback = { tone: 'ok', text: res.message || 'İzin talebi PostgreSQL leave_requests tablosuna kaydedildi.' };
+                A.toast(u.feedback.text, 'ok');
+            } catch (err) {
+                u.feedback = { tone: 'bad', text: String((err && err.message) || err) };
+                A.toast(u.feedback.text, 'err');
+            } finally {
+                const synced = await D.syncAllFromPostgres({ force: true });
+                if (!synced && onShiftsPage()) draw(false);
+            }
+        }),
+        'shifts-leave-decide': syncGuard(async el => {
+            const code = el.dataset.code, status = el.dataset.v === 'approved' ? 'APPROVED' : 'REJECTED';
+            if (!code) return;
+            el.disabled = true;
+            try {
+                const res = await postJson('/api/v1/leaves', { code, status }, 'PATCH');
+                A.toast(res.message || 'İzin durumu güncellendi.', 'ok');
+            } catch (err) {
+                A.toast(String((err && err.message) || err), 'err');
+            } finally {
+                const synced = await D.syncAllFromPostgres({ force: true });
+                if (!synced) draw(false);
+            }
+        }),
+        'leave-hourly-open': () => {
+            const opts = D.EMPLOYEES.slice().sort((a, b) => a.sicil.localeCompare(b.sicil, 'tr'))
+                .map(e => `<option value="${e.id}">${esc(e.sicil)} · ${esc(e.name)} (${esc(e.dept)})</option>`).join('');
+            const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Istanbul' });
+            openModal('Saatlik izin talebi oluştur', `
+                <p class="muted" style="font-size:12.5px;margin-bottom:12px">Saatlik izin onaylandığında personelin o günkü gecikme dakikasından otomatik düşülür.</p>
+                <div class="shift-form">
+                    <label class="field"><span>Personel</span><div class="input"><select id="mhEmp">${opts}</select></div></label>
+                    <label class="field"><span>Tarih</span><div class="input"><input id="mhDate" type="date" value="${today}"></div></label>
+                    <div class="shift-form-row">
+                        <label class="field"><span>Başlangıç</span><div class="input"><input id="mhStart" type="time" value="08:30"></div></label>
+                        <label class="field"><span>Bitiş</span><div class="input"><input id="mhEnd" type="time" value="10:00"></div></label>
+                    </div>
+                    <label class="field"><span>Mazeret / açıklama</span><div class="input"><input id="mhNote" value="Resmi kurum işlemi için saatlik izin talebi."></div></label>
+                </div>`, '<button class="btn btn-soft" data-act="modal-close">Vazgeç</button><button class="btn btn-primary" data-act="leave-hourly-create">Talebi Kaydet</button>');
+        },
+        'leave-hourly-create': syncGuard(async el => {
+            const val = id => { const n = $('#' + id); return n ? n.value : ''; };
+            const employeeId = +val('mhEmp');
+            if (!employeeId) { A.toast('Personel seçin.', 'err'); return; }
+            el.disabled = true;
+            try {
+                const res = await postJson('/api/v1/leaves', {
+                    employeeId, leaveType: 'Saatlik izin', isHourly: true,
+                    startDate: val('mhDate'), endDate: val('mhDate'),
+                    startClock: val('mhStart'), endClock: val('mhEnd'),
+                    days: 0.2, note: val('mhNote')
+                });
+                closeModal();
+                A.toast(res.message || 'Saatlik izin talebi kaydedildi.', 'ok');
+                const synced = await D.syncAllFromPostgres({ force: true });
+                if (!synced) draw(false);
+            } catch (err) {
+                A.toast(String((err && err.message) || err), 'err');
+                el.disabled = false;
+            }
+        }),
         'rpt-print': () => { window.print(); },
         'modal-close': closeModal
     };
@@ -3036,6 +3436,9 @@
             if (!S.openEmpId || !emp(S.openEmpId)) S.page = 'employees';
         }
         buildNav(); draw(true); placeNav(); armIdle(); setTimeout(() => { placeNav(); A.placeSeg($('#rangeSeg')); }, 60);
+        // PostgreSQL 18 + Prisma canlı veri ve SSE akışını başlat
+        D.syncAllFromPostgres();
+        D.startRealtimeStream();
     }
     function logout(msg) {
         if (A.closeCardPopover) A.closeCardPopover(true);
@@ -3189,6 +3592,7 @@
         addEventListener('scroll', () => $('.top').classList.toggle('is-stuck', scrollY > 4), { passive: true });
         addEventListener('resize', () => { placeNav(); A.placeSeg($('#rangeSeg')); A.placeSeg($('#portalSeg')); });
         addEventListener('hashchange', () => { if (!S.user) return; const h = location.hash.replace('#/', ''); if (h && h !== S.page) go(h); });
+        addEventListener('atf:sync', scheduleShiftsSyncDraw);
 
         try { const s = JSON.parse(sessionStorage.getItem('atf_session') || 'null'), a = s && ACCOUNTS.find(x => x.email === s.email && x.role === s.role); if (a) { document.documentElement.classList.add('has-saved-session'); S.user = { email: a.email, role: a.role, name: a.name, title: a.title }; S.portal = a.role; startApp(); return; } } catch (e) { sessionStorage.removeItem('atf_session'); }
         requestAnimationFrame(() => A.placeSeg($('#portalSeg'))); if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => A.placeSeg($('#portalSeg')));

@@ -3,23 +3,23 @@
 import React, { useEffect } from "react";
 import { AlbayrakLogo } from "@/components/brand/AlbayrakLogo";
 import { ThreeStudioEnhancer } from "@/components/three/ThreeStudioEnhancer";
-import { LiveRealtimeHub } from "@/components/live/LiveRealtimeHub";
 
 /**
  * Albayrak Finans PDKS — Ana Portal Kabuğu
  * - Giriş ekranında Three.js WebGL 3D sahnesi (ThreeStudioEnhancer) + 3D Anahtar Teslim
  *   ve Parola Gizlilik (scroll_frames & privacy_frames) deneyimini sunar.
- * - İçeride PostgreSQL 18 + Prisma + Zod + SSE Canlı Akış (LiveRealtimeHub) ile
- *   22 metriklik derin personel karnesi, sıralanabilir günlük PDKS cetveli,
- *   büyütülebilir interaktif KPI grafikleri ve dokunulmamış OOXML + gömülü logo
- *   Excel motorunu (/core-xlsx.js) eksiksiz çalıştırır.
+ * - İçeride PostgreSQL 18 + Prisma + Zod + SSE canlı akış, 22 metriklik derin
+ *   personel karnesi, sıralanabilir günlük PDKS cetveli, büyütülebilir interaktif
+ *   KPI grafikleri ve dokunulmamış OOXML + gömülü logo Excel motorunu
+ *   (/core-xlsx.js) eksiksiz çalıştırır. Canlı akış artık sağ altta yüzen bir
+ *   çekmece değil, sol menüdeki "Vardiya & canlı akış" sekmesidir.
  */
 
 const PDKS_SCRIPTS = [
-  "/core-xlsx.js?v=9.10",
-  "/legacy/data.js?v=9.10",
-  "/legacy/app.js?v=9.10",
-  "/legacy/landing.js?v=9.10"
+  "/core-xlsx.js?v=9.11",
+  "/legacy/data.js?v=9.11",
+  "/legacy/app.js?v=9.11",
+  "/legacy/landing.js?v=9.11"
 ] as const;
 
 /** Her script tamamlandığında ince kırmızı boot çizgisinin ulaşacağı ilerleme. */
@@ -601,9 +601,6 @@ export function PdksPortalShell() {
           <div className="modal-foot" id="modalFoot" />
         </div>
       </div>
-
-      {/* Gerçek Zamanlı PostgreSQL 18 + SSE + AccessLogs + Vardiya/Saatlik İzin Kokpiti */}
-      <LiveRealtimeHub />
     </>
   );
 }

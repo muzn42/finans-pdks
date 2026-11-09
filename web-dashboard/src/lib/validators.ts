@@ -81,7 +81,7 @@ export const AccessLogCreateSchema = z.object({
     errorMap: () => ({ message: "Geçersiz geçiş hareketi tipi." })
   }),
   source: z.enum(["MOBILE_GEOFENCE", "QR_TURNSTILE", "WEB_MANUAL"]).default("MOBILE_GEOFENCE"),
-  branchCode: z.string().trim().default("HQ"),
+  branchCode: z.string().trim().default("ŞB-001"),
   distanceMeters: z.coerce.number().min(0).max(5000).default(5.4),
   isMockGps: z.boolean().default(false),
   clockHhmm: z.string().regex(hhmmRegex, "Saat SS:DD formatında olmalıdır.").optional(),
