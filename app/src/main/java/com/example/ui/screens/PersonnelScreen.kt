@@ -127,6 +127,27 @@ fun PersonnelScreen(viewModel: MainViewModel) {
         }
     }
 
+    // Uygulama açılışında gerçek GPS'i otomatik başlat; izin yoksa bir kez iste.
+    // Simülasyon modu (isSimulated) ayrıdır ve bu izin akışından etkilenmez.
+    LaunchedEffect(Unit) {
+        val fineGranted = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        val coarseGranted = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        if (fineGranted || coarseGranted) {
+            viewModel.startRealGps(context)
+        } else {
+            locationPermissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+            )
+        }
+    }
+
     // Canlı saat
     var currentTimeMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) {
@@ -185,6 +206,10 @@ fun PersonnelScreen(viewModel: MainViewModel) {
                     res.message
                 }
                 is AttendanceResult.DistanceExceeded -> {
+                    SoundEffectPlayer.playWarningTone(context)
+                    res.message
+                }
+                is AttendanceResult.MockLocationDetected -> {
                     SoundEffectPlayer.playWarningTone(context)
                     res.message
                 }

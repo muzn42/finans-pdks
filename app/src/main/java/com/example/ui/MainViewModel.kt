@@ -789,7 +789,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         address: String,
         latitude: Double,
         longitude: Double,
-        radiusMeters: Double = 5.0,
+        radiusMeters: Double = 30.0,
         wifiSsid: String = "FINANS_CORP_SECURE",
         phone: String = "0212 555 0100"
     ) {

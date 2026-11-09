@@ -59,6 +59,30 @@ object LocationHelper {
     }
 
     /**
+     * Sahte konum tespiti — platform bayrağı + Bundle ekstraları + anormal doğruluk.
+     * Bazı sahte GPS uygulamaları yalnızca ekstra alanları doldurur veya 0m doğruluk verir.
+     */
+    fun isMockLocation(location: Location): Boolean {
+        val platformMock = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            location.isMock
+        } else {
+            @Suppress("DEPRECATION")
+            location.isFromMockProvider
+        }
+        if (platformMock) return true
+
+        val extras = location.extras
+        if (extras != null) {
+            if (extras.getBoolean("mockLocation", false)) return true
+            if (extras.getBoolean("isMock", false)) return true
+            if (extras.getBoolean("sahte_konum", false)) return true
+        }
+
+        // Gerçek GPS donanımı hiçbir zaman 0m doğruluk bildirmez.
+        return location.accuracy == 0f
+    }
+
+    /**
      * Gerçek GPS lokasyon akışı
      */
     @SuppressLint("MissingPermission")
@@ -75,19 +99,12 @@ object LocationHelper {
             override fun onLocationResult(result: LocationResult) {
                 val loc: Location? = result.lastLocation
                 if (loc != null) {
-                    val isMock = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                        loc.isMock
-                    } else {
-                        @Suppress("DEPRECATION")
-                        loc.isFromMockProvider
-                    }
-
                     trySend(
                         UserLocationData(
                             latitude = loc.latitude,
                             longitude = loc.longitude,
                             accuracyMeters = loc.accuracy,
-                            isMock = isMock,
+                            isMock = isMockLocation(loc),
                             isSimulated = false
                         )
                     )

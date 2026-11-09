@@ -18,6 +18,7 @@ import java.util.Locale
 sealed class AttendanceResult {
     data class Success(val record: AttendanceRecordEntity, val message: String) : AttendanceResult()
     data class DistanceExceeded(val distanceMeters: Double, val allowedRadius: Double, val message: String) : AttendanceResult()
+    data class MockLocationDetected(val message: String) : AttendanceResult()
     data class Error(val errorMessage: String) : AttendanceResult()
 }
 
@@ -115,6 +116,56 @@ class PdksRepository(
         val dateFormat = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault())
         val formattedTime = timeFormat.format(Date(now))
         val formattedDate = dateFormat.format(Date(now))
+
+        // SAHTE KONUM (MOCK GPS) KESİN ENGELİ — mesafe kontrolünden ÖNCE çalışır.
+        // Uygulamanın kendi demo/simülasyon modu (isSimulated) bu blokajdan muaftır.
+        if (isMock && !isSimulated) {
+            val mockMessage =
+                "Sahte Konum (Mock GPS) Tespit Edildi: Personel (${employee.fullName}) $formattedTime itibarıyla $type işlemini sahte konumla yapmayı denedi. İşlem engellendi ve güvenlik birimlerine yüksek önem dereceli ihlal kaydı oluşturuldu."
+
+            dao.insertSecurityAlert(
+                SecurityAlertEntity(
+                    timestamp = now,
+                    employeeId = employee.id,
+                    employeeName = employee.fullName,
+                    branchName = branch.name,
+                    alertType = "MOCK_LOCATION",
+                    message = mockMessage,
+                    distanceMeters = distance,
+                    severity = "HIGH"
+                )
+            )
+
+            val mockNotifTitle = "🚫 Sahte Konum Engellendi: ${employee.fullName}"
+            val mockNotifMsg =
+                "${employee.fullName} (${branch.name}) sahte konum (mock GPS) ile $type denemesi yaptı. İşlem anında engellendi; güvenlik ihlali olarak İK ve BT birimlerine iletildi."
+
+            dao.insertNotification(
+                NotificationEntity(
+                    timestamp = now,
+                    targetDepartment = "IT",
+                    title = mockNotifTitle,
+                    message = mockNotifMsg,
+                    category = "MOCK_LOCATION",
+                    employeeName = employee.fullName,
+                    branchName = branch.name,
+                    distanceMeters = distance
+                )
+            )
+
+            NotificationHelper.postSystemNotification(
+                context = context,
+                notificationId = (now % 10000).toInt(),
+                channelId = NotificationHelper.CHANNEL_ALERTS_ID,
+                title = mockNotifTitle,
+                message = mockNotifMsg,
+                isAlert = true
+            )
+
+            return AttendanceResult.MockLocationDetected(
+                message = "GÜVENLİK İHLALİ: Cihazınızda sahte konum (mock GPS) tespit edildi.\n\nGiriş/çıkış işlemi kesin olarak reddedildi ve durum yüksek öncelikli güvenlik ihlali olarak İK ve BT birimlerine bildirildi.\n\nLütfen konum sahteleme uygulamalarını kapatıp gerçek GPS ile tekrar deneyin."
+            )
+        }
 
         if (!isWithinAllowed) {
             // 30 METRE AŞILDI! GÜVENLİK UYARISI OLUŞTUR VE İŞLEMİ REDDET
