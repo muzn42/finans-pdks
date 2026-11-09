@@ -206,7 +206,9 @@
         return `<span class="delta ${cls}">${ic(dir)}${Math.abs(v).toLocaleString('tr-TR', { maximumFractionDigits: 1 })}${unit}</span>`;
     }
     const pill = (txt, tone) => `<span class="pill ${tone}">${esc(txt)}</span>`;
-    const avatar = (e, cls) => `<span class="avatar t${e.tone || 1} ${cls || ''}">${esc(A.initials(e.name))}</span>`;
+    const avatar = (e, cls) => e
+        ? `<span class="avatar t${e.tone || 1} ${cls || ''}">${esc(A.initials(e.name || ''))}</span>`
+        : `<span class="avatar ${cls || ''}" aria-hidden="true">—</span>`;
     const chips = (items, cur, act) => `<div class="chips">${items.map(i => `<button class="chip${cur === i.v ? ' is-active' : ''}" data-act="${act}" data-v="${i.v}">${esc(i.l)}${i.n != null ? ` <span class="n">${i.n}</span>` : ''}</button>`).join('')}</div>`;
 
     /* Özel temalı açılır menü (tüm sayfalarda işletim sistemi beyaz select sorununu çözer) */
@@ -244,7 +246,7 @@
     HR.overview = {
         title: 'Genel bakış', sub: () => 'Personel katılım durumu, fazla mesai ve net süre bakiyesi özeti · ' + rangeLabel(), tools: { range: 1, branch: 1 }, icon: 'grid',
         render() {
-            const st = stats(), E = emps(), pend = D.LEAVES.filter(l => l.status === 'pending').slice(0, 3);
+            const st = stats(), E = emps(), pend = D.LEAVES.filter(l => l.status === 'pending' && emp(l.empId)).slice(0, 3);
             const curDays = activeDays(), daysChart = curDays.length >= 5 ? curDays.slice(-14) : D.DAYS.slice(-14);
             const lb = D.computeLeaderboards(E, filterOpts());
             const geldi = st.onTime + st.late;
@@ -606,7 +608,7 @@
         title: 'İzin & mazeret talepleri', sub: () => 'Onay bekleyenleri hızlıca sonuçlandırın', tools: {}, icon: 'inbox',
         render() {
             const u = S.ui.leave, cnt = s => D.LEAVES.filter(l => l.status === s).length;
-            const L = D.LEAVES.filter(l => (u.f === 'all' || l.status === u.f) && (u.type === 'ALL' || l.type === u.type));
+            const L = D.LEAVES.filter(l => (u.f === 'all' || l.status === u.f) && (u.type === 'ALL' || l.type === u.type) && emp(l.empId));
             const tone = { pending: ['Bekliyor', 'warn'], approved: ['Onaylandı', 'ok'], rejected: ['Reddedildi', 'bad'] };
             return `<section class="card flush"><div class="toolbar">${chips([{ v: 'pending', l: 'Bekleyen', n: cnt('pending') }, { v: 'approved', l: 'Onaylanan', n: cnt('approved') }, { v: 'rejected', l: 'Reddedilen', n: cnt('rejected') }, { v: 'all', l: 'Tümü', n: D.LEAVES.length }], u.f, 'leave-filter')}
                 <span class="grow"></span>${selectEl('leave-type', [{ v: 'ALL', l: 'Tüm türler' }].concat(D.LEAVE_TYPES.map(t => ({ v: t, l: t }))), u.type, 'Talep türü')}
@@ -1414,7 +1416,7 @@
                 </section>
             </div>
             <div class="grid g-2 mt">
-                <section class="card flush">${cardHead('Açık destek talepleri', '', `<button class="btn btn-soft btn-sm" data-go="support">Tümü</button>`)}<div class="list" style="margin-top:8px">${openTickets().slice(0, 4).map(t => { const e = emp(t.empId); return `<div class="list-item">${avatar(e, 'sm')}<div class="grow"><b>${esc(e.name)}</b><small>${D.TICKET_TYPES[t.type]} · ${t.ago} önce</small></div></div>`; }).join('')}</div></section>
+                <section class="card flush">${cardHead('Açık destek talepleri', '', `<button class="btn btn-soft btn-sm" data-go="support">Tümü</button>`)}<div class="list" style="margin-top:8px">${openTickets().filter(t => emp(t.empId)).slice(0, 4).map(t => { const e = emp(t.empId); return `<div class="list-item">${avatar(e, 'sm')}<div class="grow"><b>${esc(e.name)}</b><small>${D.TICKET_TYPES[t.type]} · ${t.ago} önce</small></div></div>`; }).join('')}</div></section>
                 <section class="card flush">${cardHead('Son güvenlik uyarıları', '', `<button class="btn btn-soft btn-sm" data-go="security">Tümü</button>`)}<div class="list" style="margin-top:8px">${openAlerts().slice(0, 4).map(alertRow).join('')}</div></section>
             </div>`;
         },
@@ -1431,7 +1433,9 @@
         return d.map(() => Math.round(18 + r() * 24));
     }
     function alertRow(a) {
-        const e = emp(a.empId), tone = { HIGH: 'bad', MED: 'warn', LOW: 'mute' }[a.sev], sl = { HIGH: 'Yüksek', MED: 'Orta', LOW: 'Düşük' }[a.sev];
+        const e = emp(a.empId);
+        if (!e) return '';
+        const tone = { HIGH: 'bad', MED: 'warn', LOW: 'mute' }[a.sev], sl = { HIGH: 'Yüksek', MED: 'Orta', LOW: 'Düşük' }[a.sev];
         return `<div class="list-item"><span class="ico-sq ${a.sev === 'HIGH' ? 'red' : a.sev === 'MED' ? 'warn' : ''}">${ic(a.type === 'MOCK_GPS' || a.type === 'GEOFENCE' ? 'pin' : a.type === 'DEVICE' ? 'phone' : a.type === 'BRUTE' ? 'lock' : 'shield')}</span><div class="grow"><b>${D.ALERT_TYPES[a.type]}</b><small>${esc(e.name)} · ${esc(brName(a.branch))} · ${a.ago} önce</small></div>${pill(sl, tone)}</div>`;
     }
 
@@ -1439,7 +1443,7 @@
         title: 'Destek & parola yönetimi', sub: () => 'Parola, kilit ve cihaz talepleri', tools: {}, icon: 'key',
         render() {
             const u = S.ui.tk, cnt = s => D.TICKETS.filter(t => t.status === s).length, q = u.q.toLocaleLowerCase('tr-TR').trim();
-            const L = D.TICKETS.filter(t => (u.f === 'all' || t.status === u.f) && (u.type === 'ALL' || t.type === u.type) && (!q || (emp(t.empId).name + emp(t.empId).sicil).toLocaleLowerCase('tr-TR').includes(q)));
+            const L = D.TICKETS.filter(t => (u.f === 'all' || t.status === u.f) && (u.type === 'ALL' || t.type === u.type) && emp(t.empId) && (!q || (emp(t.empId).name + emp(t.empId).sicil).toLocaleLowerCase('tr-TR').includes(q)));
             const tone = { open: ['Açık', 'warn'], progress: ['İşlemde', 'info'], done: ['Çözüldü', 'ok'] };
             return `<section class="card flush"><div class="toolbar">${searchEl('tk-q', u.q, 'Personel adı veya sicil')}
                 ${chips([{ v: 'open', l: 'Açık', n: cnt('open') }, { v: 'progress', l: 'İşlemde', n: cnt('progress') }, { v: 'done', l: 'Çözüldü', n: cnt('done') }, { v: 'all', l: 'Tümü', n: D.TICKETS.length }], u.f, 'tk-filter')}
@@ -1453,7 +1457,7 @@
         title: 'Güvenlik radarı', sub: () => 'Sahte konum, cihaz ve oturum uyarıları', tools: {}, icon: 'shield',
         render() {
             const u = S.ui.alert, base = D.ALERTS.filter(a => u.show === 'all' || (u.show === 'open' ? !a.resolved : a.resolved));
-            const L = base.filter(a => (u.sev === 'ALL' || a.sev === u.sev) && (u.type === 'ALL' || a.type === u.type)), c = s => base.filter(a => a.sev === s).length;
+            const L = base.filter(a => (u.sev === 'ALL' || a.sev === u.sev) && (u.type === 'ALL' || a.type === u.type) && emp(a.empId)), c = s => base.filter(a => a.sev === s).length;
             return `<section class="card flush"><div class="toolbar">${chips([{ v: 'ALL', l: 'Tümü', n: base.length }, { v: 'HIGH', l: 'Yüksek', n: c('HIGH') }, { v: 'MED', l: 'Orta', n: c('MED') }, { v: 'LOW', l: 'Düşük', n: c('LOW') }], u.sev, 'al-sev')}
                 <span class="grow"></span>${selectEl('al-type', [{ v: 'ALL', l: 'Tüm türler' }].concat(Object.keys(D.ALERT_TYPES).map(k => ({ v: k, l: D.ALERT_TYPES[k] }))), u.type, 'Tür')}
                 ${selectEl('al-show', [{ v: 'open', l: 'Açık' }, { v: 'done', l: 'Çözülen' }, { v: 'all', l: 'Tümü' }], u.show, 'Durum')}
@@ -1466,7 +1470,7 @@
         title: 'Cihaz eşlemeleri', sub: () => 'Her personel tek cihaza bağlıdır', tools: {}, icon: 'phone',
         render() {
             const u = S.ui.dev, q = u.q.toLocaleLowerCase('tr-TR').trim();
-            const L = D.DEVICES.filter(d => (u.status === 'ALL' || d.status === u.status) && (u.ver === 'ALL' || d.ver === u.ver) && (!q || (emp(d.empId).name + emp(d.empId).sicil + d.model).toLocaleLowerCase('tr-TR').includes(q))).slice(0, 60);
+            const L = D.DEVICES.filter(d => emp(d.empId) && (u.status === 'ALL' || d.status === u.status) && (u.ver === 'ALL' || d.ver === u.ver) && (!q || (emp(d.empId).name + emp(d.empId).sicil + d.model).toLocaleLowerCase('tr-TR').includes(q))).slice(0, 60);
             const tone = { BOUND: ['Eşlendi', 'ok'], PENDING: ['Sıfırlandı · bekliyor', 'info'], BLOCKED: ['Engelli', 'bad'] };
             return `<section class="card flush"><div class="toolbar">${searchEl('dv-q', u.q, 'Personel, sicil veya model')}<span class="grow"></span>
                 ${selectEl('dv-status', [{ v: 'ALL', l: 'Tüm durumlar' }, { v: 'BOUND', l: 'Eşlendi' }, { v: 'PENDING', l: 'Sıfırlandı' }, { v: 'BLOCKED', l: 'Engelli' }], u.status, 'Durum')}
@@ -1850,12 +1854,17 @@
         renderBranchMenu();
         syncDateInputs();
     }
-    function skeleton() { return '<div class="grid g-4">' + '<div class="sk sk-card"></div>'.repeat(4) + '</div><div class="grid g-main mt"><div class="sk sk-big"></div><div class="sk sk-big"></div></div>'; }
+    function skeleton() {
+        return '<div class="grid g-4">' + '<div class="sk sk-card"></div>'.repeat(4) + '</div>'
+            + '<div class="sk sk-toolbar mt"></div>'
+            + '<div class="sk-table mt">' + '<div class="sk sk-row"></div>'.repeat(8) + '</div>';
+    }
 
     const dndKey = () => 'atf_dnd_' + (S.user ? S.user.role : 'HR') + '_' + S.page;
 
     function draw(animate) {
         if (!S.user || !PAGES[S.user.role] || !PAGES[S.user.role][S.page]) return;
+        if (A.closeCardPopover) A.closeCardPopover(true);
         const p = PAGES[S.user.role][S.page], pg = $('#page'), active = document.activeElement, focusId = active && active.id && pg.contains(active) ? active.id : null, pos = focusId ? active.selectionStart : null;
         $('#pageTitle').textContent = p.title; $('#pageSub').textContent = typeof p.sub === 'function' ? p.sub() : p.sub; document.title = p.title + ' · Albayrak Finans PDKS';
         pg.innerHTML = p.render(); pg.classList.toggle('still', !animate);
@@ -2345,7 +2354,7 @@
             preparedBy: S.user ? S.user.name + ' — ' + S.user.title : 'İnsan Kaynakları Yönetimi',
             headers: ['Talep No', 'Sicil No', 'Personel Adı', 'Departman', 'İzin Türü', 'Süre (Gün)', 'Başlangıç Tarihi', 'Açıklama', 'Durum'],
             rows: D.LEAVES.map(l => {
-                const e = emp(l.empId);
+                const e = emp(l.empId) || { sicil: '—', name: 'Bilinmeyen Personel', dept: '—' };
                 return ['LV-' + l.id, e.sicil, e.name, e.dept, l.type, l.days, l.from, l.reason, tone[l.status] || l.status];
             })
         });
@@ -2369,7 +2378,7 @@
             summaryRows: D.AUDIT.slice(0, 12).map(a => [a.t, a.who, a.act, a.target, a.cat]),
             headers: ['Uyarı No', 'Zaman', 'Sicil No', 'Personel', 'Şube', 'Güvenlik Olayı', 'Önem Derecesi', 'Durum'],
             rows: D.ALERTS.map(a => {
-                const e = emp(a.empId);
+                const e = emp(a.empId) || { sicil: '—', name: 'Bilinmeyen Personel' };
                 return ['AL-' + a.id, a.ago + ' önce', e.sicil, e.name, brName(a.branch), D.ALERT_TYPES[a.type], a.sev === 'HIGH' ? 'Yüksek' : a.sev === 'MED' ? 'Orta' : 'Düşük', a.resolved ? 'Çözüldü' : 'Bekliyor'];
             })
         });
@@ -2928,9 +2937,18 @@
         if (sl) sl.style.color = activeTheme === 'dark' ? '#fff' : 'var(--charcoal)';
     }
 
+    /* Giriş/çıkışta ani görünüm değişimi yerine kısa kurumsal sönümleme */
+    function viewEnter(el) {
+        if (!el) return;
+        el.classList.remove('view-enter');
+        void el.offsetWidth;
+        el.classList.add('view-enter');
+    }
+
     function startApp() {
         syncTheme();
         $('#authView').hidden = true; $('#appView').hidden = false; window.scrollTo({ top: 0 });
+        viewEnter($('#appView'));
         const u = S.user; S.page = 'overview'; S.range = 30; S.fromDate = ''; S.toDate = ''; S.branch = u.branch && u.branch !== 'ALL' ? u.branch : 'ALL';
         $('#sidePortal').textContent = ROLE_PORTAL_NAME[u.role] || 'Yönetim Portalı'; $('#userName').textContent = u.name; $('#userTitle').textContent = u.title; $('#userAvatar').textContent = A.initials(u.name);
         renderBranchMenu();
@@ -2945,6 +2963,8 @@
         buildNav(); draw(true); placeNav(); armIdle(); setTimeout(() => { placeNav(); A.placeSeg($('#rangeSeg')); }, 60);
     }
     function logout(msg) {
+        if (A.closeCardPopover) A.closeCardPopover(true);
+        document.documentElement.classList.remove('has-saved-session');
         sessionStorage.removeItem('atf_session'); sessionStorage.removeItem('atf_emp'); S.user = null; S.openEmpId = null; clearTimeout(idleTimer); closeDrawer(); closeModal();
         // Bayat DOM'a tiklanirsa JS hatasi olusmasin: icerigi temizle
         const pg = $('#page'); if (pg) pg.innerHTML = '';
@@ -2953,6 +2973,7 @@
         closeSide();
         syncTheme();
         $('#appView').hidden = true; $('#authView').hidden = false; $('#loginPassword').value = ''; history.replaceState(null, '', location.pathname);
+        viewEnter($('#authView'));
         window.scrollTo({ top: 0, behavior: 'instant' });
         setTimeout(() => A.placeSeg($('#portalSeg')), 30); if (msg) A.toast(msg);
     }
@@ -2969,13 +2990,26 @@
         if (acc.active === false) {
             err.textContent = 'Bu kullanıcı hesabı Sistem Yöneticisi tarafından askıya alınmıştır.'; err.hidden = false; return;
         }
-        fails = 0; btn.disabled = true; btn.querySelector('span').textContent = 'Giriş yapılıyor…';
-        setTimeout(() => { btn.disabled = false; btn.querySelector('span').textContent = 'Giriş yap'; S.user = { email: acc.email, role: acc.role, name: acc.name, title: acc.title, branch: acc.branch || 'ALL', perms: acc.perms || [] }; sessionStorage.setItem('atf_session', JSON.stringify({ email: acc.email, role: acc.role })); startApp(); A.toast('Hoş geldiniz, ' + acc.name.split(' ')[0]); }, 450);
+        fails = 0; btn.disabled = true; btn.classList.add('is-busy'); btn.setAttribute('aria-busy', 'true');
+        btn.querySelector('span').textContent = 'Giriş yapılıyor…';
+        setTimeout(() => {
+            btn.disabled = false; btn.classList.remove('is-busy'); btn.removeAttribute('aria-busy');
+            btn.querySelector('span').textContent = 'Giriş yap';
+            S.user = { email: acc.email, role: acc.role, name: acc.name, title: acc.title, branch: acc.branch || 'ALL', perms: acc.perms || [] }; sessionStorage.setItem('atf_session', JSON.stringify({ email: acc.email, role: acc.role })); startApp(); A.toast('Hoş geldiniz, ' + acc.name.split(' ')[0]);
+        }, 450);
     }
 
     /* ======================= Başlangıç ======================= */
     function init() {
-        A.hydrate(document); $('#authLogo').innerHTML = A.LOGO; $('#sideLogo').innerHTML = A.LOGO; $('#authLogo').style.color = '#fff'; $('#sideLogo').style.color = 'var(--charcoal)';
+        A.hydrate(document);
+        /* Logo artık HTML/JSX içine SSR olarak gömülü gelir (ilk karede görünür).
+           Yalnızca boşsa enjekte edilir; aksi hâlde React hidrasyonu ile
+           çakışmaması için mevcut SVG korunur. */
+        ['authLogo', 'sideLogo'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el && !el.querySelector('svg')) el.innerHTML = A.LOGO;
+        });
+        $('#authLogo').style.color = '#fff'; $('#sideLogo').style.color = 'var(--charcoal)';
         syncTheme();
         if (D.syncEmployeesFromBackend) {
             D.syncEmployeesFromBackend(() => { if (S.user) draw(false); });
@@ -3081,7 +3115,7 @@
         addEventListener('resize', () => { placeNav(); A.placeSeg($('#rangeSeg')); A.placeSeg($('#portalSeg')); });
         addEventListener('hashchange', () => { if (!S.user) return; const h = location.hash.replace('#/', ''); if (h && h !== S.page) go(h); });
 
-        try { const s = JSON.parse(sessionStorage.getItem('atf_session') || 'null'), a = s && ACCOUNTS.find(x => x.email === s.email && x.role === s.role); if (a) { S.user = { email: a.email, role: a.role, name: a.name, title: a.title }; S.portal = a.role; startApp(); return; } } catch (e) { sessionStorage.removeItem('atf_session'); }
+        try { const s = JSON.parse(sessionStorage.getItem('atf_session') || 'null'), a = s && ACCOUNTS.find(x => x.email === s.email && x.role === s.role); if (a) { document.documentElement.classList.add('has-saved-session'); S.user = { email: a.email, role: a.role, name: a.name, title: a.title }; S.portal = a.role; startApp(); return; } } catch (e) { sessionStorage.removeItem('atf_session'); }
         requestAnimationFrame(() => A.placeSeg($('#portalSeg'))); if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => A.placeSeg($('#portalSeg')));
     }
     function closeSide() { $('#side').classList.remove('on'); $('#scrim').classList.remove('on'); }

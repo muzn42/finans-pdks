@@ -524,6 +524,45 @@
         }
     } catch (_) {}
 
+    // Lokal silme/güncelleme sonrası sahipsiz kalan referansları temizle
+    syncEmployeeReferences();
+
+    /* Personel kadrosu değiştiğinde (backend senkronizasyonu, yeni kayıt veya silme)
+       izin / uyarı / destek talebi / cihaz kayıtlarındaki personel referanslarını
+       güncel kadroya bağlar. Eşleşmeyen (sahipsiz) kayıtları temizler; böylece
+       `emp(id)` çağrıları hiçbir zaman undefined dönüp arayüzü kilitlemez. */
+    function syncEmployeeReferences(previousEmployees) {
+        const validIds = new Set(EMPLOYEES.map(e => e.id));
+        const idBySicil = new Map();
+        EMPLOYEES.forEach(e => { if (e.sicil) idBySicil.set(e.sicil, e.id); });
+        const oldById = new Map((previousEmployees || []).map(e => [e.id, e]));
+
+        const resolveId = rec => {
+            if (!rec) return null;
+            if (validIds.has(rec.empId)) return rec.empId;
+            const old = oldById.get(rec.empId);
+            const mapped = old ? idBySicil.get(old.sicil) : null;
+            return mapped != null ? mapped : null;
+        };
+
+        [LEAVES, ALERTS, TICKETS, DEVICES].forEach(list => {
+            for (let i = list.length - 1; i >= 0; i--) {
+                const nextId = resolveId(list[i]);
+                if (nextId == null) list.splice(i, 1);
+                else list[i].empId = nextId;
+            }
+        });
+    }
+
+    /* Backend kaydı lokal geçici ID'yi kalıcı ID ile değiştirdiğinde
+       cihaz/izin/uyarı/talep referanslarını da yeni ID'ye taşır. */
+    function rekeyEmployeeReferences(oldId, newId) {
+        if (oldId == null || newId == null || oldId === newId) return;
+        [LEAVES, ALERTS, TICKETS, DEVICES].forEach(list => {
+            list.forEach(rec => { if (rec.empId === oldId) rec.empId = newId; });
+        });
+    }
+
     function clearAnalyticsCache() {
         analyticsCache.clear();
         leaderboardCache.clear();
@@ -537,6 +576,7 @@
             .then(r => (r.ok ? r.json() : null))
             .then(data => {
                 if (!data || !Array.isArray(data.items) || !data.items.length) return;
+                const previousEmployees = EMPLOYEES.slice();
                 EMPLOYEES.length = 0;
                 data.items.forEach(item => {
                     EMPLOYEES.push(Object.assign({
@@ -564,6 +604,7 @@
                         isNewHire: !!item.isNewHire
                     }));
                 });
+                syncEmployeeReferences(previousEmployees);
                 clearAnalyticsCache();
                 if (typeof onSync === 'function') onSync(EMPLOYEES);
             })
@@ -615,24 +656,34 @@
         persistLocalState();
 
         if (typeof fetch === 'function' && (typeof location === 'undefined' || location.protocol !== 'file:')) {
+            const payload = {
+                name: newEmp.name,
+                dept: newEmp.dept,
+                title: newEmp.title,
+                branch: newEmp.branch,
+                status: newEmp.status,
+                hireDate: newEmp.startDate
+            };
+            // Boş e-posta gönderilmez: zod doğrulaması boş string yerine undefined bekler.
+            if (newEmp.email) payload.email = newEmp.email;
+
             fetch(API_BASE, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-                body: JSON.stringify({
-                    name: newEmp.name,
-                    dept: newEmp.dept,
-                    title: newEmp.title,
-                    branch: newEmp.branch,
-                    status: newEmp.status,
-                    email: newEmp.email,
-                    startDate: newEmp.startDate
-                })
+                body: JSON.stringify(payload)
             })
-                .then(r => (r.ok ? r.json() : null))
+                .then(r => {
+                    if (!r.ok) {
+                        A.toast('Personel sunucuya kaydedilemedi · yerel taslak olarak tutuldu.', 'err');
+                        return null;
+                    }
+                    return r.json();
+                })
                 .then(res => {
                     if (res && res.employee) {
                         const idx = EMPLOYEES.findIndex(x => x.id === newEmp.id);
                         if (idx >= 0) {
+                            rekeyEmployeeReferences(EMPLOYEES[idx].id, res.employee.id);
                             EMPLOYEES[idx] = Object.assign({}, EMPLOYEES[idx], res.employee);
                             clearAnalyticsCache();
                             if (typeof onSync === 'function') onSync(EMPLOYEES[idx]);
@@ -723,9 +774,11 @@
         const idx = EMPLOYEES.findIndex(x => x.id === +empId);
         if (idx < 0) return null;
         const removed = EMPLOYEES.splice(idx, 1)[0];
-        for (let i = DEVICES.length - 1; i >= 0; i--) {
-            if (DEVICES[i].empId === removed.id) DEVICES.splice(i, 1);
-        }
+        [LEAVES, ALERTS, TICKETS, DEVICES].forEach(list => {
+            for (let i = list.length - 1; i >= 0; i--) {
+                if (list[i].empId === removed.id) list.splice(i, 1);
+            }
+        });
         clearAnalyticsCache();
         persistLocalState();
 

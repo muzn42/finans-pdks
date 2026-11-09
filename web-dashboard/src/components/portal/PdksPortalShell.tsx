@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect } from "react";
-import Script from "next/script";
+import { AlbayrakLogo } from "@/components/brand/AlbayrakLogo";
 import { ThreeStudioEnhancer } from "@/components/three/ThreeStudioEnhancer";
 import { LiveRealtimeHub } from "@/components/live/LiveRealtimeHub";
 
@@ -14,6 +14,84 @@ import { LiveRealtimeHub } from "@/components/live/LiveRealtimeHub";
  *   büyütülebilir interaktif KPI grafikleri ve dokunulmamış OOXML + gömülü logo
  *   Excel motorunu (/core-xlsx.js) eksiksiz çalıştırır.
  */
+
+const PDKS_SCRIPTS = [
+  "/core-xlsx.js",
+  "/legacy/data.js",
+  "/legacy/app.js",
+  "/legacy/landing.js"
+] as const;
+
+/** Her script tamamlandığında ince kırmızı boot çizgisinin ulaşacağı ilerleme. */
+const BOOT_PROGRESS_STEPS = [0.34, 0.58, 0.8, 0.95];
+
+let pdksScriptsPromise: Promise<void> | null = null;
+
+function applyBootProgress(value: number): void {
+  if (typeof document === "undefined") return;
+  document.documentElement.style.setProperty("--boot-progress", String(value));
+}
+
+/** Boot perdesini kapatır (idempotent). landing.js de aynı sinyali verir. */
+function finishBoot(): void {
+  if (typeof document === "undefined") return;
+  applyBootProgress(1);
+  window.setTimeout(() => document.body.classList.add("is-booted"), 160);
+}
+
+/**
+ * Legacy script'leri sırayla ve tek sefer yükler.
+ * Modül seviyesinde tek Promise tutulduğu için React StrictMode'un çift
+ * mount'unda script'ler ikinci kez eklenmez veya yarıda kalmaz.
+ */
+function loadPdksScripts(): Promise<void> {
+  if (typeof document === "undefined") return Promise.resolve();
+  if (pdksScriptsPromise) return pdksScriptsPromise;
+
+  pdksScriptsPromise = PDKS_SCRIPTS.reduce<Promise<void>>(
+    (chain, src, index) =>
+      chain.then(
+        () =>
+          new Promise<void>((resolve) => {
+            const settle = (el?: HTMLScriptElement) => {
+              if (el) el.dataset.loaded = "true";
+              applyBootProgress(BOOT_PROGRESS_STEPS[index] ?? 0.95);
+              resolve();
+            };
+
+            const existing = document.querySelector(
+              `script[data-pdks-src="${src}"]`
+            ) as HTMLScriptElement | null;
+
+            if (existing) {
+              if (existing.dataset.loaded === "true") {
+                settle(existing);
+                return;
+              }
+              existing.addEventListener("load", () => settle(existing), {
+                once: true
+              });
+              existing.addEventListener("error", () => settle(existing), {
+                once: true
+              });
+              return;
+            }
+
+            const script = document.createElement("script");
+            script.src = src;
+            script.async = false;
+            script.dataset.pdksSrc = src;
+            script.onload = () => settle(script);
+            script.onerror = () => settle(script);
+            document.body.appendChild(script);
+          })
+      ),
+    Promise.resolve()
+  );
+
+  return pdksScriptsPromise;
+}
+
 export function PdksPortalShell() {
   useEffect(() => {
     const onFormSubmit = async (e: Event) => {
@@ -43,6 +121,16 @@ export function PdksPortalShell() {
     return () => document.removeEventListener("submit", onFormSubmit, true);
   }, []);
 
+  useEffect(() => {
+    applyBootProgress(0.12);
+    const failsafe = window.setTimeout(finishBoot, 2800);
+    void loadPdksScripts();
+
+    return () => {
+      window.clearTimeout(failsafe);
+    };
+  }, []);
+
   return (
     <>
       <div className="toasts" id="toasts" aria-live="polite" />
@@ -54,7 +142,9 @@ export function PdksPortalShell() {
       <main className="auth-scroll-shell" id="authView">
         <div className="landing-brand-floating" id="landingBrandPill">
           <div className="landing-brand-row">
-            <span className="brand-mark" id="authLogo" />
+            <span className="brand-mark" id="authLogo">
+              <AlbayrakLogo />
+            </span>
             <span className="brand-word">
               Albayrak <b>Finans</b> <em className="brand-pdks-badge">PDKS</em>
             </span>
@@ -63,6 +153,17 @@ export function PdksPortalShell() {
             <span className="landing-intro-line" />
             <span>PERSONEL DEVAM KONTROL SİSTEMİ</span>
             <span className="landing-intro-line" />
+          </div>
+          <div
+            className="landing-boot-loader"
+            id="landingBootLoader"
+            role="status"
+            aria-live="polite"
+          >
+            <span className="landing-boot-track" aria-hidden="true">
+              <span className="landing-boot-bar" />
+            </span>
+            <span className="sr-only">Arayüz hazırlanıyor</span>
           </div>
         </div>
 
@@ -332,7 +433,9 @@ export function PdksPortalShell() {
       <div className="shell" id="appView" hidden>
         <aside className="side" id="side">
           <div className="side-brand">
-            <span className="brand-mark" id="sideLogo" />
+            <span className="brand-mark" id="sideLogo">
+              <AlbayrakLogo />
+            </span>
             <div>
               <b>Albayrak Finans PDKS</b>
               <small id="sidePortal">İK Portalı</small>
@@ -501,12 +604,6 @@ export function PdksPortalShell() {
 
       {/* Gerçek Zamanlı PostgreSQL 18 + SSE + AccessLogs + Vardiya/Saatlik İzin Kokpiti */}
       <LiveRealtimeHub />
-
-      {/* Dokunulmamış OOXML + Gömülü Logo Motoru ve Portal Çalışma Katmanı */}
-      <Script src="/core-xlsx.js" strategy="afterInteractive" />
-      <Script src="/legacy/data.js" strategy="afterInteractive" />
-      <Script src="/legacy/app.js" strategy="afterInteractive" />
-      <Script src="/legacy/landing.js" strategy="afterInteractive" />
     </>
   );
 }

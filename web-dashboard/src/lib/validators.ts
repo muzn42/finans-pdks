@@ -65,7 +65,9 @@ export const EmployeeCreateSchema = z.object({
   os: z.string().trim().min(2).max(40).default("Android 14"),
   ver: z.string().trim().default("2.4.1"),
   bound: z.boolean().default(true),
-  email: z.string().trim().email("Geçerli bir kurumsal e-posta giriniz.").optional(),
+  email: z
+    .union([z.string().trim().email("Geçerli bir kurumsal e-posta giriniz."), z.literal("")])
+    .optional(),
   hireDate: z.string().trim().optional(),
   leaveUsed: z.coerce.number().int().min(0).max(60).default(0),
   leaveTotal: z.coerce.number().int().min(1).max(60).default(14)

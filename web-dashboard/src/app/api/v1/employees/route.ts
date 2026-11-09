@@ -84,7 +84,7 @@ export async function GET(req: NextRequest) {
     const branch = searchParams.get("branch")?.trim() || "ALL";
     const dept = searchParams.get("dept")?.trim() || "ALL";
     const status = searchParams.get("status")?.trim() || "ALL";
-    const limit = Math.min(1000, Math.max(1, Number(searchParams.get("limit") || 1000)));
+    const limit = Math.min(2000, Math.max(1, Number(searchParams.get("limit") || searchParams.get("size") || 1000)));
     const offset = Math.max(0, Number(searchParams.get("offset") || 0));
 
     const where: Record<string, unknown> = {};

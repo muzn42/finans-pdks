@@ -172,6 +172,7 @@
     /** Alan grafiği. series[0] ana seri (dolgulu), diğerleri kesikli çizgi. */
     ATF.areaChart = function (host, o) {
         if (!host) return;
+        host.__chartSpec = { kind: 'area', options: o };
         const W = 640, H = o.h || 250, L = 40, R = 10, T = 14, B = 26, iw = W - L - R, ih = H - T - B, ticks = 4;
         const all = o.series.flatMap(s => s.data), n = o.labels.length;
         const yMin = o.yMin != null ? o.yMin : Math.min(0, ...all);
@@ -208,6 +209,7 @@
     /** Dikey çubuk grafiği. data: [{label, value, color?}] */
     ATF.barChart = function (host, o) {
         if (!host) return;
+        host.__chartSpec = { kind: 'bar', options: o };
         const W = 640, H = o.h || 230, L = 36, R = 8, T = 12, B = 26, iw = W - L - R, ih = H - T - B, ticks = 4, n = o.data.length;
         const step = niceStep((o.yMax != null ? o.yMax : Math.max(...o.data.map(d => d.value), 1)) / ticks), max = step * ticks;
         const bw = Math.min(46, iw / n * 0.58), y = v => T + ih - (v / max) * ih, yf = o.yFmt || (v => v);
@@ -234,6 +236,7 @@
     /** Halka grafiği. items: [{label,value,color}] */
     ATF.donut = function (host, o) {
         if (!host) return;
+        host.__chartSpec = { kind: 'donut', options: o };
         const R = 62, C = 2 * Math.PI * R, total = o.items.reduce((a, b) => a + b.value, 0) || 1;
         let acc = 0, segs = '';
         o.items.forEach((it, i) => {
@@ -253,6 +256,7 @@
     /** Isı haritası. rows: [{label, cells:[0..1]}] */
     ATF.heatmap = function (host, o) {
         if (!host) return;
+        host.__chartSpec = { kind: 'heat', options: o };
         const cols = o.cols.length;
         let h = `<div class="heat" style="--cols:${cols}"><div class="heat-cols"><span></span>${o.cols.map(c => `<span>${ATF.esc(c)}</span>`).join('')}</div>`;
         o.rows.forEach((r, ri) => {
@@ -278,10 +282,11 @@
     ATF.syncCardExpansion = function (card) {
         if (!card) return;
         const isWide = card.classList.contains('span-wide');
+        const isPop = card.classList.contains('is-pop-expanded');
         const existing = card.querySelector('.kpi-expanded-panel');
         if (!card.classList.contains('kpi')) return;
 
-        if (!isWide) {
+        if (!isWide && !isPop) {
             if (existing) existing.remove();
             return;
         }
@@ -357,6 +362,234 @@
         });
     };
 
+    /* =========================================================================
+       KART ÜSTÜNE TIKLAYINCA "OLDUĞU YERDE ÖNDE BÜYÜME" (In-Place Popover)
+       - Sağ üstteki büyütme tuşu (.dnd-span) eskisi gibi kartı grid içinde
+         .span-wide ile açar; o davranış korunur.
+       - Kartın gövdesine (tuşa değil) tıklanınca diğer kartlar en son halleriyle
+         yerlerinde kalır; tıklanan kart kendi konumundan öne doğru büyür.
+       ========================================================================= */
+    ATF.renderChartSpec = function (host, spec) {
+        if (!host || !spec) return;
+        if (spec.kind === 'area') ATF.areaChart(host, spec.options);
+        else if (spec.kind === 'bar') ATF.barChart(host, spec.options);
+        else if (spec.kind === 'donut') ATF.donut(host, spec.options);
+        else if (spec.kind === 'heat') ATF.heatmap(host, spec.options);
+    };
+
+    /* Hangi kartlar önde büyütülebilir? Yalnızca anlamlı olanlar seçilir. */
+    ATF.isCardZoomable = function (card) {
+        if (!card || !card.classList || !card.classList.contains('card')) return false;
+        if (card.classList.contains('no-zoom') || card.classList.contains('profile-banner')) return false;
+        if (card.classList.contains('flush')) return false;
+        if (card.querySelector('form, iframe, .rpt-doc, .card-pop-floating')) return false;
+        if (card.classList.contains('kpi') || card.classList.contains('profile-exec-card')) return true;
+        return !!card.querySelector('.chart, .donut-wrap, .heat, .rank, .health, [id^="ch"], [id^="prChart"]');
+    };
+
+    ATF.decorateZoomableCards = function (root) {
+        ATF.$$('.card', root || document).forEach(card => {
+            if (card.closest('.card-pop-floating')) return;
+            const zoomable = ATF.isCardZoomable(card);
+            card.classList.toggle('is-zoomable', zoomable);
+            if (!zoomable) return;
+            const heading = card.querySelector('.card-head h3, .kpi-label');
+            const title = heading && heading.textContent ? heading.textContent.trim() : 'Kart';
+            card.setAttribute('tabindex', '0');
+            card.setAttribute('role', 'button');
+            card.setAttribute('aria-expanded', 'false');
+            card.setAttribute('aria-label', title + ' · detayı önde büyüt');
+            card.setAttribute('title', 'Detayı önde büyütmek için karta tıklayın');
+        });
+    };
+
+    ATF.closeCardPopover = function (instant) {
+        const state = ATF.__cardPop;
+        if (!state) return;
+        ATF.__cardPop = null;
+        const backdrop = state.backdrop, floating = state.floating, card = state.card;
+        document.removeEventListener('keydown', ATF.onCardPopKey, true);
+        window.removeEventListener('resize', ATF.onCardPopResize);
+
+        if (card) {
+            card.classList.remove('is-pop-origin');
+            card.setAttribute('aria-expanded', 'false');
+            if (!instant && card.isConnected) {
+                const r = card.getBoundingClientRect();
+                if (r.width && r.height) {
+                    floating.style.left = r.left + 'px';
+                    floating.style.top = r.top + 'px';
+                    floating.style.width = r.width + 'px';
+                    floating.style.height = r.height + 'px';
+                    floating.style.opacity = '0';
+                }
+            }
+        }
+
+        backdrop.classList.remove('on');
+        if (instant) {
+            if (backdrop.parentNode) backdrop.parentNode.removeChild(backdrop);
+        } else {
+            setTimeout(() => { if (backdrop.parentNode) backdrop.parentNode.removeChild(backdrop); }, 430);
+        }
+
+        if (card && card.isConnected) {
+            try { card.focus({ preventScroll: true }); } catch (e) { }
+        }
+    };
+
+    ATF.onCardPopKey = function (e) {
+        if (!ATF.__cardPop) return;
+        if (e.key === 'Escape') { e.preventDefault(); ATF.closeCardPopover(); }
+    };
+
+    ATF.onCardPopResize = function () { ATF.closeCardPopover(true); };
+
+    ATF.openCardPopover = function (card) {
+        if (!card || !ATF.isCardZoomable(card)) return;
+        if (ATF.__cardPop) {
+            if (ATF.__cardPop.card === card) { ATF.closeCardPopover(); return; }
+            ATF.closeCardPopover(true);
+        }
+
+        const rect = card.getBoundingClientRect();
+        if (!rect.width || !rect.height) return;
+
+        const backdrop = document.createElement('div');
+        backdrop.className = 'card-pop-backdrop';
+
+        const floating = document.createElement('div');
+        floating.className = 'card-pop-floating';
+        floating.setAttribute('role', 'dialog');
+        floating.setAttribute('aria-modal', 'true');
+
+        const head = document.createElement('div');
+        head.className = 'card-pop-head';
+        const headTxt = document.createElement('div');
+        headTxt.className = 'card-pop-eyebrow';
+        const heading = card.querySelector('.card-head h3, .kpi-label');
+        headTxt.textContent = ((heading && heading.textContent ? heading.textContent.trim() : 'Kart') + ' · odaklanmış görünüm').toLocaleUpperCase('tr-TR');
+        floating.setAttribute('aria-label', headTxt.textContent);
+
+        const closeBtn = document.createElement('button');
+        closeBtn.type = 'button';
+        closeBtn.className = 'card-pop-close';
+        closeBtn.innerHTML = ATF.ic('x') + '<span>Kapat</span>';
+        closeBtn.setAttribute('aria-label', 'Kart büyütmesini kapat (Esc)');
+        closeBtn.addEventListener('click', e => { e.stopPropagation(); ATF.closeCardPopover(); });
+        head.appendChild(headTxt);
+        head.appendChild(closeBtn);
+
+        const body = document.createElement('div');
+        body.className = 'card-pop-body';
+
+        /* Orijinal kart grid içinde yerinde kalır; canlı bir kopyası önde açılır. */
+        const clone = card.cloneNode(true);
+        clone.classList.remove('is-zoomable', 'is-dragging', 'is-drop-target', 'span-wide');
+        clone.classList.add('is-pop-expanded');
+        ['draggable', 'tabindex', 'role', 'aria-expanded', 'aria-label', 'title'].forEach(a => clone.removeAttribute(a));
+        const dndBar = clone.querySelector('.dnd-bar');
+        if (dndBar) dndBar.remove();
+        const stalePanel = clone.querySelector('.kpi-expanded-panel');
+        if (stalePanel) stalePanel.remove();
+        ATF.$$('[data-act], [data-go], [data-bind]', clone).forEach(el => {
+            el.removeAttribute('data-act');
+            el.removeAttribute('data-go');
+            el.removeAttribute('data-bind');
+        });
+
+        /* Kopyadaki id çakışmalarını önle; grafik konteynerlerini eşle. */
+        const idMap = new Map();
+        ATF.$$('[id]', clone).forEach(el => {
+            const old = el.id;
+            if (!old) return;
+            idMap.set(old, el);
+            el.id = 'pop-' + old;
+        });
+
+        body.appendChild(clone);
+        floating.appendChild(head);
+        floating.appendChild(body);
+
+        floating.style.left = rect.left + 'px';
+        floating.style.top = rect.top + 'px';
+        floating.style.width = rect.width + 'px';
+        floating.style.height = rect.height + 'px';
+        floating.style.opacity = '0';
+
+        document.body.appendChild(backdrop);
+        backdrop.appendChild(floating);
+
+        /* KPI interaktif grafiği ve grafik kartlarının canlı yeniden çizimi */
+        if (clone.classList.contains('kpi')) ATF.syncCardExpansion(clone);
+        Array.from(card.querySelectorAll('*')).forEach(orig => {
+            if (!orig.__chartSpec) return;
+            const target = orig.id ? idMap.get(orig.id) : null;
+            if (target) ATF.renderChartSpec(target, orig.__chartSpec);
+        });
+
+        const vw = window.innerWidth || document.documentElement.clientWidth;
+        const vh = window.innerHeight || document.documentElement.clientHeight;
+        const maxW = Math.min(clone.classList.contains('kpi') ? 760 : 940, vw - 32);
+        const targetW = Math.max(320, Math.min(maxW, Math.max(640, rect.width)));
+        const targetLeft = ATF.clamp(rect.left + rect.width / 2 - targetW / 2, 16, Math.max(16, vw - targetW - 16));
+        const targetTopBase = ATF.clamp(rect.top, 16, Math.max(16, vh - 160));
+
+        /* Yüksekliği hedef genişlikte ölç (içerik taşarsa dikey kaydırma devreye girer) */
+        floating.style.width = targetW + 'px';
+        const contentH = clone.scrollHeight + head.offsetHeight + 26;
+        floating.style.width = rect.width + 'px';
+        const targetH = Math.max(160, Math.min(Math.max(rect.height, contentH), vh - 48));
+
+        ATF.__cardPop = { card, backdrop, floating };
+        document.addEventListener('keydown', ATF.onCardPopKey, true);
+        window.addEventListener('resize', ATF.onCardPopResize);
+
+        requestAnimationFrame(() => {
+            if (!ATF.__cardPop) return;
+            floating.style.left = targetLeft + 'px';
+            floating.style.top = targetTopBase + 'px';
+            floating.style.width = targetW + 'px';
+            floating.style.height = targetH + 'px';
+            floating.style.opacity = '1';
+            backdrop.classList.add('on');
+            card.classList.add('is-pop-origin');
+            card.setAttribute('aria-expanded', 'true');
+            try { closeBtn.focus({ preventScroll: true }); } catch (e) { }
+        });
+    };
+
+    /* Kart gövdesine tıklama ve klavye ile önde büyütme (tek sefer bağlanır) */
+    ATF.bindCardPopover = function () {
+        if (ATF.__cardPopBound) return;
+        ATF.__cardPopBound = true;
+
+        document.addEventListener('click', e => {
+            if (ATF.__cardPop) {
+                if (e.target.closest('.card-pop-floating')) return;
+                ATF.closeCardPopover();
+                return;
+            }
+            const card = e.target.closest('.card.is-zoomable');
+            if (!card) return;
+            /* Kart içi kontroller ve satır/tablo etkileşimleri kendi işini yapar. */
+            if (e.target.closest('button, a, input, select, textarea, label, .cselect, .cselect-menu, .dnd-bar, .chips, .chip, .pager, .table-wrap, .list, [data-act], [data-go]')) return;
+            e.preventDefault();
+            e.stopPropagation();
+            ATF.openCardPopover(card);
+        }, true);
+
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape' && ATF.__cardPop) { e.preventDefault(); ATF.closeCardPopover(); return; }
+            if (e.key !== 'Enter' && e.key !== ' ') return;
+            const aktif = document.activeElement;
+            if (!aktif || !aktif.classList || !aktif.classList.contains('is-zoomable')) return;
+            e.preventDefault();
+            e.stopPropagation();
+            ATF.openCardPopover(aktif);
+        }, true);
+    };
+
     /* ---------- Segment kontrol göstergesi ---------- */
     ATF.placeSeg = function (seg) {
         if (!seg) return;
@@ -402,6 +635,10 @@
         root.__dndAbort = ac;
         const on = (type, fn) => root.addEventListener(type, fn, { signal: ac.signal });
 
+        /* Kart üstüne tıklayarak önde büyütme motorunu hazırla ve kartları işaretle */
+        ATF.bindCardPopover();
+        ATF.decorateZoomableCards(root);
+
         const grids = ATF.$$('.grid', root);
         let saved = {};
         try { saved = JSON.parse(localStorage.getItem(storageKey) || '{}'); } catch (e) { saved = {}; }
@@ -438,16 +675,9 @@
                     });
                 }
                 const spk = card.querySelector('.spark');
-                if (spk && !spk.__expBound) {
-                    spk.__expBound = true;
+                if (spk) {
                     spk.style.cursor = 'zoom-in';
-                    spk.setAttribute('title', 'Büyütmek ve interaktif grafiği açmak için tıklayın');
-                    spk.addEventListener('click', e => {
-                        e.stopPropagation();
-                        card.classList.toggle('span-wide');
-                        ATF.syncCardExpansion(card);
-                        saveState();
-                    });
+                    spk.setAttribute('title', 'Karta tıklayarak interaktif grafiği önde büyütün');
                 }
                 card.setAttribute('draggable', 'true');
             });

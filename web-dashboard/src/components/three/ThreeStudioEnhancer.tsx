@@ -28,6 +28,16 @@ export function ThreeStudioEnhancer() {
       window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     if (prefersReduced) return;
 
+    // WebGL desteği yoksa (başsız tarayıcı, GPU kapalı vb.) Three.js sahneleri
+    // hiç başlatmayız; aksi halde kütüphane konsola hata yazıp bağlam kaybına yol açar.
+    const probeCanvas = document.createElement("canvas");
+    const hasWebGL = Boolean(
+      probeCanvas.getContext("webgl2") ||
+        probeCanvas.getContext("webgl") ||
+        probeCanvas.getContext("experimental-webgl")
+    );
+    if (!hasWebGL) return;
+
     let renderer: THREE.WebGLRenderer | null = null;
     try {
       renderer = new THREE.WebGLRenderer({
@@ -65,7 +75,7 @@ export function ThreeStudioEnhancer() {
     });
     const torus = new THREE.Mesh(ringGeo, ringMat);
     torus.rotation.x = Math.PI * 0.38;
-    torus.position.set(-1.1, 0.15, -1.2);
+    torus.position.set(0, 0.05, -1.2);
     group.add(torus);
 
     const outerRingGeo = new THREE.RingGeometry(3.1, 3.13, 96);
@@ -77,7 +87,7 @@ export function ThreeStudioEnhancer() {
     });
     const outerRing = new THREE.Mesh(outerRingGeo, outerRingMat);
     outerRing.rotation.x = Math.PI * 0.42;
-    outerRing.position.set(-1.1, -1.55, -1.5);
+    outerRing.position.set(0, -0.35, -1.5);
     group.add(outerRing);
 
     const particleCount = 42;
@@ -101,6 +111,50 @@ export function ThreeStudioEnhancer() {
     let rafId = 0;
     let isRunning = true;
 
+    const authEl = document.getElementById("authView");
+    const appEl = document.getElementById("appView");
+    const stageWrapEl = document.getElementById("landingStageWrap");
+    let cachedMaxScroll = 1;
+
+    const refreshMetrics = () => {
+      cachedMaxScroll = Math.max(
+        1,
+        (authEl?.offsetHeight || document.documentElement.scrollHeight) -
+          window.innerHeight
+      );
+    };
+
+    const syncVisibilityAndScroll = (): number => {
+      const inApp =
+        document.body.classList.contains("in-app") ||
+        Boolean(authEl?.hidden) ||
+        Boolean(appEl && !appEl.hidden);
+
+      if (inApp) {
+        container.style.opacity = "0";
+        container.style.visibility = "hidden";
+        container.style.display = "none";
+        return 0;
+      }
+
+      const rawP = Math.max(0, Math.min(1, window.scrollY / cachedMaxScroll));
+      // Yalnızca en üstteki ilk karşılama ekranında (logo + isim ortadayken) görünür,
+      // aşağı kaydırıldıkça (%0 -> %8 scroll) yumuşakça kaybolur.
+      const introAlpha = Math.max(0, Math.min(1, 1 - rawP / 0.08));
+
+      if (introAlpha <= 0.01) {
+        container.style.opacity = "0";
+        container.style.visibility = "hidden";
+        container.style.display = "none";
+        return 0;
+      }
+
+      container.style.display = "block";
+      container.style.visibility = "visible";
+      container.style.opacity = (introAlpha * 0.9).toFixed(3);
+      return introAlpha;
+    };
+
     const onPointerMove = (e: PointerEvent) => {
       if (document.body.classList.contains("in-app")) return;
       const nx = (e.clientX / window.innerWidth - 0.5) * 2;
@@ -116,12 +170,14 @@ export function ThreeStudioEnhancer() {
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
       renderer.setSize(w, h);
+      refreshMetrics();
+      syncVisibilityAndScroll();
     };
 
     const animate = () => {
       if (!isRunning || !renderer) return;
-      const inApp = document.body.classList.contains("in-app");
-      if (inApp) {
+      const alpha = syncVisibilityAndScroll();
+      if (alpha <= 0.01) {
         rafId = 0;
         return;
       }
@@ -135,9 +191,8 @@ export function ThreeStudioEnhancer() {
       particles.rotation.y += 0.0008;
 
       // 3D Anahtar ve SUV sahnesine hafif GPU-accelerated 3D parallax uygula
-      const stageWrap = document.getElementById("landingStageWrap");
-      if (stageWrap) {
-        stageWrap.style.transform = `translate3d(${(tx * -7).toFixed(2)}px, ${(
+      if (stageWrapEl) {
+        stageWrapEl.style.transform = `translate3d(${(tx * -7).toFixed(2)}px, ${(
           ty * -5
         ).toFixed(2)}px, 0)`;
       }
@@ -146,25 +201,42 @@ export function ThreeStudioEnhancer() {
       rafId = window.requestAnimationFrame(animate);
     };
 
-    const bodyObs = new MutationObserver(() => {
-      const inApp = document.body.classList.contains("in-app");
-      if (!inApp && isRunning && rafId === 0) {
+    const onScrollOrStateChange = () => {
+      const alpha = syncVisibilityAndScroll();
+      if (alpha > 0.01 && isRunning && rafId === 0) {
         rafId = window.requestAnimationFrame(animate);
-      } else if (inApp && rafId !== 0) {
+      } else if (alpha <= 0.01 && rafId !== 0) {
         window.cancelAnimationFrame(rafId);
         rafId = 0;
       }
-    });
+    };
+
+    const onMutation = () => {
+      refreshMetrics();
+      onScrollOrStateChange();
+    };
+
+    const bodyObs = new MutationObserver(onMutation);
     bodyObs.observe(document.body, { attributes: true, attributeFilter: ["class"] });
 
+    if (authEl) {
+      bodyObs.observe(authEl, { attributes: true, attributeFilter: ["hidden"] });
+    }
+    if (appEl) {
+      bodyObs.observe(appEl, { attributes: true, attributeFilter: ["hidden"] });
+    }
+
+    refreshMetrics();
+    window.addEventListener("scroll", onScrollOrStateChange, { passive: true });
     window.addEventListener("pointermove", onPointerMove, { passive: true });
     window.addEventListener("resize", onResize, { passive: true });
-    rafId = window.requestAnimationFrame(animate);
+    onScrollOrStateChange();
 
     return () => {
       isRunning = false;
       bodyObs.disconnect();
       if (rafId !== 0) window.cancelAnimationFrame(rafId);
+      window.removeEventListener("scroll", onScrollOrStateChange);
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("resize", onResize);
       ringGeo.dispose();
