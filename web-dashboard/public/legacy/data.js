@@ -7,12 +7,60 @@
     const rnd = A.rng(20261020);
 
     const BRANCHES = [
-        { code: 'HQ', name: 'Genel Merkez · Ataşehir', city: 'İstanbul', lat: 41.11185, lng: 29.02235, radius: 30, wifi: 'ALBAYRAK_CORP', w: 0.38 },
-        { code: 'UMR', name: 'Ümraniye Şubesi', city: 'İstanbul', lat: 41.0165, lng: 29.1248, radius: 30, wifi: 'ALBAYRAK_UMR', w: 0.14 },
-        { code: 'KAD', name: 'Kadıköy Şubesi', city: 'İstanbul', lat: 40.9903, lng: 29.0275, radius: 30, wifi: 'ALBAYRAK_KAD', w: 0.12 },
-        { code: 'ANK', name: 'Ankara Kızılay Şubesi', city: 'Ankara', lat: 39.9208, lng: 32.8541, radius: 30, wifi: 'ALBAYRAK_ANK', w: 0.14 },
-        { code: 'IZM', name: 'İzmir Konak Şubesi', city: 'İzmir', lat: 38.4189, lng: 27.1287, radius: 30, wifi: 'ALBAYRAK_IZM', w: 0.12 },
-        { code: 'BUR', name: 'Bursa Nilüfer Şubesi', city: 'Bursa', lat: 40.2133, lng: 28.9807, radius: 30, wifi: 'ALBAYRAK_BUR', w: 0.10 }
+        {"id": 1, "code": "ŞB-001", "name": "Albayrak Finans Genel Müdürlük (Ataşehir)", "city": "İstanbul", "district": "Ataşehir", "address": "Yenişehir Mah. Kızılcık Sok. Albayrak Plaza No:1/35 34779 Ataşehir / İstanbul", "phone": "444 88 61", "googleMapUrl": "https://www.google.com/maps/search/?api=1&query=40.995454,29.140893", "lat": 40.995454, "lng": 29.140893, "radius": 30.0, "wifi": "ALBAYRAK_GM_SECURE", "w": 0.16},
+        {"id": 2, "code": "ŞB-002", "name": "Adana / Seyhan Şube", "city": "Adana", "district": "Seyhan", "address": "Reşatbey Mah. Atatürk Cad. Duru Apt. A Girişi No:34/A SEYHAN / ADANA", "phone": "0322 480 02 01", "googleMapUrl": "https://maps.app.goo.gl/YW5Yb2wL37ft3KCeA", "lat": 36.99142, "lng": 35.33083, "radius": 30.0, "wifi": "ALBAYRAK_02_WIFI", "w": 0.01585},
+        {"id": 3, "code": "ŞB-003", "name": "Ankara / Keçiören Şube", "city": "Ankara", "district": "Keçiören", "address": "Şefkat Mah. Cumhuriyet Cd. No:4 B/A - KEÇİÖREN / ANKARA", "phone": "444 88 61", "googleMapUrl": "https://www.google.com/maps/search/?api=1&query=39.996840,32.863250", "lat": 39.99684, "lng": 32.86325, "radius": 30.0, "wifi": "ALBAYRAK_03_WIFI", "w": 0.01585},
+        {"id": 4, "code": "ŞB-004", "name": "Ankara / Sıhhiye Şube", "city": "Ankara", "district": "Sıhhiye", "address": "Eti Mah. Strazburg Cad. No:18/A ÇANKAYA / ANKARA", "phone": "0312 920 17 06", "googleMapUrl": "https://maps.app.goo.gl/fsTmAELXCwr4bFsQ8", "lat": 39.92721, "lng": 32.85581, "radius": 30.0, "wifi": "ALBAYRAK_04_WIFI", "w": 0.01585},
+        {"id": 5, "code": "ŞB-005", "name": "Ankara / Sincan Şube", "city": "Ankara", "district": "Sincan", "address": "Maraşal Çakmak Mah. Atatürk Cd. No:86/B Sincan / ANKARA", "phone": "444 88 61", "googleMapUrl": "https://www.google.com/maps/search/?api=1&query=39.974620,32.580140", "lat": 39.97462, "lng": 32.58014, "radius": 30.0, "wifi": "ALBAYRAK_05_WIFI", "w": 0.01585},
+        {"id": 6, "code": "ŞB-006", "name": "Ankara / Yenimahalle Şube", "city": "Ankara", "district": "Yenimahalle", "address": "Çarşı Mh. Akın Cd. No:59A Yenimahalle / ANKARA", "phone": "444 88 61", "googleMapUrl": "https://www.google.com/maps/search/?api=1&query=39.969350,32.816420", "lat": 39.96935, "lng": 32.81642, "radius": 30.0, "wifi": "ALBAYRAK_06_WIFI", "w": 0.01585},
+        {"id": 7, "code": "ŞB-007", "name": "Antalya / Muratpaşa Şube", "city": "Antalya", "district": "Muratpaşa", "address": "Tahılpazarı Mah. Adnan Menderes Bulvarı Yüce 3 Apt. No:33/A MURATPAŞA / ANTALYA", "phone": "0242 277 18 07", "googleMapUrl": "https://maps.app.goo.gl/HKPZjreqnCdAKp6a8", "lat": 36.88912, "lng": 30.70341, "radius": 30.0, "wifi": "ALBAYRAK_07_WIFI", "w": 0.01585},
+        {"id": 8, "code": "ŞB-008", "name": "Aydın / Efeler Şube", "city": "Aydın", "district": "Efeler", "address": "Zafer Mah. Doğu Gazi Bulvarı Dış kapı No:51 D EFELER / AYDIN", "phone": "444 88 61", "googleMapUrl": "https://www.google.com/maps/search/?api=1&query=37.848150,27.845230", "lat": 37.84815, "lng": 27.84523, "radius": 30.0, "wifi": "ALBAYRAK_08_WIFI", "w": 0.01585},
+        {"id": 9, "code": "ŞB-009", "name": "Batman / Merkez Şube", "city": "Batman", "district": "Merkez", "address": "Kültür Mah. Turgut Özal Bulvarı No:59/A - MERKEZ / BATMAN", "phone": "444 88 61", "googleMapUrl": "https://www.google.com/maps/search/?api=1&query=37.889540,41.132180", "lat": 37.88954, "lng": 41.13218, "radius": 30.0, "wifi": "ALBAYRAK_09_WIFI", "w": 0.01585},
+        {"id": 10, "code": "ŞB-010", "name": "Bursa / İnegöl Şube", "city": "Bursa", "district": "İnegöl", "address": "Sinanbey Mh. Nuri Doğrul Cd. No:11/B İNEGÖL / BURSA", "phone": "444 88 61", "googleMapUrl": "https://www.google.com/maps/search/?api=1&query=40.078120,29.513340", "lat": 40.07812, "lng": 29.51334, "radius": 30.0, "wifi": "ALBAYRAK_10_WIFI", "w": 0.01585},
+        {"id": 11, "code": "ŞB-011", "name": "Bursa / Osmangazi Şube (Yakında Hizmetinizde)", "city": "Bursa", "district": "Osmangazi  (Yakında Hizmetinizde)", "address": "Ulu Mh. Kıbrıs Şehitleri Cd. No:62 OSMANGAZİ / BURSA", "phone": "444 88 61", "googleMapUrl": "https://www.google.com/maps/search/?api=1&query=40.193240,29.061020", "lat": 40.19324, "lng": 29.06102, "radius": 30.0, "wifi": "ALBAYRAK_11_WIFI", "w": 0.01585},
+        {"id": 12, "code": "ŞB-012", "name": "Bursa / Yıldırım Şube", "city": "Bursa", "district": "Yıldırım", "address": "Anadolu Mah. Ankarayolu Cad. A Blok No: 121/E YILDIRIM / BURSA", "phone": "0224 552 01 16", "googleMapUrl": "https://maps.app.goo.gl/DxBvSofYM5s3fFzs5", "lat": 40.19165, "lng": 29.08843, "radius": 30.0, "wifi": "ALBAYRAK_12_WIFI", "w": 0.01585},
+        {"id": 13, "code": "ŞB-013", "name": "Denizli / Merkezefendi Şube", "city": "Denizli", "district": "Merkezefendi", "address": "Saraylar Mah. Enverpaşa Cad. No:11 MERKEZEFENDİ / DENİZLİ", "phone": "0258 201 00 20", "googleMapUrl": "https://maps.app.goo.gl/LbfcayZnfdhncSUUA", "lat": 37.78342, "lng": 29.08615, "radius": 30.0, "wifi": "ALBAYRAK_13_WIFI", "w": 0.01585},
+        {"id": 14, "code": "ŞB-014", "name": "Diyarbakır / Bağlar Şube", "city": "Diyarbakır", "district": "Bağlar", "address": "Bağlar Mahallesi Şanlıurfa Bulvarı No:141 A/B BAĞLAR / DİYARBAKIR", "phone": "0412 505 34 14", "googleMapUrl": "https://maps.app.goo.gl/KriKMioWevUG7VbV6", "lat": 37.91683, "lng": 40.21094, "radius": 30.0, "wifi": "ALBAYRAK_14_WIFI", "w": 0.01585},
+        {"id": 15, "code": "ŞB-015", "name": "Erzurum / Yakutiye Şube", "city": "Erzurum", "district": "Yakutiye", "address": "Muratpaşa Mah. Saraybosna Cad. No :35/A YAKUTİYE / ERZURUM", "phone": "444 88 61", "googleMapUrl": "https://maps.app.goo.gl/K1xtWPuvVMYeP6ry6", "lat": 39.90552, "lng": 41.26831, "radius": 30.0, "wifi": "ALBAYRAK_15_WIFI", "w": 0.01585},
+        {"id": 16, "code": "ŞB-016", "name": "Eskişehir / Tepebaşı Şube", "city": "Eskişehir", "district": "Tepebaşı", "address": "Hacı Ali Bey Mah. Sakarya 1 Cd. No:22A TEPEBAŞI/ ESKİŞEHİR", "phone": "444 88 61", "googleMapUrl": "https://www.google.com/maps/search/?api=1&query=39.776710,30.520630", "lat": 39.77671, "lng": 30.52063, "radius": 30.0, "wifi": "ALBAYRAK_16_WIFI", "w": 0.01585},
+        {"id": 17, "code": "ŞB-017", "name": "Gaziantep / Şahinbey Şube", "city": "Gaziantep", "district": "Şahinbey", "address": "Alaybey Mah. Hürriyet Cad. No:1/E Belediye Pasajı ŞAHİNBEY / GAZİANTEP", "phone": "0342 233 00 27", "googleMapUrl": "https://maps.app.goo.gl/aQgFNT7MNsmKwhvS7", "lat": 37.06284, "lng": 37.37921, "radius": 30.0, "wifi": "ALBAYRAK_17_WIFI", "w": 0.01585},
+        {"id": 18, "code": "ŞB-018", "name": "Gaziantep / Şehitkamil Şube", "city": "Gaziantep", "district": "Şehitkamil", "address": "Batıkent Mah. Hasan Celal Güzel Cd. No:101A ŞEHİTKAMİL / GAZİANTEP", "phone": "444 88 61", "googleMapUrl": "https://www.google.com/maps/search/?api=1&query=37.078410,37.344120", "lat": 37.07841, "lng": 37.34412, "radius": 30.0, "wifi": "ALBAYRAK_18_WIFI", "w": 0.01585},
+        {"id": 19, "code": "ŞB-019", "name": "Giresun / Merkez Şube (Yakında Hizmetinizde)", "city": "Giresun", "district": "Merkez  (Yakında Hizmetinizde)", "address": "Hacısiyam Mah. İnönü Cad. No:24A MERKEZ / GİRESUN", "phone": "444 88 61", "googleMapUrl": "https://www.google.com/maps/search/?api=1&query=40.916980,38.387410", "lat": 40.91698, "lng": 38.38741, "radius": 30.0, "wifi": "ALBAYRAK_19_WIFI", "w": 0.01585},
+        {"id": 20, "code": "ŞB-020", "name": "Isparta / Merkez Şube", "city": "Isparta", "district": "Merkez", "address": "Yayla Mah. 118 Cumhuriyet Cad. No:25/B A-3 Blok İç Kapı No:4 Isparta Meydan AVM MERKEZ / ISPARTA", "phone": "444 88 61", "googleMapUrl": "https://www.google.com/maps/search/?api=1&query=37.768120,30.556420", "lat": 37.76812, "lng": 30.55642, "radius": 30.0, "wifi": "ALBAYRAK_20_WIFI", "w": 0.01585},
+        {"id": 21, "code": "ŞB-021", "name": "İstanbul / Avcılar Şube", "city": "İstanbul", "district": "Avcılar", "address": "Cihangir Mah. E-5 Yan Yol Caddesi ( Londra Asfaltı ) NO:223/A AVCILAR / İSTANBUL", "phone": "444 88 61", "googleMapUrl": "https://www.google.com/maps/search/?api=1&query=40.980140,28.717530", "lat": 40.98014, "lng": 28.71753, "radius": 30.0, "wifi": "ALBAYRAK_21_WIFI", "w": 0.01585},
+        {"id": 22, "code": "ŞB-022", "name": "İstanbul / Bağcılar Şube", "city": "İstanbul", "district": "Bağcılar", "address": "Çınar Mahallesi İstanbul Caddesi No:45-47/A Burak Apt. BAĞCILAR / İSTANBUL", "phone": "0212 912 27 34", "googleMapUrl": "https://maps.app.goo.gl/8Vz6tNjZ4c8w7hqy9", "lat": 41.03382, "lng": 28.85671, "radius": 30.0, "wifi": "ALBAYRAK_22_WIFI", "w": 0.01585},
+        {"id": 23, "code": "ŞB-023", "name": "İstanbul / Esenler Şube", "city": "İstanbul", "district": "Esenler", "address": "Menderes Mah. 301. Sok. Dörtyaka Apt. No:1/H ESENLER / İSTANBUL", "phone": "0212 912 02 34", "googleMapUrl": "https://maps.app.goo.gl/LouYkU2ffPYSEWqC7", "lat": 41.04351, "lng": 28.87562, "radius": 30.0, "wifi": "ALBAYRAK_23_WIFI", "w": 0.01585},
+        {"id": 24, "code": "ŞB-024", "name": "İstanbul / Esenyurt Şube", "city": "İstanbul", "district": "Esenyurt", "address": "Sultaniye Mah. Doğan Araslı Bulvarı No: 134/C ESENYURT / İSTANBUL", "phone": "0212 912 05 34", "googleMapUrl": "https://maps.app.goo.gl/vViXg64HhQfsyDHB9", "lat": 41.03428, "lng": 28.68011, "radius": 30.0, "wifi": "ALBAYRAK_24_WIFI", "w": 0.01585},
+        {"id": 25, "code": "ŞB-025", "name": "İstanbul / Fatih Şube", "city": "İstanbul", "district": "Fatih", "address": "Atikali Mah. Fevzipaşa Cad. 104/A FATİH / İSTANBUL", "phone": "0212 912 00 34", "googleMapUrl": "https://maps.app.goo.gl/4jD6THHqbiLBmjZv8", "lat": 41.02214, "lng": 28.94385, "radius": 30.0, "wifi": "ALBAYRAK_25_WIFI", "w": 0.01585},
+        {"id": 26, "code": "ŞB-026", "name": "İstanbul / Gaziosmanpaşa Şube", "city": "İstanbul", "district": "Gaziosmanpaşa", "address": "Sarıgöl Mah. Ordu Cad. Esen Apt. No:15/B GAZİOSMANPAŞA / İSTANBUL", "phone": "444 88 61", "googleMapUrl": "https://www.google.com/maps/search/?api=1&query=41.057830,28.912340", "lat": 41.05783, "lng": 28.91234, "radius": 30.0, "wifi": "ALBAYRAK_26_WIFI", "w": 0.01585},
+        {"id": 27, "code": "ŞB-027", "name": "İstanbul / Pendik Şube", "city": "İstanbul", "district": "Pendik", "address": "Doğu Mah. 23 Nisan Cad. No:62/A PENDİK / İSTANBUL", "phone": "444 88 61", "googleMapUrl": "https://www.google.com/maps/search/?api=1&query=40.879640,29.234510", "lat": 40.87964, "lng": 29.23451, "radius": 30.0, "wifi": "ALBAYRAK_27_WIFI", "w": 0.01585},
+        {"id": 28, "code": "ŞB-028", "name": "İstanbul / Sancaktepe Şube", "city": "İstanbul", "district": "Sancaktepe", "address": "Meclis Mah. Ankara Cad. No:42 SANCAKTEPE / İSTANBUL", "phone": "0216 912 25 34", "googleMapUrl": "https://maps.app.goo.gl/ohWhCN9QRbiwMtPM8", "lat": 41.00215, "lng": 29.23164, "radius": 30.0, "wifi": "ALBAYRAK_28_WIFI", "w": 0.01585},
+        {"id": 29, "code": "ŞB-029", "name": "İstanbul / Sultangazi Şube", "city": "İstanbul", "district": "Sultangazi", "address": "İsmetpaşa Mah. 48/1 Sok. 645-651/3B SULTANGAZİ / İSTANBUL", "phone": "0212 912 06 34", "googleMapUrl": "https://maps.app.goo.gl/YmcJceYHJVSnVPp79", "lat": 41.10432, "lng": 28.86145, "radius": 30.0, "wifi": "ALBAYRAK_29_WIFI", "w": 0.01585},
+        {"id": 30, "code": "ŞB-030", "name": "İstanbul / Ümraniye Şube", "city": "İstanbul", "district": "Ümraniye", "address": "İstiklal Mah. Alemdağ Cad. No:192 ÜMRANİYE / İSTANBUL", "phone": "0216 912 00 34", "googleMapUrl": "https://maps.app.goo.gl/eogiwu45xuBFBGXr8", "lat": 41.02563, "lng": 29.09632, "radius": 30.0, "wifi": "ALBAYRAK_30_WIFI", "w": 0.01585},
+        {"id": 31, "code": "ŞB-031", "name": "İstanbul / Üsküdar Şube", "city": "İstanbul", "district": "Üsküdar", "address": "Mimar Sinan Mh. Selmanı Pak Cd. No:28 ÜSKÜDAR / İSTANBUL", "phone": "0216 912 02 34", "googleMapUrl": "https://maps.app.goo.gl/KUvyc6fUUdZyzX9J6", "lat": 41.02384, "lng": 29.01521, "radius": 30.0, "wifi": "ALBAYRAK_31_WIFI", "w": 0.01585},
+        {"id": 32, "code": "ŞB-032", "name": "İstanbul / Zeytinburnu Şube", "city": "İstanbul", "district": "Zeytinburnu", "address": "Gökalp Mah. Prof. Muammer Aksoy Caddesi Erlüks İş Merkezi No:77 A ZEYTİNBURNU / İSTANBUL", "phone": "444 88 61", "googleMapUrl": "https://www.google.com/maps/search/?api=1&query=40.994120,28.904510", "lat": 40.99412, "lng": 28.90451, "radius": 30.0, "wifi": "ALBAYRAK_32_WIFI", "w": 0.01585},
+        {"id": 33, "code": "ŞB-033", "name": "İzmir / Karabağlar Şube", "city": "İzmir", "district": "Karabağlar", "address": "Aşık Veysel Mah. Yeşillik Cad. No:437-441 KARABAĞLAR / İZMİR", "phone": "0232 218 18 35", "googleMapUrl": "https://maps.app.goo.gl/SvNa62tAJd4ZJj9P9", "lat": 38.37854, "lng": 27.13512, "radius": 30.0, "wifi": "ALBAYRAK_33_WIFI", "w": 0.01585},
+        {"id": 34, "code": "ŞB-034", "name": "İzmir / Konak Şube", "city": "İzmir", "district": "Konak", "address": "Akdeniz Mah. Fevzipaşa Bulvarı 61/A Altın Asır İş Hanı KONAK / İZMİR", "phone": "444 88 61", "googleMapUrl": "https://www.google.com/maps/search/?api=1&query=38.423710,27.138420", "lat": 38.42371, "lng": 27.13842, "radius": 30.0, "wifi": "ALBAYRAK_34_WIFI", "w": 0.01585},
+        {"id": 35, "code": "ŞB-035", "name": "Kahramanmaraş / Dulkadiroğlu Şube (Yakında Hizmetinizde)", "city": "Kahramanmaraş", "district": "Dulkadiroğlu  (Yakında Hizmetinizde)", "address": "Menderes Mh. Trabzon Blv. Dış Kapı No:53/1A-53/1B DULKADİROĞLU / KAHRAMANMARAŞ", "phone": "444 88 61", "googleMapUrl": "https://www.google.com/maps/search/?api=1&query=37.575210,36.937140", "lat": 37.57521, "lng": 36.93714, "radius": 30.0, "wifi": "ALBAYRAK_35_WIFI", "w": 0.01585},
+        {"id": 36, "code": "ŞB-036", "name": "Kayseri / Kocasinan Şube", "city": "Kayseri", "district": "Kocasinan", "address": "Gevher Nesibe Mahallesi İstasyon Cad. No:31/B KOCASİNAN / KAYSERİ", "phone": "0352 203 00 38", "googleMapUrl": "https://maps.app.goo.gl/M2ZfzcKtF5uKS38W9", "lat": 38.72485, "lng": 35.48263, "radius": 30.0, "wifi": "ALBAYRAK_36_WIFI", "w": 0.01585},
+        {"id": 37, "code": "ŞB-037", "name": "Kocaeli / Gebze Merkez Şube", "city": "Kocaeli", "district": "Gebze Merkez", "address": "Hacıhalil Mah. 1215 Sok. No:1/GEBZE / KOCAELİ", "phone": "0262 302 00 41", "googleMapUrl": "https://maps.app.goo.gl/2wj4dGxjBiYXCka77", "lat": 40.79954, "lng": 29.43121, "radius": 30.0, "wifi": "ALBAYRAK_37_WIFI", "w": 0.01585},
+        {"id": 38, "code": "ŞB-038", "name": "Kocaeli / İzmit Şube (Yakında Hizmetinizde)", "city": "Kocaeli", "district": "İzmit  (Yakında Hizmetinizde)", "address": "Karabaş Mh. Cumhuriyet Blv. No:149/A İzmit / KOCAELİ", "phone": "444 88 61", "googleMapUrl": "https://www.google.com/maps/search/?api=1&query=40.765420,29.940810", "lat": 40.76542, "lng": 29.94081, "radius": 30.0, "wifi": "ALBAYRAK_38_WIFI", "w": 0.01585},
+        {"id": 39, "code": "ŞB-039", "name": "Konya / Nalçacı Şube", "city": "Konya", "district": "Nalçacı", "address": "Musalla Bağları Mah. Telgrafçı Hamdi Bey Cad. No:14/B SELÇUKLU / KONYA", "phone": "0332 344 01 42", "googleMapUrl": "https://maps.app.goo.gl/iNNiNpq8ajpLWf3a8", "lat": 37.88142, "lng": 32.49215, "radius": 30.0, "wifi": "ALBAYRAK_39_WIFI", "w": 0.01585},
+        {"id": 40, "code": "ŞB-040", "name": "Kütahya / Merkez Şube (Yakında Hizmetinizde)", "city": "Kütahya", "district": "Merkez  (Yakında Hizmetinizde)", "address": "Pirler Mh. Adnan Menderes Blv. No:52I MERKEZ / KÜTAHYA", "phone": "444 88 61", "googleMapUrl": "https://www.google.com/maps/search/?api=1&query=39.420140,29.985620", "lat": 39.42014, "lng": 29.98562, "radius": 30.0, "wifi": "ALBAYRAK_40_WIFI", "w": 0.01585},
+        {"id": 41, "code": "ŞB-041", "name": "Malatya / Battalgazi Şube", "city": "Malatya", "district": "Battalgazi", "address": "Şifa Mah. İnönü Cad. Sıtmapınarı Mevki No:171/B BATTALGAZİ / MALATYA", "phone": "444 88 61", "googleMapUrl": "https://www.google.com/maps/search/?api=1&query=38.351420,38.321540", "lat": 38.35142, "lng": 38.32154, "radius": 30.0, "wifi": "ALBAYRAK_41_WIFI", "w": 0.01585},
+        {"id": 42, "code": "ŞB-042", "name": "Manisa / Şehzadeler Şube (Yakında Hizmetinizde)", "city": "Manisa", "district": "Şehzadeler  (Yakında Hizmetinizde)", "address": "1nci Anafartalar Mh. Mustafa Kemal Paşa Cd. Kamil Menteş Apt. No:34A Şehzadeler / MANİSA", "phone": "444 88 61", "googleMapUrl": "https://www.google.com/maps/search/?api=1&query=38.614230,27.429510", "lat": 38.61423, "lng": 27.42951, "radius": 30.0, "wifi": "ALBAYRAK_42_WIFI", "w": 0.01585},
+        {"id": 43, "code": "ŞB-043", "name": "Mardin / Artuklu Şube", "city": "Mardin", "district": "Artuklu", "address": "13 Mart Mah. Vali Ozan Cad. Dış Kapı No: 80/A ARTUKLU / MARDİN", "phone": "444 88 61", "googleMapUrl": "https://maps.app.goo.gl/j16BagqMGenRuGKJ7", "lat": 37.32145, "lng": 40.72451, "radius": 30.0, "wifi": "ALBAYRAK_43_WIFI", "w": 0.01585},
+        {"id": 44, "code": "ŞB-044", "name": "Mersin / Yenişehir Şube (Yakında Hizmetinizde)", "city": "Mersin", "district": "Yenişehir  (Yakında Hizmetinizde)", "address": "İnönü Mah. Gazi Mustafa Kemal Blv. Büyük Apt.No:415B YENİŞEHİR / MERSİN", "phone": "444 88 61", "googleMapUrl": "https://www.google.com/maps/search/?api=1&query=36.784520,34.596410", "lat": 36.78452, "lng": 34.59641, "radius": 30.0, "wifi": "ALBAYRAK_44_WIFI", "w": 0.01585},
+        {"id": 45, "code": "ŞB-045", "name": "Ordu / Altınordu Şube", "city": "Ordu", "district": "Altınordu", "address": "Şarkiye Mah. Süleyman Felek Cad. No:52 ALTINORDU / ORDU", "phone": "0452 212 45 89", "googleMapUrl": "https://maps.app.goo.gl/qU6AkCQPiKN73NU17", "lat": 40.98392, "lng": 37.87891, "radius": 30.0, "wifi": "ALBAYRAK_45_WIFI", "w": 0.01585},
+        {"id": 46, "code": "ŞB-046", "name": "Osmaniye / Merkez Şube (Yakında Hizmetinizde)", "city": "Osmaniye", "district": "Merkez  (Yakında Hizmetinizde)", "address": "Mehmet Akif Ersoy Mh. Atatürk Cd. No:397/A Merkez/OSMANİYE", "phone": "444 88 61", "googleMapUrl": "https://www.google.com/maps/search/?api=1&query=37.074520,36.247810", "lat": 37.07452, "lng": 36.24781, "radius": 30.0, "wifi": "ALBAYRAK_46_WIFI", "w": 0.01585},
+        {"id": 47, "code": "ŞB-047", "name": "Sakarya / Adapazarı Şube", "city": "Sakarya", "district": "Adapazarı", "address": "Semerciler Mah. Çark Cad. Dış Kapı No: 95 ADAPAZARI / SAKARYA", "phone": "444 88 61", "googleMapUrl": "https://www.google.com/maps/search/?api=1&query=40.778420,30.401240", "lat": 40.77842, "lng": 30.40124, "radius": 30.0, "wifi": "ALBAYRAK_47_WIFI", "w": 0.01585},
+        {"id": 48, "code": "ŞB-048", "name": "Samsun / İlkadım Şube", "city": "Samsun", "district": "İlkadım", "address": "Kale Mah. Kazım Paşa Cad. NO:40/1 A Blok Fatih Temiz İş Merkezi İLKADIM / SAMSUN", "phone": "0362 313 02 55", "googleMapUrl": "https://maps.app.goo.gl/DqecKYWnMCTvyF7i8", "lat": 41.28954, "lng": 36.33241, "radius": 30.0, "wifi": "ALBAYRAK_48_WIFI", "w": 0.01585},
+        {"id": 49, "code": "ŞB-049", "name": "Sivas / Merkez Şube", "city": "Sivas", "district": "Merkez", "address": "Eskikale Mah. 13-2 Sokak Dış kapı No: 5/A - MERKEZ / SİVAS", "phone": "444 88 61", "googleMapUrl": "https://www.google.com/maps/search/?api=1&query=39.748520,37.015420", "lat": 39.74852, "lng": 37.01542, "radius": 30.0, "wifi": "ALBAYRAK_49_WIFI", "w": 0.01585},
+        {"id": 50, "code": "ŞB-050", "name": "Şanlıurfa / Karaköprü Şube", "city": "Şanlıurfa", "district": "Karaköprü", "address": "Batıkent Mah. Gap Bulvarı No:125/D KARAKÖPRÜ / ŞANLIURFA", "phone": "0414 503 30 36", "googleMapUrl": "https://www.google.com/maps/search/?api=1&query=37.194520,38.791240", "lat": 37.19452, "lng": 38.79124, "radius": 30.0, "wifi": "ALBAYRAK_50_WIFI", "w": 0.01585},
+        {"id": 51, "code": "ŞB-051", "name": "Tokat / Merkez Şube", "city": "Tokat", "district": "Merkez", "address": "Kabe -i Mescid Mah. Gazi Osman Paşa Bulv. No:174A Merkez / TOKAT", "phone": "444 88 61", "googleMapUrl": "https://www.google.com/maps/search/?api=1&query=40.316840,36.554210", "lat": 40.31684, "lng": 36.55421, "radius": 30.0, "wifi": "ALBAYRAK_51_WIFI", "w": 0.01585},
+        {"id": 52, "code": "ŞB-052", "name": "Trabzon / Ortahisar Şube", "city": "Trabzon", "district": "Ortahisar", "address": "Cumhuriyet Mah. Yavuz Selim Bulvarı No:173/A ORTAHİSAR / TRABZON", "phone": "0462 350 01 61", "googleMapUrl": "https://maps.app.goo.gl/ySnYcCD3XiZDMHAg7", "lat": 41.00542, "lng": 39.72681, "radius": 30.0, "wifi": "ALBAYRAK_52_WIFI", "w": 0.01585},
+        {"id": 53, "code": "ŞB-053", "name": "Van / İpekyolu Şube", "city": "Van", "district": "İpekyolu", "address": "Halilağa Mah. Kazım Karabekir Bulv. No: 115/A İPEKYOLU / VAN", "phone": "444 88 61", "googleMapUrl": "https://maps.app.goo.gl/RNzgJbKLukgxzxJNA", "lat": 38.49852, "lng": 43.38341, "radius": 30.0, "wifi": "ALBAYRAK_53_WIFI", "w": 0.01585},
+        {"id": 54, "code": "ŞB-054", "name": "Yalova / Merkez Şube (Yakında Hizmetinizde)", "city": "Yalova", "district": "Merkez  (Yakında Hizmetinizde)", "address": "Süleyman Bey Mh. Sefabey Cd. No:26/A Merkez / YALOVA", "phone": "444 88 61", "googleMapUrl": "https://www.google.com/maps/search/?api=1&query=40.656420,29.274510", "lat": 40.65642, "lng": 29.27451, "radius": 30.0, "wifi": "ALBAYRAK_54_WIFI", "w": 0.01585}
     ];
     const DEPTS = ['Bireysel Finansman', 'Taşıt Finansmanı', 'Konut Finansmanı', 'Kurumsal Finansman', 'Şube Operasyon', 'Bilgi Teknolojileri', 'Mali İşler', 'İnsan Kaynakları', 'Hukuk ve Uyum'];
     const TITLES = ['Finans Uzmanı', 'Müşteri Temsilcisi', 'Operasyon Uzmanı', 'Takım Lideri', 'Uzman Yardımcısı', 'Şube Müdür Yrd.', 'Analist'];
@@ -476,6 +524,45 @@
         }
     } catch (_) {}
 
+    // Lokal silme/güncelleme sonrası sahipsiz kalan referansları temizle
+    syncEmployeeReferences();
+
+    /* Personel kadrosu değiştiğinde (backend senkronizasyonu, yeni kayıt veya silme)
+       izin / uyarı / destek talebi / cihaz kayıtlarındaki personel referanslarını
+       güncel kadroya bağlar. Eşleşmeyen (sahipsiz) kayıtları temizler; böylece
+       `emp(id)` çağrıları hiçbir zaman undefined dönüp arayüzü kilitlemez. */
+    function syncEmployeeReferences(previousEmployees) {
+        const validIds = new Set(EMPLOYEES.map(e => e.id));
+        const idBySicil = new Map();
+        EMPLOYEES.forEach(e => { if (e.sicil) idBySicil.set(e.sicil, e.id); });
+        const oldById = new Map((previousEmployees || []).map(e => [e.id, e]));
+
+        const resolveId = rec => {
+            if (!rec) return null;
+            if (validIds.has(rec.empId)) return rec.empId;
+            const old = oldById.get(rec.empId);
+            const mapped = old ? idBySicil.get(old.sicil) : null;
+            return mapped != null ? mapped : null;
+        };
+
+        [LEAVES, ALERTS, TICKETS, DEVICES].forEach(list => {
+            for (let i = list.length - 1; i >= 0; i--) {
+                const nextId = resolveId(list[i]);
+                if (nextId == null) list.splice(i, 1);
+                else list[i].empId = nextId;
+            }
+        });
+    }
+
+    /* Backend kaydı lokal geçici ID'yi kalıcı ID ile değiştirdiğinde
+       cihaz/izin/uyarı/talep referanslarını da yeni ID'ye taşır. */
+    function rekeyEmployeeReferences(oldId, newId) {
+        if (oldId == null || newId == null || oldId === newId) return;
+        [LEAVES, ALERTS, TICKETS, DEVICES].forEach(list => {
+            list.forEach(rec => { if (rec.empId === oldId) rec.empId = newId; });
+        });
+    }
+
     function clearAnalyticsCache() {
         analyticsCache.clear();
         leaderboardCache.clear();
@@ -489,6 +576,7 @@
             .then(r => (r.ok ? r.json() : null))
             .then(data => {
                 if (!data || !Array.isArray(data.items) || !data.items.length) return;
+                const previousEmployees = EMPLOYEES.slice();
                 EMPLOYEES.length = 0;
                 data.items.forEach(item => {
                     EMPLOYEES.push(Object.assign({
@@ -497,7 +585,7 @@
                         name: item.name,
                         dept: item.dept,
                         title: item.title,
-                        branch: item.branch || 'HQ',
+                        branch: item.branch || 'ŞB-001',
                         status: item.status || 'PRESENT',
                         inMin: item.inMin != null ? item.inMin : null,
                         outMin: item.outMin != null ? item.outMin : null,
@@ -516,6 +604,7 @@
                         isNewHire: !!item.isNewHire
                     }));
                 });
+                syncEmployeeReferences(previousEmployees);
                 clearAnalyticsCache();
                 if (typeof onSync === 'function') onSync(EMPLOYEES);
             })
@@ -567,24 +656,34 @@
         persistLocalState();
 
         if (typeof fetch === 'function' && (typeof location === 'undefined' || location.protocol !== 'file:')) {
+            const payload = {
+                name: newEmp.name,
+                dept: newEmp.dept,
+                title: newEmp.title,
+                branch: newEmp.branch,
+                status: newEmp.status,
+                hireDate: newEmp.startDate
+            };
+            // Boş e-posta gönderilmez: zod doğrulaması boş string yerine undefined bekler.
+            if (newEmp.email) payload.email = newEmp.email;
+
             fetch(API_BASE, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-                body: JSON.stringify({
-                    name: newEmp.name,
-                    dept: newEmp.dept,
-                    title: newEmp.title,
-                    branch: newEmp.branch,
-                    status: newEmp.status,
-                    email: newEmp.email,
-                    startDate: newEmp.startDate
-                })
+                body: JSON.stringify(payload)
             })
-                .then(r => (r.ok ? r.json() : null))
+                .then(r => {
+                    if (!r.ok) {
+                        A.toast('Personel sunucuya kaydedilemedi · yerel taslak olarak tutuldu.', 'err');
+                        return null;
+                    }
+                    return r.json();
+                })
                 .then(res => {
                     if (res && res.employee) {
                         const idx = EMPLOYEES.findIndex(x => x.id === newEmp.id);
                         if (idx >= 0) {
+                            rekeyEmployeeReferences(EMPLOYEES[idx].id, res.employee.id);
                             EMPLOYEES[idx] = Object.assign({}, EMPLOYEES[idx], res.employee);
                             clearAnalyticsCache();
                             if (typeof onSync === 'function') onSync(EMPLOYEES[idx]);
@@ -675,9 +774,11 @@
         const idx = EMPLOYEES.findIndex(x => x.id === +empId);
         if (idx < 0) return null;
         const removed = EMPLOYEES.splice(idx, 1)[0];
-        for (let i = DEVICES.length - 1; i >= 0; i--) {
-            if (DEVICES[i].empId === removed.id) DEVICES.splice(i, 1);
-        }
+        [LEAVES, ALERTS, TICKETS, DEVICES].forEach(list => {
+            for (let i = list.length - 1; i >= 0; i--) {
+                if (list[i].empId === removed.id) list.splice(i, 1);
+            }
+        });
         clearAnalyticsCache();
         persistLocalState();
 

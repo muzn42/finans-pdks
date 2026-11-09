@@ -47,7 +47,7 @@
         },
         {
             id: 'ACC-4', email: 'elif.demir@albayrakfinans.com.tr', pass: 'Ik!2026uzman', role: 'HR',
-            name: 'Elif Demir', title: 'İşe Alım ve Özlük Uzmanı', branch: 'HQ', active: true,
+            name: 'Elif Demir', title: 'İşe Alım ve Özlük Uzmanı', branch: 'ŞB-001', active: true,
             perms: ['emp_view', 'emp_add', 'leave_manage']
         },
         {
@@ -78,7 +78,7 @@
             ovLb: 'best', // 'best' | 'worst'
             emp: { q: '', status: 'ALL', dept: 'ALL', sort: 'net', dir: -1, page: 1, size: 12, openId: null },
             profLog: { sort: 'date', dir: -1, status: 'ALL' },
-            onb: { name: '', dept: 'Şube Operasyon', title: 'Müşteri Temsilcisi', branch: 'HQ', status: 'PRESENT', startDate: '2026-10-20', email: '' },
+            onb: { name: '', dept: 'Şube Operasyon', title: 'Müşteri Temsilcisi', branch: 'ŞB-001', status: 'PRESENT', startDate: '2026-10-20', email: '' },
             adm: {
                 filter: 'ALL',
                 role: 'HR',
@@ -92,7 +92,7 @@
             leave: { f: 'pending', type: 'ALL' }, alert: { sev: 'ALL', type: 'ALL', show: 'open' },
             tk: { f: 'open', type: 'ALL', q: '' }, dev: { q: '', status: 'ALL', ver: 'ALL' }, audit: { cat: 'ALL' },
             policies: { geofence30m: true, mockGpsBlock: true, singleDevice: true, autoTimeout: true },
-            simBranch: 'HQ', simDist: 14
+            simBranch: 'ŞB-001', simDist: 14, brQ: ''
         }
     };
     let fails = 0, lockUntil = 0, idleTimer = null, leaving = false;
@@ -206,7 +206,9 @@
         return `<span class="delta ${cls}">${ic(dir)}${Math.abs(v).toLocaleString('tr-TR', { maximumFractionDigits: 1 })}${unit}</span>`;
     }
     const pill = (txt, tone) => `<span class="pill ${tone}">${esc(txt)}</span>`;
-    const avatar = (e, cls) => `<span class="avatar t${e.tone || 1} ${cls || ''}">${esc(A.initials(e.name))}</span>`;
+    const avatar = (e, cls) => e
+        ? `<span class="avatar t${e.tone || 1} ${cls || ''}">${esc(A.initials(e.name || ''))}</span>`
+        : `<span class="avatar ${cls || ''}" aria-hidden="true">—</span>`;
     const chips = (items, cur, act) => `<div class="chips">${items.map(i => `<button class="chip${cur === i.v ? ' is-active' : ''}" data-act="${act}" data-v="${i.v}">${esc(i.l)}${i.n != null ? ` <span class="n">${i.n}</span>` : ''}</button>`).join('')}</div>`;
 
     /* Özel temalı açılır menü (tüm sayfalarda işletim sistemi beyaz select sorununu çözer) */
@@ -244,7 +246,7 @@
     HR.overview = {
         title: 'Genel bakış', sub: () => 'Personel katılım durumu, fazla mesai ve net süre bakiyesi özeti · ' + rangeLabel(), tools: { range: 1, branch: 1 }, icon: 'grid',
         render() {
-            const st = stats(), E = emps(), pend = D.LEAVES.filter(l => l.status === 'pending').slice(0, 3);
+            const st = stats(), E = emps(), pend = D.LEAVES.filter(l => l.status === 'pending' && emp(l.empId)).slice(0, 3);
             const curDays = activeDays(), daysChart = curDays.length >= 5 ? curDays.slice(-14) : D.DAYS.slice(-14);
             const lb = D.computeLeaderboards(E, filterOpts());
             const geldi = st.onTime + st.late;
@@ -606,7 +608,7 @@
         title: 'İzin & mazeret talepleri', sub: () => 'Onay bekleyenleri hızlıca sonuçlandırın', tools: {}, icon: 'inbox',
         render() {
             const u = S.ui.leave, cnt = s => D.LEAVES.filter(l => l.status === s).length;
-            const L = D.LEAVES.filter(l => (u.f === 'all' || l.status === u.f) && (u.type === 'ALL' || l.type === u.type));
+            const L = D.LEAVES.filter(l => (u.f === 'all' || l.status === u.f) && (u.type === 'ALL' || l.type === u.type) && emp(l.empId));
             const tone = { pending: ['Bekliyor', 'warn'], approved: ['Onaylandı', 'ok'], rejected: ['Reddedildi', 'bad'] };
             return `<section class="card flush"><div class="toolbar">${chips([{ v: 'pending', l: 'Bekleyen', n: cnt('pending') }, { v: 'approved', l: 'Onaylanan', n: cnt('approved') }, { v: 'rejected', l: 'Reddedilen', n: cnt('rejected') }, { v: 'all', l: 'Tümü', n: D.LEAVES.length }], u.f, 'leave-filter')}
                 <span class="grow"></span>${selectEl('leave-type', [{ v: 'ALL', l: 'Tüm türler' }].concat(D.LEAVE_TYPES.map(t => ({ v: t, l: t }))), u.type, 'Talep türü')}
@@ -1081,6 +1083,7 @@
                                 <tr><th>Departman / Birim</th><td>${pill(e.dept, 'ok')}</td><th>Unvan / Görev</th><td>${esc(e.title)}</td></tr>
                                 <tr><th>Kurumsal E-posta</th><td class="mono">${esc(corpEmail)}</td><th>İşe Başlama Tarihi</th><td class="mono">${esc(startDateStr)}</td></tr>
                                 <tr><th>Bağlı Olduğu Şube</th><td><b>${esc(b.name)}</b> (${esc(b.city)})</td><th>Şube Koordinat & Geofence</th><td class="mono">${b.lat.toFixed(4)}, ${b.lng.toFixed(4)} · ${b.radius}m Sınır</td></tr>
+                                <tr><th>Şube Açık Adresi</th><td><small style="display:block;line-height:1.35">${esc(b.address || (b.name + ' · ' + b.city))}</small></td><th>Şube Harita & Telefon</th><td><span class="mono">${esc(b.phone || '0850 222 0 252')}</span> · <button type="button" class="btn btn-soft btn-sm" style="height:24px;padding:0 8px;font-size:11px" data-act="br-map" data-code="${esc(b.code)}">${ic('pin')}Haritada Gör</button></td></tr>
                                 <tr><th>Kurumsal Wi-Fi SSID</th><td class="mono">${esc(b.wifi)}</td><th>Standart Vardiya Planı</th><td class="mono">08:30 – 17:30 (8,5 Saat · 1 Sa Öğle)</td></tr>
                                 <tr><th>Eşlenmiş Mobil Cihaz</th><td>${devObj ? esc(devObj.model + ' (' + devObj.os + ')') : esc(e.device || 'Kurumsal Android Cihaz · Android 14')}</td><th>Cihaz Durumu & Sürüm</th><td>${devObj ? pill(devStatusLabel + ' · v' + devObj.ver, devObj.status === 'BOUND' ? 'ok' : 'warn') : pill('Eşlendi (Aktif) · v2.4.1', 'ok')}</td></tr>
                                 <tr><th>Cihaz Kimlik Maskesi</th><td class="mono">${devObj ? esc(devObj.mask) + ' · Son: ' + esc(devObj.lastSeen || 'Aktif') : '9f3c••••81a2 · Aktif'}</td><th>Güncel Yoklama Durumu</th><td>${pill(STATUS[e.status][0], STATUS[e.status][1])}</td></tr>
@@ -1413,7 +1416,7 @@
                 </section>
             </div>
             <div class="grid g-2 mt">
-                <section class="card flush">${cardHead('Açık destek talepleri', '', `<button class="btn btn-soft btn-sm" data-go="support">Tümü</button>`)}<div class="list" style="margin-top:8px">${openTickets().slice(0, 4).map(t => { const e = emp(t.empId); return `<div class="list-item">${avatar(e, 'sm')}<div class="grow"><b>${esc(e.name)}</b><small>${D.TICKET_TYPES[t.type]} · ${t.ago} önce</small></div></div>`; }).join('')}</div></section>
+                <section class="card flush">${cardHead('Açık destek talepleri', '', `<button class="btn btn-soft btn-sm" data-go="support">Tümü</button>`)}<div class="list" style="margin-top:8px">${openTickets().filter(t => emp(t.empId)).slice(0, 4).map(t => { const e = emp(t.empId); return `<div class="list-item">${avatar(e, 'sm')}<div class="grow"><b>${esc(e.name)}</b><small>${D.TICKET_TYPES[t.type]} · ${t.ago} önce</small></div></div>`; }).join('')}</div></section>
                 <section class="card flush">${cardHead('Son güvenlik uyarıları', '', `<button class="btn btn-soft btn-sm" data-go="security">Tümü</button>`)}<div class="list" style="margin-top:8px">${openAlerts().slice(0, 4).map(alertRow).join('')}</div></section>
             </div>`;
         },
@@ -1430,7 +1433,9 @@
         return d.map(() => Math.round(18 + r() * 24));
     }
     function alertRow(a) {
-        const e = emp(a.empId), tone = { HIGH: 'bad', MED: 'warn', LOW: 'mute' }[a.sev], sl = { HIGH: 'Yüksek', MED: 'Orta', LOW: 'Düşük' }[a.sev];
+        const e = emp(a.empId);
+        if (!e) return '';
+        const tone = { HIGH: 'bad', MED: 'warn', LOW: 'mute' }[a.sev], sl = { HIGH: 'Yüksek', MED: 'Orta', LOW: 'Düşük' }[a.sev];
         return `<div class="list-item"><span class="ico-sq ${a.sev === 'HIGH' ? 'red' : a.sev === 'MED' ? 'warn' : ''}">${ic(a.type === 'MOCK_GPS' || a.type === 'GEOFENCE' ? 'pin' : a.type === 'DEVICE' ? 'phone' : a.type === 'BRUTE' ? 'lock' : 'shield')}</span><div class="grow"><b>${D.ALERT_TYPES[a.type]}</b><small>${esc(e.name)} · ${esc(brName(a.branch))} · ${a.ago} önce</small></div>${pill(sl, tone)}</div>`;
     }
 
@@ -1438,7 +1443,7 @@
         title: 'Destek & parola yönetimi', sub: () => 'Parola, kilit ve cihaz talepleri', tools: {}, icon: 'key',
         render() {
             const u = S.ui.tk, cnt = s => D.TICKETS.filter(t => t.status === s).length, q = u.q.toLocaleLowerCase('tr-TR').trim();
-            const L = D.TICKETS.filter(t => (u.f === 'all' || t.status === u.f) && (u.type === 'ALL' || t.type === u.type) && (!q || (emp(t.empId).name + emp(t.empId).sicil).toLocaleLowerCase('tr-TR').includes(q)));
+            const L = D.TICKETS.filter(t => (u.f === 'all' || t.status === u.f) && (u.type === 'ALL' || t.type === u.type) && emp(t.empId) && (!q || (emp(t.empId).name + emp(t.empId).sicil).toLocaleLowerCase('tr-TR').includes(q)));
             const tone = { open: ['Açık', 'warn'], progress: ['İşlemde', 'info'], done: ['Çözüldü', 'ok'] };
             return `<section class="card flush"><div class="toolbar">${searchEl('tk-q', u.q, 'Personel adı veya sicil')}
                 ${chips([{ v: 'open', l: 'Açık', n: cnt('open') }, { v: 'progress', l: 'İşlemde', n: cnt('progress') }, { v: 'done', l: 'Çözüldü', n: cnt('done') }, { v: 'all', l: 'Tümü', n: D.TICKETS.length }], u.f, 'tk-filter')}
@@ -1452,7 +1457,7 @@
         title: 'Güvenlik radarı', sub: () => 'Sahte konum, cihaz ve oturum uyarıları', tools: {}, icon: 'shield',
         render() {
             const u = S.ui.alert, base = D.ALERTS.filter(a => u.show === 'all' || (u.show === 'open' ? !a.resolved : a.resolved));
-            const L = base.filter(a => (u.sev === 'ALL' || a.sev === u.sev) && (u.type === 'ALL' || a.type === u.type)), c = s => base.filter(a => a.sev === s).length;
+            const L = base.filter(a => (u.sev === 'ALL' || a.sev === u.sev) && (u.type === 'ALL' || a.type === u.type) && emp(a.empId)), c = s => base.filter(a => a.sev === s).length;
             return `<section class="card flush"><div class="toolbar">${chips([{ v: 'ALL', l: 'Tümü', n: base.length }, { v: 'HIGH', l: 'Yüksek', n: c('HIGH') }, { v: 'MED', l: 'Orta', n: c('MED') }, { v: 'LOW', l: 'Düşük', n: c('LOW') }], u.sev, 'al-sev')}
                 <span class="grow"></span>${selectEl('al-type', [{ v: 'ALL', l: 'Tüm türler' }].concat(Object.keys(D.ALERT_TYPES).map(k => ({ v: k, l: D.ALERT_TYPES[k] }))), u.type, 'Tür')}
                 ${selectEl('al-show', [{ v: 'open', l: 'Açık' }, { v: 'done', l: 'Çözülen' }, { v: 'all', l: 'Tümü' }], u.show, 'Durum')}
@@ -1465,7 +1470,7 @@
         title: 'Cihaz eşlemeleri', sub: () => 'Her personel tek cihaza bağlıdır', tools: {}, icon: 'phone',
         render() {
             const u = S.ui.dev, q = u.q.toLocaleLowerCase('tr-TR').trim();
-            const L = D.DEVICES.filter(d => (u.status === 'ALL' || d.status === u.status) && (u.ver === 'ALL' || d.ver === u.ver) && (!q || (emp(d.empId).name + emp(d.empId).sicil + d.model).toLocaleLowerCase('tr-TR').includes(q))).slice(0, 60);
+            const L = D.DEVICES.filter(d => emp(d.empId) && (u.status === 'ALL' || d.status === u.status) && (u.ver === 'ALL' || d.ver === u.ver) && (!q || (emp(d.empId).name + emp(d.empId).sicil + d.model).toLocaleLowerCase('tr-TR').includes(q))).slice(0, 60);
             const tone = { BOUND: ['Eşlendi', 'ok'], PENDING: ['Sıfırlandı · bekliyor', 'info'], BLOCKED: ['Engelli', 'bad'] };
             return `<section class="card flush"><div class="toolbar">${searchEl('dv-q', u.q, 'Personel, sicil veya model')}<span class="grow"></span>
                 ${selectEl('dv-status', [{ v: 'ALL', l: 'Tüm durumlar' }, { v: 'BOUND', l: 'Eşlendi' }, { v: 'PENDING', l: 'Sıfırlandı' }, { v: 'BLOCKED', l: 'Engelli' }], u.status, 'Durum')}
@@ -1475,30 +1480,83 @@
     };
 
     IT.branches = {
-        title: 'Şubeler & 30m geofence doğrulama', sub: () => 'Konum doğrulama alanları, Wi-Fi BSSID/SSID doğrulaması ve canlı mesafe simülatörü', tools: {}, icon: 'building',
+        title: 'Şubeler, açık adresler & 30m harita doğrulama', sub: () => 'Türkiye genelindeki ' + D.BRANCHES.length + ' şubenin açık adresleri, harita konumu, Wi-Fi SSID ve canlı 30m geofence simülatörü', tools: {}, icon: 'building',
         render() {
             const simB = D.BRANCHES.find(b => b.code === S.ui.simBranch) || D.BRANCHES[0];
             const inside = S.ui.simDist <= simB.radius;
+            const q = (S.ui.brQ || '').toLocaleLowerCase('tr-TR').trim();
+            const filteredBranches = D.BRANCHES.filter(b => !q || (b.name + ' ' + b.city + ' ' + (b.district || '') + ' ' + (b.address || '') + ' ' + b.code).toLocaleLowerCase('tr-TR').includes(q));
+            const bbox = `${(simB.lng - 0.0045).toFixed(5)}%2C${(simB.lat - 0.0032).toFixed(5)}%2C${(simB.lng + 0.0045).toFixed(5)}%2C${(simB.lat + 0.0032).toFixed(5)}`;
+            const osmEmbedUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${simB.lat.toFixed(5)}%2C${simB.lng.toFixed(5)}`;
+            const gmapsUrl = (simB.googleMapUrl && simB.googleMapUrl.startsWith('https://')) ? simB.googleMapUrl : `https://www.google.com/maps/search/?api=1&query=${simB.lat},${simB.lng}`;
+            const pinOffsetPx = Math.min(72, Math.round((S.ui.simDist / 80) * 72));
             return `<div class="grid g-main">
                 <section class="card flush">
-                    <div class="toolbar"><div><b>${D.BRANCHES.length} lokasyon</b> <span class="muted">· standart yarıçap 30 m</span></div><span class="grow"></span><button class="btn btn-primary btn-sm" data-act="br-add">${ic('plus')}Şube ekle</button></div>
-                    <div class="table-wrap"><table><thead><tr><th>Şube</th><th>Koordinat</th><th>Yarıçap</th><th>Kurumsal Wi-Fi</th><th>Uptime</th><th>Personel</th></tr></thead><tbody>${D.BRANCHES.map((b, i) => `<tr style="--r:${i}"><td><div class="cell-user"><span class="ico-sq red">${ic('pin')}</span><div><b>${esc(b.name)}</b><small>${esc(b.city)} · <span class="mono">${b.code}</span></small></div></div></td><td class="mono">${b.lat.toFixed(4)}, ${b.lng.toFixed(4)}</td><td>${pill(b.radius + ' m', 'ok')}</td><td><span class="mono">${esc(b.wifi)}</span></td><td class="mono" style="color:var(--ok)"><b>%99,9</b></td><td class="mono">${D.EMPLOYEES.filter(e => e.branch === b.code).length}</td></tr>`).join('')}</tbody></table></div>
+                    <div class="toolbar">
+                        ${searchEl('br-q', S.ui.brQ || '', 'Şube adı, il, ilçe veya açık adres ara...')}
+                        <div><b>${filteredBranches.length} / ${D.BRANCHES.length} şube</b> <span class="muted">· 30 m geofence</span></div>
+                        <span class="grow"></span>
+                        <button class="btn btn-primary btn-sm" data-act="br-add">${ic('plus')}Şube ekle</button>
+                    </div>
+                    <div class="table-wrap" style="max-height:680px;overflow-y:auto"><table><thead><tr><th>Şube & Şehir</th><th>Açık Adres & Telefon</th><th>Koordinat & Sınır</th><th>Kurumsal Wi-Fi</th><th>Personel</th><th>Harita</th></tr></thead><tbody>${filteredBranches.map((b, i) => {
+                        const isSelected = b.code === simB.code;
+                        return `<tr style="--r:${i};${isSelected ? 'background:var(--red-soft)' : ''}">
+                            <td><div class="cell-user"><span class="ico-sq ${isSelected ? 'red' : ''}">${ic('pin')}</span><div><b>${esc(b.name)}</b><small>${esc(b.city)}${b.district ? ' / ' + esc(b.district) : ''} · <span class="mono">${esc(b.code)}</span></small></div></div></td>
+                            <td style="max-width:290px"><div style="font-size:12px;line-height:1.35;color:var(--ink)">${esc(b.address || (b.name + ' · ' + b.city))}</div><small class="mono muted">${esc(b.phone || '0850 222 0 252')}</small></td>
+                            <td class="mono">${b.lat.toFixed(4)}, ${b.lng.toFixed(4)}<div style="margin-top:3px">${pill(b.radius + ' m sınır', 'ok')}</div></td>
+                            <td><span class="mono" style="font-size:11.5px">${esc(b.wifi)}</span></td>
+                            <td class="mono"><b>${D.EMPLOYEES.filter(e => e.branch === b.code).length}</b> kişi</td>
+                            <td><div class="row-actions"><button type="button" class="btn ${isSelected ? 'btn-primary' : 'btn-soft'} btn-sm" data-act="br-map" data-code="${esc(b.code)}">${ic('pin')}Haritada Gör</button></div></td>
+                        </tr>`;
+                    }).join('') || `<tr><td colspan="6">${empty('Şube bulunamadı', 'Arama kriterinize uygun şube kaydı bulunmuyor.')}</td></tr>`}</tbody></table></div>
                 </section>
                 <section class="card">
-                    ${cardHead('30m Geofence Canlı Simülatörü', 'Mobil uygulamadaki konum doğrulama motorunun şube bazlı testi')}
+                    ${cardHead('Şube Haritası & 30m Geofence Canlı Simülatörü', simB.name + ' (' + simB.city + ') açık adresi, harita konumu ve mesafe testi')}
                     <div style="display:grid;gap:14px">
                         <div>
-                            <small class="muted" style="font-weight:600;display:block;margin-bottom:6px">Test Edilen Şube</small>
-                            ${selectEl('sim-branch', D.BRANCHES.map(b => ({ v: b.code, l: b.name, sub: b.radius + 'm' })), S.ui.simBranch, 'Şube seçin')}
+                            <small class="muted" style="font-weight:600;display:block;margin-bottom:6px">Haritada İncelenen & Test Edilen Şube (${D.BRANCHES.length} Şube)</small>
+                            ${selectEl('sim-branch', D.BRANCHES.map(b => ({ v: b.code, l: b.name, sub: b.city + ' · ' + b.radius + 'm' })), S.ui.simBranch, 'Şube seçin')}
+                        </div>
+                        <div style="padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--surface-2);display:grid;gap:6px">
+                            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+                                <b style="font-size:13px;color:var(--ink)">${esc(simB.name)}</b>
+                                ${pill(simB.city + (simB.district ? ' / ' + simB.district : ''), 'info')}
+                            </div>
+                            <div style="font-size:12px;color:var(--ink-2);line-height:1.45">${esc(simB.address || (simB.name + ' · ' + simB.city))}</div>
+                            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-top:4px;font-size:11.5px">
+                                <span class="mono muted">Tel: <b>${esc(simB.phone || '0850 222 0 252')}</b> · Koord: <b>${simB.lat.toFixed(4)}, ${simB.lng.toFixed(4)}</b></span>
+                                <a href="${esc(gmapsUrl)}" target="_blank" rel="noopener noreferrer" class="btn btn-soft btn-sm" style="height:26px;padding:0 10px;font-size:11px;text-decoration:none">${ic('pin')}Google Haritalar'da Aç ↗</a>
+                            </div>
+                        </div>
+                        <div style="position:relative;border-radius:14px;overflow:hidden;border:1px solid var(--line);height:210px;background:var(--surface-2)">
+                            <iframe title="${esc(simB.name)} Harita Konumu" src="${osmEmbedUrl}" style="width:100%;height:100%;border:0" loading="lazy"></iframe>
+                            <div style="position:absolute;left:10px;bottom:10px;background:rgba(15,17,21,0.84);color:#fff;padding:5px 10px;border-radius:8px;font-size:11px;backdrop-filter:blur(6px)" class="mono">
+                                Şube Pin: ${simB.lat.toFixed(4)}, ${simB.lng.toFixed(4)} · 30m Geofence
+                            </div>
+                        </div>
+                        <div style="padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--surface-2);display:flex;align-items:center;gap:14px">
+                            <svg role="img" aria-label="Canlı 30 metre geofence konum radarı" viewBox="0 0 180 180" style="width:118px;height:118px;flex-shrink:0;border-radius:50%;background:radial-gradient(circle, rgba(227,6,19,0.10) 0%, rgba(15,23,42,0.06) 100%);border:1px solid var(--line)">
+                                <circle cx="90" cy="90" r="76" fill="none" stroke="var(--line)" stroke-dasharray="3 3" />
+                                <circle cx="90" cy="90" r="34" fill="${inside ? 'rgba(16,185,129,0.14)' : 'rgba(227,6,19,0.12)'}" stroke="${inside ? 'var(--ok)' : 'var(--red)'}" stroke-width="2" stroke-dasharray="4 2" />
+                                <line x1="90" y1="90" x2="${90 + pinOffsetPx}" y2="90" stroke="${inside ? 'var(--ok)' : 'var(--bad)'}" stroke-width="2" />
+                                <circle cx="90" cy="90" r="6" fill="var(--red)" />
+                                <circle cx="${90 + pinOffsetPx}" cy="90" r="6" fill="${inside ? 'var(--ok)' : 'var(--bad)'}" stroke="#fff" stroke-width="2" />
+                                <text x="90" y="108" text-anchor="middle" font-size="9" font-weight="700" fill="var(--ink)">ŞUBE (0m)</text>
+                                <text x="90" y="50" text-anchor="middle" font-size="8.5" font-weight="700" fill="${inside ? 'var(--ok)' : 'var(--red)'}">30m Sınır</text>
+                            </svg>
+                            <div style="flex:1;min-width:0">
+                                <div style="font-size:12.5px;font-weight:700;color:var(--ink);margin-bottom:4px">Canlı Şube & Personel Konum Radarı</div>
+                                <div style="font-size:11.5px;color:var(--muted);line-height:1.4">Merkezdeki kırmızı nokta <b>${esc(simB.name)}</b> konumunu, hareketli nokta ise personelin şubeye olan <b>${S.ui.simDist} m</b> mesafesini gösterir.</div>
+                            </div>
                         </div>
                         <div class="net-meter">
                             <div class="net-meter-top">
                                 <span>Şube Merkezine Mesafe: <b class="mono">${S.ui.simDist} metre</b></span>
                                 ${pill(inside ? '30m Alan İçinde (Onaylı)' : 'Alan Dışı (Engellendi)', inside ? 'ok' : 'bad')}
                             </div>
-                            <input type="range" min="1" max="80" value="${S.ui.simDist}" data-bind="sim-dist" style="width:100%;accent-color:var(--red);cursor:pointer">
+                            <input type="range" min="1" max="80" value="${S.ui.simDist}" data-bind="sim-dist" aria-label="Şube merkezine mesafe (metre)" style="width:100%;accent-color:var(--red);cursor:pointer">
                             <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted)" class="mono">
-                                <span>0m (Merkez)</span><span>30m (Geofence Sınırı)</span><span>80m (Dış Alan)</span>
+                                <span>0m (Şube Merkezi)</span><span>30m (Geofence Sınırı)</span><span>80m (Dış Alan)</span>
                             </div>
                         </div>
                         <div class="kv">
@@ -1735,7 +1793,7 @@
         const allCnt = D.EMPLOYEES.length;
         const curName = S.branch === 'ALL' ? 'Tüm şubeler' : brName(S.branch);
         label.textContent = curName;
-        const items = [{ code: 'ALL', name: 'Tüm şubeler', city: '6 Lokasyon · Genel Görünüm', cnt: allCnt }].concat(
+        const items = [{ code: 'ALL', name: 'Tüm şubeler', city: D.BRANCHES.length + ' Lokasyon · Genel Görünüm', cnt: allCnt }].concat(
             D.BRANCHES.map(b => ({ code: b.code, name: b.name, city: b.city + ' · 30m Geofence', cnt: D.EMPLOYEES.filter(e => e.branch === b.code).length }))
         );
         menu.innerHTML = items.map(it => `<button type="button" class="cselect-item${S.branch === it.code ? ' is-selected' : ''}" data-act="branch-pick" data-v="${esc(it.code)}" role="option" aria-selected="${S.branch === it.code}">
@@ -1796,12 +1854,17 @@
         renderBranchMenu();
         syncDateInputs();
     }
-    function skeleton() { return '<div class="grid g-4">' + '<div class="sk sk-card"></div>'.repeat(4) + '</div><div class="grid g-main mt"><div class="sk sk-big"></div><div class="sk sk-big"></div></div>'; }
+    function skeleton() {
+        return '<div class="grid g-4">' + '<div class="sk sk-card"></div>'.repeat(4) + '</div>'
+            + '<div class="sk sk-toolbar mt"></div>'
+            + '<div class="sk-table mt">' + '<div class="sk sk-row"></div>'.repeat(8) + '</div>';
+    }
 
     const dndKey = () => 'atf_dnd_' + (S.user ? S.user.role : 'HR') + '_' + S.page;
 
     function draw(animate) {
         if (!S.user || !PAGES[S.user.role] || !PAGES[S.user.role][S.page]) return;
+        if (A.closeCardPopover) A.closeCardPopover(true);
         const p = PAGES[S.user.role][S.page], pg = $('#page'), active = document.activeElement, focusId = active && active.id && pg.contains(active) ? active.id : null, pos = focusId ? active.selectionStart : null;
         $('#pageTitle').textContent = p.title; $('#pageSub').textContent = typeof p.sub === 'function' ? p.sub() : p.sub; document.title = p.title + ' · Albayrak Finans PDKS';
         pg.innerHTML = p.render(); pg.classList.toggle('still', !animate);
@@ -2291,7 +2354,7 @@
             preparedBy: S.user ? S.user.name + ' — ' + S.user.title : 'İnsan Kaynakları Yönetimi',
             headers: ['Talep No', 'Sicil No', 'Personel Adı', 'Departman', 'İzin Türü', 'Süre (Gün)', 'Başlangıç Tarihi', 'Açıklama', 'Durum'],
             rows: D.LEAVES.map(l => {
-                const e = emp(l.empId);
+                const e = emp(l.empId) || { sicil: '—', name: 'Bilinmeyen Personel', dept: '—' };
                 return ['LV-' + l.id, e.sicil, e.name, e.dept, l.type, l.days, l.from, l.reason, tone[l.status] || l.status];
             })
         });
@@ -2315,7 +2378,7 @@
             summaryRows: D.AUDIT.slice(0, 12).map(a => [a.t, a.who, a.act, a.target, a.cat]),
             headers: ['Uyarı No', 'Zaman', 'Sicil No', 'Personel', 'Şube', 'Güvenlik Olayı', 'Önem Derecesi', 'Durum'],
             rows: D.ALERTS.map(a => {
-                const e = emp(a.empId);
+                const e = emp(a.empId) || { sicil: '—', name: 'Bilinmeyen Personel' };
                 return ['AL-' + a.id, a.ago + ' önce', e.sicil, e.name, brName(a.branch), D.ALERT_TYPES[a.type], a.sev === 'HIGH' ? 'Yüksek' : a.sev === 'MED' ? 'Orta' : 'Düşük', a.resolved ? 'Çözüldü' : 'Bekliyor'];
             })
         });
@@ -2558,6 +2621,37 @@
         'dv-unbind': el => { const d = D.DEVICES.find(x => x.id === el.dataset.id); d.status = 'PENDING'; audit('Cihaz eşlemesi sıfırlandı', d.id, 'DEVICE'); A.toast('Eşleme sıfırlandı'); draw(false); },
         'dv-unblock': el => { const d = D.DEVICES.find(x => x.id === el.dataset.id); d.status = 'BOUND'; audit('Cihaz engeli kaldırıldı', d.id, 'DEVICE'); A.toast('Engel kaldırıldı'); draw(false); },
         'au-cat': el => { S.ui.audit.cat = el.dataset.v; draw(false); },
+        'br-map': el => {
+            const code = el.dataset.code || 'ŞB-001';
+            const b = D.BRANCHES.find(x => x.code === code) || D.BRANCHES[0];
+            S.ui.simBranch = b.code;
+            const bbox = `${(b.lng - 0.0045).toFixed(5)}%2C${(b.lat - 0.0032).toFixed(5)}%2C${(b.lng + 0.0045).toFixed(5)}%2C${(b.lat + 0.0032).toFixed(5)}`;
+            const osmEmbedUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${b.lat.toFixed(5)}%2C${b.lng.toFixed(5)}`;
+            const gmapsUrl = (b.googleMapUrl && b.googleMapUrl.startsWith('https://')) ? b.googleMapUrl : `https://www.google.com/maps/search/?api=1&query=${b.lat},${b.lng}`;
+            openModal(
+                b.name + ' · Harita & Açık Adres',
+                `<div style="display:grid;gap:14px">
+                    <div style="padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--surface-2);display:grid;gap:6px">
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+                            <b style="font-size:14px;color:var(--ink)">${esc(b.name)}</b>
+                            ${pill(b.city + (b.district ? ' / ' + b.district : ''), 'ok')}
+                        </div>
+                        <div style="font-size:12.5px;color:var(--ink-2);line-height:1.45">${esc(b.address || (b.name + ' · ' + b.city))}</div>
+                        <div style="display:flex;flex-wrap:wrap;gap:12px;font-size:11.5px;margin-top:4px" class="mono muted">
+                            <span>Telefon: <b>${esc(b.phone || '0850 222 0 252')}</b></span>
+                            <span>Koordinat: <b>${b.lat.toFixed(4)}, ${b.lng.toFixed(4)}</b></span>
+                            <span>Geofence: <b>${b.radius}m Sınır</b></span>
+                            <span>Wi-Fi: <b>${esc(b.wifi)}</b></span>
+                        </div>
+                    </div>
+                    <div style="position:relative;border-radius:14px;overflow:hidden;border:1px solid var(--line);height:290px;background:var(--surface-2)">
+                        <iframe title="${esc(b.name)} Harita" src="${osmEmbedUrl}" style="width:100%;height:100%;border:0" loading="lazy"></iframe>
+                    </div>
+                </div>`,
+                `<button class="btn btn-soft" data-act="modal-close">Kapat</button><a href="${esc(gmapsUrl)}" target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="text-decoration:none">${ic('pin')}Google Haritalar'da Aç ↗</a>`
+            );
+            draw(false);
+        },
         'br-add': () => openModal('Yeni şube', `<form class="form-grid" id="brForm" novalidate>
             <label class="field"><span>Şube adı</span><div class="input"><input id="brName" maxlength="60" placeholder="Örn. Antalya Muratpaşa Şubesi"></div></label>
             <label class="field"><span>Şehir</span><div class="input"><input id="brCity" maxlength="40"></div></label>
@@ -2795,6 +2889,7 @@
             'dv-ver': () => U.dev.ver = v,
             'sim-branch': () => U.simBranch = v,
             'sim-dist': () => U.simDist = +v,
+            'br-q': () => U.brQ = v,
             'onb-name': () => U.onb.name = v,
             'onb-email': () => U.onb.email = v,
             'onb-dept': () => U.onb.dept = v,
@@ -2817,7 +2912,7 @@
         const el = e.target.closest('[data-act]'); if (el && acts[el.dataset.act]) acts[el.dataset.act](el);
     }
     let bindDebounceTimer = null;
-    const DEBOUNCED_BINDS = { 'emp-q': 1, 'tk-q': 1, 'dv-q': 1 };
+    const DEBOUNCED_BINDS = { 'emp-q': 1, 'tk-q': 1, 'dv-q': 1, 'br-q': 1 };
     function onBind(e) {
         const t = e.target, id = t.dataset.bind; if (!id) return;
         const val = t.value;
@@ -2842,9 +2937,18 @@
         if (sl) sl.style.color = activeTheme === 'dark' ? '#fff' : 'var(--charcoal)';
     }
 
+    /* Giriş/çıkışta ani görünüm değişimi yerine kısa kurumsal sönümleme */
+    function viewEnter(el) {
+        if (!el) return;
+        el.classList.remove('view-enter');
+        void el.offsetWidth;
+        el.classList.add('view-enter');
+    }
+
     function startApp() {
         syncTheme();
         $('#authView').hidden = true; $('#appView').hidden = false; window.scrollTo({ top: 0 });
+        viewEnter($('#appView'));
         const u = S.user; S.page = 'overview'; S.range = 30; S.fromDate = ''; S.toDate = ''; S.branch = u.branch && u.branch !== 'ALL' ? u.branch : 'ALL';
         $('#sidePortal').textContent = ROLE_PORTAL_NAME[u.role] || 'Yönetim Portalı'; $('#userName').textContent = u.name; $('#userTitle').textContent = u.title; $('#userAvatar').textContent = A.initials(u.name);
         renderBranchMenu();
@@ -2859,6 +2963,8 @@
         buildNav(); draw(true); placeNav(); armIdle(); setTimeout(() => { placeNav(); A.placeSeg($('#rangeSeg')); }, 60);
     }
     function logout(msg) {
+        if (A.closeCardPopover) A.closeCardPopover(true);
+        document.documentElement.classList.remove('has-saved-session');
         sessionStorage.removeItem('atf_session'); sessionStorage.removeItem('atf_emp'); S.user = null; S.openEmpId = null; clearTimeout(idleTimer); closeDrawer(); closeModal();
         // Bayat DOM'a tiklanirsa JS hatasi olusmasin: icerigi temizle
         const pg = $('#page'); if (pg) pg.innerHTML = '';
@@ -2867,6 +2973,7 @@
         closeSide();
         syncTheme();
         $('#appView').hidden = true; $('#authView').hidden = false; $('#loginPassword').value = ''; history.replaceState(null, '', location.pathname);
+        viewEnter($('#authView'));
         window.scrollTo({ top: 0, behavior: 'instant' });
         setTimeout(() => A.placeSeg($('#portalSeg')), 30); if (msg) A.toast(msg);
     }
@@ -2883,13 +2990,26 @@
         if (acc.active === false) {
             err.textContent = 'Bu kullanıcı hesabı Sistem Yöneticisi tarafından askıya alınmıştır.'; err.hidden = false; return;
         }
-        fails = 0; btn.disabled = true; btn.querySelector('span').textContent = 'Giriş yapılıyor…';
-        setTimeout(() => { btn.disabled = false; btn.querySelector('span').textContent = 'Giriş yap'; S.user = { email: acc.email, role: acc.role, name: acc.name, title: acc.title, branch: acc.branch || 'ALL', perms: acc.perms || [] }; sessionStorage.setItem('atf_session', JSON.stringify({ email: acc.email, role: acc.role })); startApp(); A.toast('Hoş geldiniz, ' + acc.name.split(' ')[0]); }, 450);
+        fails = 0; btn.disabled = true; btn.classList.add('is-busy'); btn.setAttribute('aria-busy', 'true');
+        btn.querySelector('span').textContent = 'Giriş yapılıyor…';
+        setTimeout(() => {
+            btn.disabled = false; btn.classList.remove('is-busy'); btn.removeAttribute('aria-busy');
+            btn.querySelector('span').textContent = 'Giriş yap';
+            S.user = { email: acc.email, role: acc.role, name: acc.name, title: acc.title, branch: acc.branch || 'ALL', perms: acc.perms || [] }; sessionStorage.setItem('atf_session', JSON.stringify({ email: acc.email, role: acc.role })); startApp(); A.toast('Hoş geldiniz, ' + acc.name.split(' ')[0]);
+        }, 450);
     }
 
     /* ======================= Başlangıç ======================= */
     function init() {
-        A.hydrate(document); $('#authLogo').innerHTML = A.LOGO; $('#sideLogo').innerHTML = A.LOGO; $('#authLogo').style.color = '#fff'; $('#sideLogo').style.color = 'var(--charcoal)';
+        A.hydrate(document);
+        /* Logo artık HTML/JSX içine SSR olarak gömülü gelir (ilk karede görünür).
+           Yalnızca boşsa enjekte edilir; aksi hâlde React hidrasyonu ile
+           çakışmaması için mevcut SVG korunur. */
+        ['authLogo', 'sideLogo'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el && !el.querySelector('svg')) el.innerHTML = A.LOGO;
+        });
+        $('#authLogo').style.color = '#fff'; $('#sideLogo').style.color = 'var(--charcoal)';
         syncTheme();
         if (D.syncEmployeesFromBackend) {
             D.syncEmployeesFromBackend(() => { if (S.user) draw(false); });
@@ -2995,7 +3115,7 @@
         addEventListener('resize', () => { placeNav(); A.placeSeg($('#rangeSeg')); A.placeSeg($('#portalSeg')); });
         addEventListener('hashchange', () => { if (!S.user) return; const h = location.hash.replace('#/', ''); if (h && h !== S.page) go(h); });
 
-        try { const s = JSON.parse(sessionStorage.getItem('atf_session') || 'null'), a = s && ACCOUNTS.find(x => x.email === s.email && x.role === s.role); if (a) { S.user = { email: a.email, role: a.role, name: a.name, title: a.title }; S.portal = a.role; startApp(); return; } } catch (e) { sessionStorage.removeItem('atf_session'); }
+        try { const s = JSON.parse(sessionStorage.getItem('atf_session') || 'null'), a = s && ACCOUNTS.find(x => x.email === s.email && x.role === s.role); if (a) { document.documentElement.classList.add('has-saved-session'); S.user = { email: a.email, role: a.role, name: a.name, title: a.title }; S.portal = a.role; startApp(); return; } } catch (e) { sessionStorage.removeItem('atf_session'); }
         requestAnimationFrame(() => A.placeSeg($('#portalSeg'))); if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => A.placeSeg($('#portalSeg')));
     }
     function closeSide() { $('#side').classList.remove('on'); $('#scrim').classList.remove('on'); }

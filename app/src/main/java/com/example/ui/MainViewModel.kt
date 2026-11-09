@@ -265,26 +265,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun switchRole(role: UserRole) {
-        _currentRole.value = role
-        // İlgili roldeki bir çalışanı aktif yap (varsa)
-        val roleStr = when (role) {
-            UserRole.PERSONNEL -> "PERSONNEL"
-            UserRole.HR -> "HR"
-            UserRole.IT -> "IT"
-        }
-        employees.value.find { it.role == roleStr }?.let {
-            _selectedEmployee.value = it
-        }
+        _currentRole.value = UserRole.PERSONNEL
     }
 
     fun selectEmployee(employee: EmployeeEntity) {
         _selectedEmployee.value = employee
-        val matchedRole = when (employee.role) {
-            "HR" -> UserRole.HR
-            "IT" -> UserRole.IT
-            else -> UserRole.PERSONNEL
-        }
-        _currentRole.value = matchedRole
+        _currentRole.value = UserRole.PERSONNEL
 
         branches.value.find { it.id == employee.branchId }?.let {
             _selectedBranch.value = it
@@ -314,15 +300,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
-    fun startRealGps(context: Context) {
+    fun startRealGps(context: Context = getApplication()) {
+        val appContext = context.applicationContext ?: getApplication()
         _isRealGpsActive.value = true
         viewModelScope.launch {
             try {
-                LocationHelper.getLocationFlow(context).collect { loc ->
+                LocationHelper.getLocationFlow(appContext).collect { loc ->
                     if (_isRealGpsActive.value) {
                         _userLocation.value = loc
                     }
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _isRealGpsActive.value = false
             }

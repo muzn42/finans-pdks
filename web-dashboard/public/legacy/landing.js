@@ -284,6 +284,14 @@
         window.addEventListener('resize', computeTargetScroll, { passive: true });
         computeTargetScroll();
 
+        // Web fontu (Plus Jakarta Sans) geç yüklendiğinde logo genişliği değişir;
+        // merkez hesabı bayat kalmasın diye yeniden ölçülür.
+        if (document.fonts && document.fonts.ready) {
+            document.fonts.ready.then(() => {
+                computeTargetScroll();
+            }).catch(() => { });
+        }
+
         function scrollToLogin() {
             const maxScroll = Math.max(1, shell.offsetHeight - window.innerHeight);
             window.scrollTo({ top: maxScroll, behavior: 'smooth' });
@@ -507,6 +515,23 @@
             }
         }
         wakeLoop();
+
+        /* ==================================================================
+           İLK AÇILIŞ (BOOT) PERDESİ
+           Sahne 0 ilk karede çizildikten sonra merkezdeki ince kırmızı
+           ilerleme çizgisi tamamlanır ve boot perdesi sönümlenir.
+           (CSS'teki merkezleme sayesinde konum sıçraması olmaz.)
+           ================================================================== */
+        let bootFinished = false;
+        function finishBoot() {
+            if (bootFinished) return;
+            bootFinished = true;
+            document.documentElement.style.setProperty('--boot-progress', '1');
+            setTimeout(() => document.body.classList.add('is-booted'), 160);
+        }
+
+        // En az bir kez JS transform'u ile boyanmış kare garanti edilir.
+        requestAnimationFrame(() => requestAnimationFrame(finishBoot));
 
         setTimeout(() => {
             if (window.ATF && window.ATF.placeSeg) {

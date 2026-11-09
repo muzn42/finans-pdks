@@ -2,6 +2,8 @@
 .gradle
 .kotlin
 /local.properties
+/.idea/
+/gradle/gradle-daemon-jvm.properties
 /.idea/caches
 /.idea/libraries
 /.idea/modules.xml
@@ -37,3 +39,18 @@ scratch/
 
 # SQLite veritabani
 *.db
+
+# Node.js & Next.js
+node_modules/
+.next/
+out/
+.env.*
+!.env.example
+web-dashboard/.env
+web-dashboard/.env.*
+!web-dashboard/.env.example
+tsconfig.tsbuildinfo
+next-env.d.ts
+
+# Yerel Kilo / AI asistan calisma dizini (MCP parolalari ve yerel planlar)
+.kilo/

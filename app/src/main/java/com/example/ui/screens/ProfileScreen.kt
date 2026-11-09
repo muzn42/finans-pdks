@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -26,6 +28,7 @@ import com.example.data.local.EmployeeEntity
 import com.example.ui.MainViewModel
 import com.example.ui.components.*
 import com.example.ui.theme.*
+import java.util.Locale
 
 @Composable
 fun ProfileScreen(
@@ -35,7 +38,6 @@ fun ProfileScreen(
     val context = LocalContext.current
     val selectedEmployee by viewModel.selectedEmployee.collectAsState()
     val selectedBranch by viewModel.selectedBranch.collectAsState()
-    val currentRole by viewModel.currentRole.collectAsState()
     val employees by viewModel.employees.collectAsState()
     val allRecords by viewModel.records.collectAsState()
 
@@ -47,21 +49,20 @@ fun ProfileScreen(
     var selectedPeriodDays by remember { mutableIntStateOf(30) } // 1, 7, 30, 60
     var customFromDate by remember { mutableStateOf("") }
     var customToDate by remember { mutableStateOf("") }
-    var modalDeepEmployee by remember { mutableStateOf<EmployeeDeepAnalytics?>(null) }
 
     val activeEmp = remember(selectedEmployee, employees) {
         selectedEmployee ?: employees.firstOrNull() ?: EmployeeEntity(
             id = 1L,
-            employeeCode = "FN-1001",
+            employeeCode = "FN-1048",
             password = "",
             branchId = 1L,
             fullName = "Ahmet Yılmaz",
-            department = "Finans & Muhasebe",
-            title = "Kıdemli Uzman",
+            department = "Tasarruf Finansman Satış & Portföy",
+            title = "Kıdemli Tasarruf Danışmanı",
             role = "PERSONNEL",
             email = "ahmet.yilmaz@albayrakfinans.com.tr",
-            phone = "0532 100 10 01",
-            deviceId = "FN-DEV-9842"
+            phone = "+90 532 100 2030",
+            deviceId = "SM-S928B-883A"
         )
     }
 
@@ -79,24 +80,6 @@ fun ProfileScreen(
             customFromDate = customFromDate,
             customToDate = customToDate
         )
-    }
-
-    val allEmployeeAnalytics = remember(
-        employees,
-        allRecords,
-        selectedPeriodDays,
-        customFromDate,
-        customToDate
-    ) {
-        employees.map { emp ->
-            computeEmployeeDeepAnalytics(
-                emp = emp,
-                allRecords = allRecords,
-                periodDays = selectedPeriodDays,
-                customFromDate = customFromDate,
-                customToDate = customToDate
-            )
-        }
     }
 
     val fullName = activeEmp.fullName
@@ -120,7 +103,7 @@ fun ProfileScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         // 1. Üst Başlık & Kişisel Analiz Excel Rapor İndirme Butonu
-        item {
+        item(key = "profile_header") {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -128,7 +111,7 @@ fun ProfileScreen(
             ) {
                 Column(modifier = Modifier.weight(1f).padding(end = 10.dp)) {
                     Text(
-                        text = "Personel Profili & Mesai Analizi",
+                        text = "Kişisel Profil & PDKS Karnesi",
                         color = InkPrimary,
                         fontSize = 17.sp,
                         fontWeight = FontWeight.ExtraBold,
@@ -142,7 +125,7 @@ fun ProfileScreen(
                 }
 
                 AnimatedDownloadButton(
-                    label = "Profil XLSX",
+                    label = "Karnemi İndir (.xlsx)",
                     onDownloadComplete = {
                         exportEmployeeDeepExcelReport(context, myDeepAnalytics)
                     },
@@ -153,7 +136,7 @@ fun ProfileScreen(
         }
 
         // 2. Minimalist Kimlik Kartı
-        item {
+        item(key = "profile_id_card") {
             Surface(
                 shape = RoundedCornerShape(14.dp),
                 color = CardSurface,
@@ -173,7 +156,7 @@ fun ProfileScreen(
                             modifier = Modifier
                                 .size(54.dp)
                                 .clip(CircleShape)
-                                .background(InkPrimary),
+                                .background(AlbayrakRed),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
@@ -199,7 +182,7 @@ fun ProfileScreen(
                             )
                             Spacer(modifier = Modifier.height(6.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                MinimalStatusBadge(text = currentRole.displayName, tone = DeltaTone.OK)
+                                MinimalStatusBadge(text = "Personel", tone = DeltaTone.OK)
                                 MinimalStatusBadge(
                                     text = "Net: ${formatSignedMinutes(myDeepAnalytics.netBalanceMin)}",
                                     tone = if (myDeepAnalytics.netBalanceMin >= 0) DeltaTone.OK else DeltaTone.BAD
@@ -222,8 +205,81 @@ fun ProfileScreen(
             }
         }
 
-        // 3. Üst Süre ve Özel Tarih Aralığı Filtresi (Bugün, 7 Gün, 30 Gün, 60 Gün + Özel Tarih Seç)
-        item {
+        // 3. Bağlı Şube Açık Adresi & Harita Konumu Kartı
+        item(key = "profile_branch_map_card") {
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = CardSurface,
+                border = BorderStroke(1.dp, LineHairline)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    MinimalSectionHeader(
+                        title = "Bağlı olduğunuz şube ve açık adresi",
+                        subtitle = "30 metre geofence doğrulamasının yapıldığı kurumsal lokasyon"
+                    )
+
+                    ProfileInfoRow(
+                        Icons.Default.Business,
+                        "Bağlı Şube & Şehir",
+                        "${selectedBranch?.name ?: "Albayrak Finans Genel Müdürlük (Ataşehir)"} (${selectedBranch?.city ?: "İstanbul"})"
+                    )
+                    HorizontalDivider(color = LineHairline, thickness = 1.dp)
+                    ProfileInfoRow(
+                        Icons.Default.LocationOn,
+                        "Şube Açık Adresi",
+                        selectedBranch?.address ?: "Yenişehir Mah. Kızılcık Sok. Albayrak Plaza No:1/35 34779 Ataşehir / İstanbul"
+                    )
+                    HorizontalDivider(color = LineHairline, thickness = 1.dp)
+                    ProfileInfoRow(
+                        Icons.Default.Call,
+                        "Şube Telefon & Koordinat",
+                        "${selectedBranch?.phone ?: "444 88 61"} · ${
+                            String.format(
+                                Locale.US,
+                                "%.4f, %.4f",
+                                selectedBranch?.latitude ?: 40.9954,
+                                selectedBranch?.longitude ?: 29.1408
+                            )
+                        }"
+                    )
+
+                    MinimalBasicButton(
+                        text = "Şube Konumunu Google Haritalar'da Aç",
+                        icon = Icons.Default.Map,
+                        variant = MinimalButtonVariant.OUTLINE,
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            val bLat = selectedBranch?.latitude ?: 40.995454
+                            val bLng = selectedBranch?.longitude ?: 29.140893
+                            val bName = Uri.encode("${selectedBranch?.name ?: "Albayrak Finans"} ${selectedBranch?.address ?: ""}")
+                            val gmmIntentUri = Uri.parse("geo:$bLat,$bLng?q=$bLat,$bLng($bName)")
+                            try {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, gmmIntentUri))
+                            } catch (_: Exception) {
+                                try {
+                                    context.startActivity(
+                                        Intent(
+                                            Intent.ACTION_VIEW,
+                                            Uri.parse("https://www.google.com/maps/search/?api=1&query=$bLat,$bLng")
+                                        )
+                                    )
+                                } catch (_: Exception) {
+                                    Toast.makeText(context, "Harita uygulaması bulunamadı.", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                    )
+                }
+            }
+        }
+
+        // 4. Üst Süre ve Özel Tarih Aralığı Filtresi
+        item(key = "profile_period_filter") {
             MinimalPeriodAndDateFilterBar(
                 selectedDays = selectedPeriodDays,
                 customFromDate = customFromDate,
@@ -240,8 +296,8 @@ fun ProfileScreen(
             )
         }
 
-        // 4. Dörtlü KPI Kartları (Net Mesai Bakiyesi, En Çok Mesai, En Çok Geç, Dakiklik)
-        item {
+        // 5. Dörtlü KPI Kartları
+        item(key = "profile_kpis") {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -292,8 +348,8 @@ fun ProfileScreen(
             }
         }
 
-        // 5. Derin Personel Profil Analizi (Net Süre Terazisi, Gün Detayları & Pzt-Cum Tablosu)
-        item {
+        // 6. Derin Kişisel PDKS Karnesi
+        item(key = "profile_deep_analysis") {
             AnimatedEntryBox(index = 0) {
                 EmployeeDeepProfileAnalysisCard(
                     analytics = myDeepAnalytics,
@@ -304,45 +360,8 @@ fun ProfileScreen(
             }
         }
 
-        // 6. Kurumsal Ek Mesai & Net Süre Bakiyesi Ligi
-        if (allEmployeeAnalytics.isNotEmpty()) {
-            item {
-                AnimatedEntryBox(index = 1) {
-                    MinimalOvertimeAndNetLeaderboardsCard(
-                        analyticsList = allEmployeeAnalytics,
-                        periodLabel = myDeepAnalytics.periodLabel,
-                        onSelectEmployee = { modalDeepEmployee = it },
-                        onExportLeaderboardExcel = {
-                            exportFormattedExcelReport(
-                                context = context,
-                                fileNamePrefix = "Albayrak_Mesai_Net_Bakiye_Ligi",
-                                title = "Ek Mesai & Net Süre Bakiyesi (Mesai − Gecikme) Lig Raporu",
-                                subtitle = "Dönem: ${myDeepAnalytics.periodLabel}",
-                                kpis = listOf(
-                                    ReportKpiItem("Dönem", myDeepAnalytics.periodLabel, "${allEmployeeAnalytics.size} Personel")
-                                ),
-                                headers = listOf("Sicil No", "Ad Soyad", "Departman", "Ek Mesai", "Gecikme", "Net Bakiye", "En Çok Geç Günü", "En Çok Mesai Günü"),
-                                rows = allEmployeeAnalytics.sortedByDescending { it.netBalanceMin }.map { a ->
-                                    listOf(
-                                        a.emp.employeeCode,
-                                        a.emp.fullName,
-                                        a.emp.department,
-                                        "+${a.totalOvertimeMin} dk",
-                                        "−${a.totalLateMin} dk",
-                                        formatSignedMinutes(a.netBalanceMin),
-                                        a.mostLateDay.dowName,
-                                        a.mostOvertimeDay.dowName
-                                    )
-                                }
-                            )
-                        }
-                    )
-                }
-            }
-        }
-
         // 7. Kurumsal İletişim & Cihaz Bilgileri
-        item {
+        item(key = "profile_device_info") {
             Surface(
                 shape = RoundedCornerShape(12.dp),
                 color = CardSurface,
@@ -366,12 +385,6 @@ fun ProfileScreen(
                     )
                     HorizontalDivider(color = LineHairline, thickness = 1.dp)
                     ProfileInfoRow(
-                        Icons.Default.Business,
-                        "Bağlı Şube",
-                        selectedBranch?.name ?: "Genel Müdürlük (Topkapı)"
-                    )
-                    HorizontalDivider(color = LineHairline, thickness = 1.dp)
-                    ProfileInfoRow(
                         Icons.Default.Smartphone,
                         "Eşleşen Cihaz Kimliği",
                         "${activeEmp.deviceId} (BT Onaylı)"
@@ -381,7 +394,7 @@ fun ProfileScreen(
         }
 
         // 8. Uygulama Tercihleri
-        item {
+        item(key = "profile_settings") {
             Surface(
                 shape = RoundedCornerShape(12.dp),
                 color = CardSurface,
@@ -407,7 +420,7 @@ fun ProfileScreen(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text("Anlık Bildirimler", color = InkPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                            Text("İK izin onayları ve BT duyuruları", color = InkMuted, fontSize = 11.sp)
+                            Text("Mesai giriş-çıkış ve vardiya duyuruları", color = InkMuted, fontSize = 11.sp)
                         }
                         Switch(
                             checked = pushNotificationsEnabled,
@@ -524,37 +537,6 @@ fun ProfileScreen(
                     text = "Vazgeç",
                     onClick = { showChangePasswordDialog = false },
                     variant = MinimalButtonVariant.OUTLINE
-                )
-            }
-        )
-    }
-
-    modalDeepEmployee?.let { modalAn ->
-        AlertDialog(
-            onDismissRequest = { modalDeepEmployee = null },
-            containerColor = BgCanvas,
-            shape = RoundedCornerShape(16.dp),
-            title = {
-                Text(
-                    text = "${modalAn.emp.fullName} · Derin Analiz",
-                    color = InkPrimary,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.ExtraBold
-                )
-            },
-            text = {
-                EmployeeDeepProfileAnalysisCard(
-                    analytics = modalAn,
-                    onExportPersonalDeepExcel = {
-                        exportEmployeeDeepExcelReport(context, modalAn)
-                    }
-                )
-            },
-            confirmButton = {
-                MinimalBasicButton(
-                    text = "Kapat",
-                    onClick = { modalDeepEmployee = null },
-                    variant = MinimalButtonVariant.DARK
                 )
             }
         )

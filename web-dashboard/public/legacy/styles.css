@@ -115,6 +115,28 @@ a:hover { text-decoration: underline; }
 .btn-primary:active { transform: scale(.97); }
 .btn-primary .ic { transition: transform .25s var(--ease); }
 .btn-primary:hover .ic { transform: translateX(3px); }
+
+/* ---------- Buton yükleniyor (busy) durumu ---------- */
+.btn.is-busy { pointer-events: none; }
+.btn.is-busy::before {
+    content: "";
+    flex: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 2px solid currentColor;
+    border-top-color: transparent;
+    opacity: .85;
+    animation: btnBusySpin .7s linear infinite;
+}
+.btn.is-busy .ic { opacity: 0; transform: none; }
+.btn.is-busy:hover .ic { transform: none; }
+.btn.is-busy .dl-txt,
+.btn.is-busy span { font-variant-numeric: tabular-nums; }
+@keyframes btnBusySpin { to { transform: rotate(360deg); } }
+
+/* Kayıtlı oturum varsa giriş sahnesi ilk karede görünmesin (F5 flaşı önlenir) */
+html.has-saved-session #authView { visibility: hidden; }
 .btn-dark { background: var(--charcoal); color: #fff; }
 [data-theme="dark"] .btn-dark { background: #2A2C30; }
 .btn-dark:hover { transform: translateY(-1px); }
@@ -498,7 +520,11 @@ tbody tr { animation: rowIn .45s var(--ease) both; animation-delay: calc(var(--r
 .sk::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 20%, color-mix(in srgb, var(--surface) 85%, transparent) 50%, transparent 80%); animation: sk 1.2s infinite; transform: translateX(-100%); }
 @keyframes sk { to { transform: translateX(100%); } }
 .sk-card { height: 128px; border-radius: var(--r-lg); }
-.sk-big { height: 320px; border-radius: var(--r-lg); }
+/* Sayfa geçişinde gerçek yerleşime yakın iskelet */
+.sk-toolbar { height: 44px; border-radius: 12px; }
+.sk-table { display: grid; gap: 10px; padding: 16px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); }
+.sk-row { height: 30px; border-radius: 8px; }
+.sk-row:first-child { height: 34px; opacity: .9; }
 
 /* ---------- Animasyonlu İndirme Butonu (Reel Mikro-Etkileşimli) ---------- */
 .dl-btn {
@@ -1159,6 +1185,70 @@ tr.detail-row > td {
 /* Mevcut grafik kartları büyütüldüğünde (.span-wide) içindeki grafik de büyüsün */
 .card.span-wide .chart svg { max-height: 310px; }
 .card.span-wide .donut-wrap { gap: 28px; }
+
+/* ---------- Kart Üstüne Tıklayınca "Olduğu Yerde Önde Büyüme" (In-Place Popover) ---------- */
+.card.is-zoomable:not(.kpi) { cursor: zoom-in; }
+.card.is-zoomable.kpi { cursor: zoom-in; }
+.card.is-zoomable:focus-visible { outline: 2px solid var(--red); outline-offset: 3px; }
+.card.is-pop-origin { opacity: .45; filter: saturate(.55); }
+
+.card-pop-backdrop { position: fixed; inset: 0; z-index: 120; }
+.card-pop-backdrop::before {
+    content: ""; position: absolute; inset: 0; background: rgba(10, 11, 13, .38);
+    backdrop-filter: blur(2.5px); -webkit-backdrop-filter: blur(2.5px);
+    opacity: 0; transition: opacity .28s var(--ease);
+}
+.card-pop-backdrop.on::before { opacity: 1; }
+[data-theme="dark"] .card-pop-backdrop::before { background: rgba(0, 0, 0, .58); }
+
+.card-pop-floating {
+    position: fixed; z-index: 1; display: flex; flex-direction: column; overflow: hidden;
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg);
+    box-shadow: var(--sh-3); will-change: left, top, width, height;
+    transition: left .42s var(--ease), top .42s var(--ease), width .42s var(--ease), height .42s var(--ease), opacity .26s var(--ease);
+}
+.card-pop-floating::after {
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    background: linear-gradient(90deg, var(--red), rgba(227, 30, 36, 0));
+}
+.card-pop-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 14px 14px 6px 20px; flex: none;
+}
+.card-pop-eyebrow {
+    font-size: var(--fs-2xs); font-weight: 700; letter-spacing: var(--ls-wide);
+    text-transform: uppercase; color: var(--muted);
+}
+.card-pop-close {
+    display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px;
+    border-radius: 10px; border: 1px solid var(--line); background: var(--surface);
+    color: var(--ink-2); font-size: 12px; font-weight: 600;
+    transition: transform .18s var(--ease), background-color .2s, color .2s, border-color .2s;
+}
+.card-pop-close:hover { background: var(--bad-soft); color: var(--bad); border-color: var(--bad); }
+.card-pop-close:active { transform: scale(.97); }
+.card-pop-close .ic { width: 14px; height: 14px; }
+.card-pop-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+
+/* Kopyalanan kart yüzen pencerede çerçevesiz, tam genişlikte akar */
+.card-pop-body > .card {
+    border: 0; border-radius: 0; box-shadow: none; background: transparent;
+    padding: 4px 20px 22px; animation: none !important; transform: none !important;
+}
+.card-pop-body > .card.lift:hover { transform: none !important; box-shadow: none; border-color: transparent; }
+.card-pop-body .chart svg { max-height: 340px; }
+.card-pop-body .kpi-val { font-size: 38px; }
+.card-pop-body .kpi-expanded-panel { margin-top: 4px; }
+.card-pop-body .kpi-expanded-panel .kpi-exp-chart { min-height: 260px; }
+.card.kpi.is-pop-expanded .kpi-foot .spark { display: none; }
+.card.kpi.is-pop-expanded .kpi-foot > span { white-space: normal; }
+
+@media (max-width: 760px) {
+    .card-pop-head { padding: 12px 10px 4px 16px; }
+    .card-pop-close span { display: none; }
+    .card-pop-body > .card { padding: 2px 14px 18px; }
+    .card-pop-body .chart svg { max-height: 280px; }
+}
 
 /* Sıralanabilir tablo sütun başlıkları (th.th-sort) */
 th.th-sort {

@@ -97,6 +97,11 @@ html[data-theme="dark"] #authView {
     color: #141517;
     transform-origin: top left;
     pointer-events: auto;
+    /* Sahne 0 (scroll %0) için CSS-first merkezleme:
+       landing.js'teki centerX = (vw - bw) * 0.5 ve centerY = (vh - bh) * 0.47
+       hesabıyla birebir aynıdır. Böylece JS yüklenmeden önceki ilk karede
+       logo sol üstte görünüp sonradan ortaya sıçramaz. */
+    transform: translate3d(calc(50vw - 50%), calc(47vh - 47%), 0) scale(1);
 }
 
 .landing-brand-row {
@@ -161,6 +166,104 @@ html[data-theme="dark"] #authView {
     height: 2px;
     border-radius: 2px;
     background: var(--red);
+}
+
+/* ==========================================================================
+   İLK AÇILIŞ (BOOT) — Merkez logo altında ince kırmızı ilerleme çizgisi
+   - Görsel olarak akışa girmez (absolute) → logo merkez hesabı kaymaz.
+   - JS zinciri bitince `body.is-booted` eklenir ve çizgi sönümlenir.
+   - JS hiç çalışmazsa 3.2 sn sonra kendiliğinden kaybolur (fail-safe).
+   ========================================================================== */
+.sr-only {
+    position: absolute !important;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+}
+
+.landing-boot-loader {
+    position: absolute;
+    left: 50%;
+    bottom: -14px;
+    width: 168px;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    z-index: 2;
+    animation: landingBootFailsafe 3.2s var(--ease) forwards;
+}
+
+.landing-boot-track {
+    position: relative;
+    width: 100%;
+    height: 2px;
+    border-radius: 2px;
+    overflow: hidden;
+    background: rgba(227, 30, 36, 0.14);
+}
+
+.landing-boot-bar {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background-color: #E31E24;
+    background-image: linear-gradient(90deg, #E31E24, #FF5A5F);
+    transform-origin: left center;
+    transform: scaleX(var(--boot-progress, 0.06));
+    transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes landingBootFailsafe {
+    0%,
+    92% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 0;
+        visibility: hidden;
+    }
+}
+
+body.is-booted .landing-boot-loader {
+    animation: none;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s var(--ease), visibility 0s linear 0.3s;
+}
+
+/* Giriş / çıkış geçişleri: görünüm aniden kopmaz, kısa kurumsal sönümleme uygular.
+   Yalnızca opacity kullanılır; transform fixed konumlu sahneyi bozardı. */
+.auth-scroll-shell.view-enter,
+.shell.view-enter {
+    animation: viewEnter 0.3s var(--ease) both;
+}
+
+@keyframes viewEnter {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .landing-boot-bar {
+        transition: none;
+    }
+    .landing-boot-loader {
+        animation: none;
+        opacity: 0;
+        visibility: hidden;
+    }
 }
 
 /* Sağ Üst Hızlı Giriş Geçiş Butonu */
