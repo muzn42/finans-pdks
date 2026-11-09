@@ -193,30 +193,36 @@ fun PersonalReportScreen(viewModel: MainViewModel) {
         // 4. Günlük Mesai Süresi Trend Grafiği
         item(key = "report_trend_chart") {
             AnimatedEntryBox(index = 1) {
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = CardSurface,
-                    border = BorderStroke(1.dp, LineHairline)
+                ZoomableCard(
+                    title = "Mesai süresi istikrarı",
+                    subtitle = "Büyütülmüş günlük trend ve 8.5 saat referans çizgisi",
+                    showDialogHeader = false
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = CardSurface,
+                        border = BorderStroke(1.dp, LineHairline)
                     ) {
-                        MinimalSectionHeader(
-                            title = "Mesai süresi istikrarı (Saat)",
-                            subtitle = "Günlük çalışma saati eğilimi ve 8.5 saatlik referans çizgisi"
-                        )
-                        MinimalAreaChart(
-                            labels = myDeepAnalytics.dailyLogs.takeLast(7).map { it.dowShort }.ifEmpty {
-                                listOf("Pzt", "Sal", "Çar", "Per", "Cum", "Pzt", "Sal")
-                            },
-                            primarySeries = trendSeries,
-                            secondarySeries = List(trendSeries.size) { 8.5f },
-                            primaryColor = AlbayrakRed,
-                            secondaryColor = InkMuted
-                        )
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            MinimalSectionHeader(
+                                title = "Mesai süresi istikrarı (Saat)",
+                                subtitle = "Günlük çalışma saati eğilimi ve 8.5 saatlik referans çizgisi"
+                            )
+                            MinimalAreaChart(
+                                labels = myDeepAnalytics.dailyLogs.takeLast(7).map { it.dowShort }.ifEmpty {
+                                    listOf("Pzt", "Sal", "Çar", "Per", "Cum", "Pzt", "Sal")
+                                },
+                                primarySeries = trendSeries,
+                                secondarySeries = List(trendSeries.size) { 8.5f },
+                                primaryColor = AlbayrakRed,
+                                secondaryColor = InkMuted
+                            )
+                        }
                     }
                 }
             }

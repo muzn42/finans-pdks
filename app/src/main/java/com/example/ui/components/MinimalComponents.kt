@@ -345,6 +345,7 @@ fun MinimalKpiCard(
 ) {
     var appeared by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { appeared = true }
+    var zoomed by remember { mutableStateOf(false) }
 
     val entryProgress by animateFloatAsState(
         targetValue = if (appeared) 1f else 0f,
@@ -377,93 +378,160 @@ fun MinimalKpiCard(
     }
 
     Surface(
-        modifier = modifier.graphicsLayer {
-            alpha = entryProgress.coerceIn(0f, 1f)
-            translationY = (1f - entryProgress) * 18f
-            val s = 0.96f + 0.04f * entryProgress
-            scaleX = s
-            scaleY = s
-        },
+        modifier = modifier
+            .graphicsLayer {
+                alpha = entryProgress.coerceIn(0f, 1f)
+                translationY = (1f - entryProgress) * 18f
+                val s = 0.96f + 0.04f * entryProgress
+                scaleX = s
+                scaleY = s
+            }
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = { zoomed = true }
+            ),
         shape = RoundedCornerShape(12.dp),
         color = CardSurface,
         border = BorderStroke(1.dp, LineHairline)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+        KpiCardBody(
+            label = label,
+            displayedValue = displayedValue,
+            subtext = subtext,
+            deltaText = deltaText,
+            deltaTone = deltaTone,
+            sparklinePoints = sparklinePoints,
+            accentColor = accentColor,
+            expanded = false
+        )
+    }
+
+    if (zoomed) {
+        CardZoomDialog(
+            title = label,
+            subtitle = subtext,
+            onDismiss = { zoomed = false }
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Text(
-                    text = label.uppercase(),
-                    color = InkMuted,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    letterSpacing = 0.5.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    text = value,
+                    color = InkPrimary,
+                    fontSize = 46.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = (-1.2).sp,
+                    fontFamily = FontFamily.Monospace
                 )
                 if (deltaText != null) {
-                    val (bg, fg) = when (deltaTone) {
-                        DeltaTone.OK -> StatusOkSoft to StatusOk
-                        DeltaTone.WARN -> StatusWarnSoft to StatusWarn
-                        DeltaTone.BAD -> StatusBadSoft to StatusBad
-                        DeltaTone.NEUTRAL -> SubtleSurface to InkMuted
-                    }
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(999.dp))
-                            .background(bg)
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    ) {
-                        Text(
-                            text = deltaText,
-                            color = fg,
-                            fontSize = 10.sp,
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
+                    MinimalStatusBadge(text = deltaText, tone = deltaTone)
                 }
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Bottom
-            ) {
-                Text(
-                    text = displayedValue,
-                    color = InkPrimary,
-                    fontSize = 21.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    letterSpacing = (-0.5).sp
-                )
-
                 if (!sparklinePoints.isNullOrEmpty() && sparklinePoints.size >= 2) {
                     MinimalSparkline(
                         points = sparklinePoints,
                         color = accentColor,
                         modifier = Modifier
-                            .width(52.dp)
-                            .height(20.dp)
+                            .fillMaxWidth()
+                            .height(120.dp)
                     )
                 }
+                HorizontalDivider(color = LineHairline, thickness = 1.dp)
+                Text(
+                    text = "Bu gösterge, web panelindeki PostgreSQL 18 + Prisma veri katmanıyla aynı kaynaktan üretilir. Kartı büyütmek için dokunabilir, kapatmak için dışarı dokunabilirsiniz.",
+                    color = InkMuted,
+                    fontSize = 11.5.sp,
+                    lineHeight = 16.sp
+                )
             }
+        }
+    }
+}
 
+@Composable
+private fun KpiCardBody(
+    label: String,
+    displayedValue: String,
+    subtext: String,
+    deltaText: String?,
+    deltaTone: DeltaTone,
+    sparklinePoints: List<Float>?,
+    accentColor: Color,
+    expanded: Boolean
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(if (expanded) 18.dp else 14.dp),
+        verticalArrangement = Arrangement.spacedBy(if (expanded) 12.dp else 6.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Text(
-                text = subtext,
+                text = label.uppercase(),
                 color = InkMuted,
-                fontSize = 11.sp,
+                fontSize = if (expanded) 12.sp else 10.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 0.5.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+            if (deltaText != null) {
+                val (bg, fg) = when (deltaTone) {
+                    DeltaTone.OK -> StatusOkSoft to StatusOk
+                    DeltaTone.WARN -> StatusWarnSoft to StatusWarn
+                    DeltaTone.BAD -> StatusBadSoft to StatusBad
+                    DeltaTone.NEUTRAL -> SubtleSurface to InkMuted
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(bg)
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = deltaText,
+                        color = fg,
+                        fontSize = if (expanded) 12.sp else 10.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
         }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.Bottom
+        ) {
+            Text(
+                text = displayedValue,
+                color = InkPrimary,
+                fontSize = if (expanded) 40.sp else 21.sp,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = (-0.5).sp
+            )
+
+            if (!sparklinePoints.isNullOrEmpty() && sparklinePoints.size >= 2) {
+                MinimalSparkline(
+                    points = sparklinePoints,
+                    color = accentColor,
+                    modifier = Modifier
+                        .width(if (expanded) 160.dp else 52.dp)
+                        .height(if (expanded) 52.dp else 20.dp)
+                )
+            }
+        }
+
+        Text(
+            text = subtext,
+            color = InkMuted,
+            fontSize = if (expanded) 13.sp else 11.sp,
+            maxLines = if (expanded) 3 else 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 

@@ -788,28 +788,34 @@ fun HrScreen(viewModel: MainViewModel) {
 
                 item {
                     AnimatedEntryBox(index = 1) {
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = CardSurface,
-                            border = BorderStroke(1.dp, LineHairline)
+                        ZoomableCard(
+                            title = "Saatlik giriş ve çıkış yoğunluğu",
+                            subtitle = "Büyütülmüş saatlik akış grafiği",
+                            showDialogHeader = false
                         ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = CardSurface,
+                                border = BorderStroke(1.dp, LineHairline)
                             ) {
-                                MinimalSectionHeader(
-                                    title = "Saatlik giriş ve çıkış yoğunluğu",
-                                    subtitle = "Kırmızı: Giriş akışı · Antrasit: Çıkış akışı"
-                                )
-                                MinimalAreaChart(
-                                    labels = listOf("07:30", "08:30", "09:30", "12:30", "15:30", "17:30", "18:30"),
-                                    primarySeries = listOf(14f, 68f, 22f, 8f, 6f, 54f, 38f),
-                                    secondarySeries = listOf(2f, 8f, 14f, 18f, 12f, 48f, 62f),
-                                    primaryColor = AlbayrakRed,
-                                    secondaryColor = InkPrimary
-                                )
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    MinimalSectionHeader(
+                                        title = "Saatlik giriş ve çıkış yoğunluğu",
+                                        subtitle = "Kırmızı: Giriş akışı · Antrasit: Çıkış akışı"
+                                    )
+                                    MinimalAreaChart(
+                                        labels = listOf("07:30", "08:30", "09:30", "12:30", "15:30", "17:30", "18:30"),
+                                        primarySeries = listOf(14f, 68f, 22f, 8f, 6f, 54f, 38f),
+                                        secondarySeries = listOf(2f, 8f, 14f, 18f, 12f, 48f, 62f),
+                                        primaryColor = AlbayrakRed,
+                                        secondaryColor = InkPrimary
+                                    )
+                                }
                             }
                         }
                     }
@@ -818,31 +824,37 @@ fun HrScreen(viewModel: MainViewModel) {
                 // YENİ: Gecikme Kök Neden Analizi
                 item {
                     AnimatedEntryBox(index = 2) {
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = CardSurface,
-                            border = BorderStroke(1.dp, LineHairline)
+                        ZoomableCard(
+                            title = "Gecikme kök neden analizi",
+                            subtitle = "Büyütülmüş kök neden dağılımı",
+                            showDialogHeader = false
                         ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(14.dp)
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = CardSurface,
+                                border = BorderStroke(1.dp, LineHairline)
                             ) {
-                                MinimalSectionHeader(
-                                    title = "Gecikme kök neden analizi",
-                                    subtitle = "08:40 tolerans saati sonrası gecikmelerin dağılımı"
-                                )
-                                MinimalDonutChart(
-                                    slices = listOf(
-                                        DonutSlice("Trafik & Ulaşım Yoğunluğu", 11, StatusWarn),
-                                        DonutSlice("Saha / Müşteri Ziyareti", 6, InkPrimary),
-                                        DonutSlice("Sağlık & İzinli Geç Giriş", 4, StatusOk),
-                                        DonutSlice("30m GPS Sapması / Diğer", 2, AlbayrakRed)
-                                    ),
-                                    centerValue = "14 dk",
-                                    centerLabel = "Ort. Gecikme"
-                                )
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                                ) {
+                                    MinimalSectionHeader(
+                                        title = "Gecikme kök neden analizi",
+                                        subtitle = "08:40 tolerans saati sonrası gecikmelerin dağılımı"
+                                    )
+                                    MinimalDonutChart(
+                                        slices = listOf(
+                                            DonutSlice("Trafik & Ulaşım Yoğunluğu", 11, StatusWarn),
+                                            DonutSlice("Saha / Müşteri Ziyareti", 6, InkPrimary),
+                                            DonutSlice("Sağlık & İzinli Geç Giriş", 4, StatusOk),
+                                            DonutSlice("30m GPS Sapması / Diğer", 2, AlbayrakRed)
+                                        ),
+                                        centerValue = "14 dk",
+                                        centerLabel = "Ort. Gecikme"
+                                    )
+                                }
                             }
                         }
                     }
