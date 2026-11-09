@@ -657,6 +657,8 @@
             const geofencePct = +(98.4 - (S.branch === 'ALL' ? 0 : 0.3)).toFixed(1);
             const maxOnTime = Math.max(...d.map(x => A.num(x.onTime * 100)));
             const minOnTime = Math.min(...d.map(x => A.num(x.onTime * 100)));
+            const withIn = D.EMPLOYEES.filter(e => e.inMin != null);
+            const avgInMin = withIn.length ? Math.round(withIn.reduce((s, e) => s + e.inMin, 0) / withIn.length) : 526;
 
             return `${dndToolbar()}
             <div class="grid g-6">
@@ -730,9 +732,9 @@
                     ${cardHead('Katılım ve dakiklik trend analizi', 'Günlük zamanında giriş oranı (%) ve %95 kurumsal hedef çizgisi')}
                     <div id="chTrendDual"></div>
                     <div class="stat-mini-grid">
-                        <div class="stat-mini"><small>En Yüksek Uyum</small><b style="color:var(--ok)">%${String(maxOnTime).replace('.', ',')}</b></div>
-                        <div class="stat-mini"><small>En Düşük Uyum</small><b style="color:var(--warn)">%${String(minOnTime).replace('.', ',')}</b></div>
-                        <div class="stat-mini"><small>Vardiya Başlangıç Ort.</small><b>08:26</b></div>
+                        <div class="stat-mini"><small>En Yüksek Uyum</small><b style="color:var(--ok)">%${A.pctText(maxOnTime)}</b></div>
+                        <div class="stat-mini"><small>En Düşük Uyum</small><b style="color:var(--warn)">%${A.pctText(minOnTime)}</b></div>
+                        <div class="stat-mini"><small>Vardiya Başlangıç Ort.</small><b>${D.hhmm(avgInMin)}</b></div>
                     </div>
                 </section>
                 <section class="card">${cardHead('Gecikme kök neden & süre kırılımı', 'Geç giriş kayıtlarının süre ve neden dağılımı')}<div id="chLateRoot"></div></section>
@@ -1313,7 +1315,7 @@
             const stamp = `${p2(now.getDate())}.${p2(now.getMonth() + 1)}.${now.getFullYear()} ${p2(now.getHours())}:${p2(now.getMinutes())}`;
             const reportNo = `PDKS-${now.getFullYear()}-${p2(now.getMonth() + 1)}${p2(now.getDate())}`;
             const hazirlayan = S.user ? S.user.name + ' — ' + S.user.title : 'İnsan Kaynakları Yönetimi';
-            const subeAdi = S.branch === 'ALL' ? 'Tüm Şubeler (6 Lokasyon)' : brName(S.branch);
+            const subeAdi = S.branch === 'ALL' ? `Tüm Şubeler (${D.BRANCHES.length} Lokasyon)` : brName(S.branch);
 
             const kpiCards = [
                 { l: 'Toplam Personel', v: String(st.N), s: 'Aktif kadro', tone: '', icon: 'users' },
@@ -1581,21 +1583,20 @@
                         <button class="btn btn-soft btn-sm" data-act="br-sync-web">${ic('download')}Web'den Şubeleri Güncelle</button>
                         <button class="btn btn-primary btn-sm" data-act="br-add">${ic('plus')}Şube ekle</button>
                     </div>
-                    <div class="table-wrap" style="max-height:680px;overflow-y:auto"><table><thead><tr><th>Şube & Şehir</th><th>Açık Adres & Telefon</th><th>Koordinat & Sınır</th><th>Kurumsal Wi-Fi</th><th>Personel</th><th>İşlem</th></tr></thead><tbody>${filteredBranches.map((b, i) => {
+                    <div class="table-wrap" style="max-height:680px;overflow-y:auto"><table class="br-table"><thead><tr><th>Şube & şehir</th><th>Açık adres & telefon</th><th>Konum & kurumsal Wi-Fi</th><th>Personel</th><th>İşlem</th></tr></thead><tbody>${filteredBranches.map((b, i) => {
                         const isSelected = b.code === simB.code;
                         return `<tr style="--r:${i};${isSelected ? 'background:var(--red-soft)' : ''}">
-                            <td><div class="cell-user"><span class="ico-sq ${isSelected ? 'red' : ''}">${ic('pin')}</span><div><b>${esc(b.name)}</b><small>${esc(b.city)}${b.district ? ' / ' + esc(b.district) : ''} · <span class="mono">${esc(b.code)}</span></small></div></div></td>
-                            <td style="max-width:290px"><div style="font-size:12px;line-height:1.35;color:var(--ink)">${esc(b.address || (b.name + ' · ' + b.city))}</div><small class="mono muted">${esc(b.phone || '0850 222 0 252')}</small></td>
-                            <td class="mono">${b.lat.toFixed(4)}, ${b.lng.toFixed(4)}<div style="margin-top:3px">${pill(b.radius + ' m sınır', 'ok')}</div></td>
-                            <td><span class="mono" style="font-size:11.5px">${esc(b.wifi)}</span></td>
-                            <td class="mono"><b>${D.EMPLOYEES.filter(e => e.branch === b.code).length}</b> kişi</td>
-                            <td><div class="row-actions">
-                                <button type="button" class="btn ${isSelected ? 'btn-primary' : 'btn-soft'} btn-sm" data-act="br-map" data-code="${esc(b.code)}">${ic('pin')}Harita</button>
-                                <button type="button" class="btn btn-soft btn-sm" data-act="br-edit" data-code="${esc(b.code)}">${ic('tool')}Düzenle</button>
-                                <button type="button" class="btn btn-bad btn-sm" data-act="br-delete" data-code="${esc(b.code)}">${ic('x')}Sil</button>
+                            <td class="br-name"><b>${esc(b.name)}</b><small>${esc(b.city)}${b.district ? ' / ' + esc(b.district) : ''} · <span class="mono">${esc(b.code)}</span></small></td>
+                            <td><div class="br-addr">${esc(b.address || (b.name + ' · ' + b.city))}</div><small class="mono muted">${esc(b.phone || '0850 222 0 252')}</small></td>
+                            <td><span class="mono br-nowrap">${b.lat.toFixed(4)}, ${b.lng.toFixed(4)}</span><div style="margin-top:4px">${pill(b.radius + ' m sınır', 'ok')}</div><small class="mono muted br-wifi">${esc(b.wifi)}</small></td>
+                            <td class="mono br-nowrap"><b>${D.EMPLOYEES.filter(e => e.branch === b.code).length}</b> kişi</td>
+                            <td><div class="row-actions br-actions">
+                                <button type="button" class="btn ${isSelected ? 'btn-primary' : 'btn-soft'} btn-sm btn-icon" data-act="br-map" data-code="${esc(b.code)}" title="Haritada gör" aria-label="${esc(b.name)} haritada gör">${ic('pin')}</button>
+                                <button type="button" class="btn btn-soft btn-sm btn-icon" data-act="br-edit" data-code="${esc(b.code)}" title="Düzenle" aria-label="${esc(b.name)} düzenle">${ic('tool')}</button>
+                                <button type="button" class="btn btn-bad btn-sm btn-icon" data-act="br-delete" data-code="${esc(b.code)}" title="Sil" aria-label="${esc(b.name)} sil">${ic('x')}</button>
                             </div></td>
                         </tr>`;
-                    }).join('') || `<tr><td colspan="6">${empty('Şube bulunamadı', 'Arama kriterinize uygun şube kaydı bulunmuyor.')}</td></tr>`}</tbody></table></div>
+                    }).join('') || `<tr><td colspan="5">${empty('Şube bulunamadı', 'Arama kriterinize uygun şube kaydı bulunmuyor.')}</td></tr>`}</tbody></table></div>
                 </section>
                 <section class="card">
                     ${cardHead('Şube Haritası & 30m Geofence Canlı Simülatörü', simB.name + ' (' + simB.city + ') açık adresi, harita konumu ve mesafe testi')}
@@ -1870,6 +1871,16 @@
         shiftsSyncDrawAt = now;
         if (S.user && (S.page === 'shifts' || S.page === 'branches')) draw(false);
     }
+    // SSE açılamazsa (proxy/tarayıcı tamponu) veri 20 sn'de bir sessizce tazelenir.
+    let livePollTimer = null;
+    function ensureLivePolling() {
+        if (livePollTimer) return;
+        livePollTimer = setInterval(() => {
+            if (S.user && !document.hidden && D.SYNC.sse !== 'open' && !D.SYNC.inFlight) {
+                D.syncAllFromPostgres({ force: true });
+            }
+        }, 20000);
+    }
     const syncGuard = fn => (...args) => {
         const out = fn(...args);
         if (out && typeof out.then === 'function') out.catch(err => A.toast(String(err && err.message || err), 'err'));
@@ -1892,9 +1903,8 @@
                 const pending = D.LEAVES.filter(l => l.status === 'pending');
                 const hourly = D.LEAVES.filter(l => l.isHourly).length;
                 const latestDate = logs.reduce((m, l) => (l.dateIstanbul && l.dateIstanbul > m ? l.dateIstanbul : m), '');
-                const lastDay = latestDate ? logs.filter(l => l.dateIstanbul === latestDate) : logs;
-                const sseTone = sync.sse === 'open' ? 'ok' : sync.sse === 'retry' ? 'warn' : 'mute';
-                const sseLabel = sync.sse === 'open' ? 'SSE canlı' : sync.sse === 'retry' ? 'SSE yeniden bağlanıyor' : 'SSE bekliyor';
+                const sseTone = sync.sse === 'open' ? 'ok' : sync.sse === 'retry' ? 'warn' : sync.sse === 'connecting' ? 'info' : 'mute';
+                const sseLabel = sync.sse === 'open' ? 'SSE canlı' : sync.sse === 'retry' ? 'SSE yeniden bağlanıyor' : sync.sse === 'connecting' ? 'SSE bağlanıyor…' : 'SSE bekliyor';
                 const fb = u.feedback;
                 const empOptions = sel => E.slice().sort((a, b) => a.sicil.localeCompare(b.sicil, 'tr'))
                     .map(e => `<option value="${e.id}"${+sel === e.id ? ' selected' : ''}>${esc(e.sicil)} · ${esc(e.name)} (${esc(e.dept)} · ${esc(e.branch)})</option>`).join('');
@@ -1907,7 +1917,7 @@
                     ${kpi({ label: 'Şu an içeride', val: present, unit: 'personel', icon: 'check', tone: 'ok', foot: E.length + ' aktif kadro · PostgreSQL' })}
                     ${kpi({ label: 'Bugün geç kalan', val: late, unit: 'kişi', icon: 'clock', tone: 'warn', foot: 'Vardiya toleransı aşımı' })}
                     ${kpi({ label: 'İzinli / raporlu', val: leave, unit: 'kişi', icon: 'calendar', tone: 'info', foot: hourly + ' saatlik izin kaydı' })}
-                    ${kpi({ label: 'Gün içi ham geçiş', val: logs.length, unit: 'AccessLog', icon: 'activity', tone: '', foot: (latestDate ? trShort(latestDate) : 'kayıt yok') + ' · ' + lastDay.length + ' geçiş' })}
+                    ${kpi({ label: 'Gün içi ham geçiş', val: (sync.accessLogTotal || logs.length), unit: 'AccessLog', icon: 'activity', tone: '', foot: (latestDate ? trShort(latestDate) : 'kayıt yok') + ' · son 120 kayıt yüklü' })}
                 </div>
 
                 <div class="shifts-head mt">
@@ -1962,7 +1972,7 @@
 
                 <div class="grid g-main mt">
                     <section class="card flush">
-                        ${cardHead('Gün içi ham geçiş kayıtları (access_logs)', 'İlk giriş checkIn, son çıkış checkOut olarak işlenir · ' + logs.length + ' kayıt', '')}
+                        ${cardHead('Gün içi ham geçiş kayıtları (access_logs)', 'İlk giriş checkIn, son çıkış checkOut olarak işlenir · ' + (sync.accessLogTotal || logs.length) + ' kayıt (son 120 yüklü)', '')}
                         <div class="table-wrap">
                             <table>
                                 <thead><tr><th>Personel</th><th>Hareket</th><th>Kaynak</th><th>Mesafe</th><th>TR saati (GMT+3)</th></tr></thead>
@@ -2596,7 +2606,7 @@
             subtitle: 'Dönem: ' + rangeLabel() + ' · Gecikme, Ek Mesai, Net Süre Bakiyesi ve 30m Şube Geofence Tablosu',
             meta: [
                 ['Tarih / Dönem Filtresi', rangeLabel()],
-                ['Şube Filtresi', S.branch === 'ALL' ? 'Tüm Şubeler (6 Lokasyon)' : brName(S.branch)],
+                ['Şube Filtresi', S.branch === 'ALL' ? `Tüm Şubeler (${D.BRANCHES.length} Lokasyon)` : brName(S.branch)],
                 ['Yetkili', S.user ? S.user.name + ' (' + S.user.title + ')' : 'İK Yönetimi']
             ],
             kpis: [
@@ -3597,6 +3607,7 @@
         // PostgreSQL 18 + Prisma canlı veri ve SSE akışını başlat
         D.syncAllFromPostgres();
         D.startRealtimeStream();
+        ensureLivePolling();
     }
     function logout(msg) {
         if (A.closeCardPopover) A.closeCardPopover(true);

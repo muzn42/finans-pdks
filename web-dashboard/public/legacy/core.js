@@ -73,7 +73,9 @@
         server: '<rect x="3.5" y="4" width="17" height="6.5" rx="2.5"/><rect x="3.5" y="13.5" width="17" height="6.5" rx="2.5"/><path d="M7.5 7.25v.01M7.5 16.75v.01"/>',
         filter: '<path d="M3.5 5h17l-6.5 7.5V19l-4-2v-4.5L3.5 5z"/>',
         grip: '<circle cx="9" cy="6" r="1.2"/><circle cx="15" cy="6" r="1.2"/><circle cx="9" cy="12" r="1.2"/><circle cx="15" cy="12" r="1.2"/><circle cx="9" cy="18" r="1.2"/><circle cx="15" cy="18" r="1.2"/>',
-        expand: '<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>'
+        expand: '<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>',
+        edit: '<path d="M4 20h4L18.5 9.5a2.5 2.5 0 0 0-3.5-3.5L4.5 16.5V20z"/><path d="M13.5 6.5l4 4"/>',
+        tool: '<path d="M4 20h4L18.5 9.5a2.5 2.5 0 0 0-3.5-3.5L4.5 16.5V20z"/><path d="M13.5 6.5l4 4"/>'
     };
     ATF.ICONS = I;
     ATF.ic = (n, c) => `<svg class="ic${c ? ' ' + c : ''}" viewBox="0 0 24 24">${I[n] || ''}</svg>`;
@@ -183,8 +185,15 @@
         const id = 'ag' + (++uid), yf = o.yFmt || (v => v), col = o.color || '#E31E24';
         let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${ATF.esc(o.aria || 'Grafik')}"><defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${col}" stop-opacity=".22"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></linearGradient></defs>`;
         for (let t = 0; t <= ticks; t++) { const v = yMin + step * t, yy = y(v); s += `<line class="grid-line" x1="${L}" x2="${W - R}" y1="${yy}" y2="${yy}"/><text class="ax" x="${L - 8}" y="${yy + 4}" text-anchor="end">${yf(+v.toFixed(2))}</text>`; }
-        const every = Math.ceil(n / 8);
-        o.labels.forEach((l, i) => { if (i % every === 0 || i === n - 1) s += `<text class="ax" x="${x(i)}" y="${H - 6}" text-anchor="${i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle'}">${ATF.esc(l)}</text>`; });
+        const every = Math.max(1, Math.ceil(n / 8));
+        // Son etiket her zaman görünür olsun; önceki etiketle çakışacaksa (ör. 19.10 + 20.10) aradaki gizlenir.
+        const labelIdxs = [];
+        for (let i = 0; i < n; i += every) labelIdxs.push(i);
+        if (labelIdxs[labelIdxs.length - 1] !== n - 1) {
+            if (labelIdxs.length && Math.abs(x(n - 1) - x(labelIdxs[labelIdxs.length - 1])) < 34) labelIdxs.pop();
+            labelIdxs.push(n - 1);
+        }
+        labelIdxs.forEach(i => { s += `<text class="ax" x="${x(i)}" y="${H - 6}" text-anchor="${i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle'}">${ATF.esc(o.labels[i])}</text>`; });
         o.series.forEach((se, k) => {
             const pts = se.data.map((v, i) => [x(i), y(v)]), d = smooth(pts, T, T + ih);
             if (k === 0) s += `<path class="fade" d="${d} L${x(n - 1)},${T + ih} L${x(0)},${T + ih} Z" fill="url(#${id})"/>`;

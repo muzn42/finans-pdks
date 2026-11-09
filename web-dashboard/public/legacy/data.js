@@ -618,7 +618,7 @@
        ========================================================================= */
     const SHIFTS = [];
     const ACCESS_LOGS = [];
-    const SYNC = { ok: false, inFlight: false, lastSync: null, error: null, sse: 'idle', events: [] };
+    const SYNC = { ok: false, inFlight: false, lastSync: null, error: null, sse: 'idle', events: [], accessLogTotal: 0 };
 
     const trDate = iso => {
         if (!iso) return '';
@@ -735,6 +735,7 @@
             ACCESS_LOGS.length = 0;
             d.accessLogs.forEach(a => ACCESS_LOGS.push(Object.assign({}, a)));
         }
+        SYNC.accessLogTotal = d.accessLogTotal != null ? d.accessLogTotal : ACCESS_LOGS.length;
 
         if (Array.isArray(d.audits) && d.audits.length) {
             AUDIT.length = 0;
@@ -775,13 +776,32 @@
         return syncPromise;
     }
 
-    let sseSource = null, sseRefetchTimer = null;
-    function startRealtimeStream() {
-        if (typeof EventSource !== 'function' || sseSource) return;
+    let sseSource = null, sseRefetchTimer = null, sseWatchdog = null, sseStartedAt = 0;
+    function startRealtimeStream(force) {
+        if (typeof EventSource !== 'function') return;
+        // Takılı kalan (CONNECTING) veya kapanmış akışları yeniden kur.
+        const stuck = sseSource && sseSource.readyState === 0 && (Date.now() - sseStartedAt > 10000);
+        if (sseSource && sseSource.readyState !== 2 && !stuck && !force) return;
+        if (sseSource) {
+            try { sseSource.close(); } catch (_) {}
+            sseSource = null;
+        }
+        SYNC.sse = 'connecting';
+        sseStartedAt = Date.now();
         try {
-            sseSource = new EventSource('/api/v1/events/stream');
-            sseSource.addEventListener('connected', () => { SYNC.sse = 'open'; });
-            sseSource.addEventListener('pdks_event', e => {
+            const es = new EventSource('/api/v1/events/stream');
+            sseSource = es;
+            clearTimeout(sseWatchdog);
+            sseWatchdog = setTimeout(() => {
+                if (sseSource === es && es.readyState !== 1) {
+                    try { es.close(); } catch (_) {}
+                    if (sseSource === es) sseSource = null;
+                    SYNC.sse = 'retry';
+                    setTimeout(() => startRealtimeStream(true), 5000);
+                }
+            }, 10000);
+            es.addEventListener('connected', () => { clearTimeout(sseWatchdog); SYNC.sse = 'open'; });
+            es.addEventListener('pdks_event', e => {
                 SYNC.sse = 'open';
                 let evt = null;
                 try { evt = JSON.parse(e.data); } catch (_) {}
@@ -795,7 +815,13 @@
                 clearTimeout(sseRefetchTimer);
                 sseRefetchTimer = setTimeout(() => { syncAllFromPostgres({ force: true }); }, 320);
             });
-            sseSource.onerror = () => { SYNC.sse = 'retry'; };
+            es.onerror = () => {
+                SYNC.sse = 'retry';
+                if (es.readyState === 2) {
+                    sseSource = null;
+                    setTimeout(() => startRealtimeStream(true), 4000);
+                }
+            };
         } catch (_) {
             SYNC.sse = 'off';
         }

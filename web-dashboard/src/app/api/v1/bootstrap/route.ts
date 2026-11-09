@@ -15,7 +15,8 @@ export async function GET() {
       accessLogs,
       alerts,
       accounts,
-      audits
+      audits,
+      accessLogTotal
     ] = await Promise.all([
       prisma.branch.findMany({ orderBy: { id: "asc" } }),
       prisma.shift.findMany({ orderBy: { id: "asc" } }),
@@ -52,11 +53,13 @@ export async function GET() {
         take: 60
       }),
       prisma.userAccount.findMany({ orderBy: { id: "asc" } }),
-      prisma.auditLog.findMany({ orderBy: { createdAtUtc: "desc" }, take: 50 })
+      prisma.auditLog.findMany({ orderBy: { createdAtUtc: "desc" }, take: 50 }),
+      prisma.accessLog.count()
     ]);
 
     return NextResponse.json({
       status: "success",
+      accessLogTotal,
       serverTimeUtc: new Date().toISOString(),
       serverTimeIstanbul: toIstanbulDateTime(new Date()),
       branches: branches.map((b) => ({

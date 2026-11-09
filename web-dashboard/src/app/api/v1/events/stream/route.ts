@@ -18,6 +18,14 @@ export async function GET(req: NextRequest) {
         }
       };
 
+      // Bazı kurumsal proxy / tarayıcı tamponları 4 KB altındaki ilk parçayı bekletir.
+      // İlk olaydan önce yorum satırı dolgusu göndererek akışı hemen açarız.
+      try {
+        controller.enqueue(encoder.encode(`: ${" ".repeat(4096)}\n\n`));
+      } catch {
+        // Yoksay
+      }
+
       send("connected", {
         status: "ok",
         serverTimeUtc: new Date().toISOString(),
