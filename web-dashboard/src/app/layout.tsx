@@ -6,7 +6,19 @@ export const metadata: Metadata = {
   title: "Albayrak Finans PDKS · Personel Devam Kontrol Sistemi",
   description:
     "Albayrak Finans PDKS — Next.js, TypeScript, PostgreSQL 18, Prisma ORM ve Gerçek Zamanlı SSE tabanlı Kurumsal Personel Devam Kontrol Sistemi.",
-  robots: { index: false, follow: false }
+  robots: { index: false, follow: false },
+  icons: {
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+      {
+        url: "/assets/branding/albayrak_pdks_logo.png",
+        type: "image/png",
+        sizes: "352x297"
+      }
+    ],
+    shortcut: "/icon.svg",
+    apple: "/assets/branding/albayrak_pdks_logo.png"
+  }
 };
 
 export default function RootLayout({
