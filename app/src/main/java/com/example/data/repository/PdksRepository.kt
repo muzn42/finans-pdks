@@ -117,11 +117,18 @@ class PdksRepository(
         val formattedTime = timeFormat.format(Date(now))
         val formattedDate = dateFormat.format(Date(now))
 
-        // SAHTE KONUM (MOCK GPS) KESİN ENGELİ — mesafe kontrolünden ÖNCE çalışır.
-        // Uygulamanın kendi demo/simülasyon modu (isSimulated) bu blokajdan muaftır.
-        if (isMock && !isSimulated) {
+        // SAHTE KONUM (MOCK GPS) & GELİŞTİRİCİ SEÇENEKLERİ KESİN ENGELİ — mesafe kontrolünden ÖNCE çalışır.
+        val mockSecurity = LocationHelper.inspectDeviceMockSecurity(context)
+        val shouldBlockMockOrDev = isMock ||
+                mockSecurity.isMockLocationDetected ||
+                mockSecurity.isAllowMockSettingEnabled ||
+                mockSecurity.detectedMockApps.isNotEmpty() ||
+                (!isSimulated && mockSecurity.isDeveloperOptionsEnabled)
+
+        if (shouldBlockMockOrDev) {
+            val reasonDetail = mockSecurity.summaryMessage
             val mockMessage =
-                "Sahte Konum (Mock GPS) Tespit Edildi: Personel (${employee.fullName}) $formattedTime itibarıyla $type işlemini sahte konumla yapmayı denedi. İşlem engellendi ve güvenlik birimlerine yüksek önem dereceli ihlal kaydı oluşturuldu."
+                "Sahte Konum / Geliştirici Seçenekleri Engeli: Personel (${employee.fullName}) $formattedTime itibarıyla $type işlemini denedi ancak işlem reddedildi. Neden: $reasonDetail"
 
             dao.insertSecurityAlert(
                 SecurityAlertEntity(
@@ -138,7 +145,7 @@ class PdksRepository(
 
             val mockNotifTitle = "🚫 Sahte Konum Engellendi: ${employee.fullName}"
             val mockNotifMsg =
-                "${employee.fullName} (${branch.name}) sahte konum (mock GPS) ile $type denemesi yaptı. İşlem anında engellendi; güvenlik ihlali olarak İK ve BT birimlerine iletildi."
+                "${employee.fullName} (${branch.name}) sahte konum / geliştirici seçenekleri açıkken $type denemesi yaptı. İşlem anında engellendi ($reasonDetail)."
 
             dao.insertNotification(
                 NotificationEntity(
@@ -163,7 +170,7 @@ class PdksRepository(
             )
 
             return AttendanceResult.MockLocationDetected(
-                message = "GÜVENLİK İHLALİ: Cihazınızda sahte konum (mock GPS) tespit edildi.\n\nGiriş/çıkış işlemi kesin olarak reddedildi ve durum yüksek öncelikli güvenlik ihlali olarak İK ve BT birimlerine bildirildi.\n\nLütfen konum sahteleme uygulamalarını kapatıp gerçek GPS ile tekrar deneyin."
+                message = "${mockSecurity.summaryTitle}\n\n$reasonDetail\n\nGiriş/çıkış işlemi kesin olarak reddedildi ve durum yüksek öncelikli güvenlik ihlali olarak İK ve BT birimlerine bildirildi.\n\nLütfen Cihaz Ayarları > Geliştirici Seçenekleri ekranından Sahte Konum / Geliştirici Seçeneklerini kapatıp tekrar deneyin."
             )
         }
 

@@ -93,6 +93,7 @@
             tk: { f: 'open', type: 'ALL', q: '' }, dev: { q: '', status: 'ALL', ver: 'ALL' }, audit: { cat: 'ALL' },
             policies: { geofence30m: true, mockGpsBlock: true, singleDevice: true, autoTimeout: true },
             simBranch: 'ŞB-001', simDist: 14, brQ: '', branchRank: { q: '', limit: 10 },
+            reportId: null,
             shifts: {
                 empId: null, event: 'CHECK_IN', source: 'MOBILE_GEOFENCE', clock: '08:28', dist: 8, mock: false,
                 lvType: 'Saatlik izin', lvDate: '', lvStart: '08:30', lvEnd: '10:00', lvDays: 1,
@@ -142,33 +143,37 @@
     /* ======================= İstatistik ======================= */
     function stats() {
         const E = emps(), N = E.length || 1, cur = activeDays(), allDays = D.DAYS;
-        if (cur.length === 1 && cur[0].dayIndex === allDays.length - 1 && !S.fromDate && !S.toDate) {
-            const c = s => E.filter(e => e.status === s).length, late = E.filter(e => e.status === 'LATE');
-            const y = allDays[allDays.length - 2];
-            const lb = D.computeLeaderboards(E, filterOpts());
-            const totOtMin = lb.all.reduce((a, x) => a + x.totalOvertimeMin, 0);
-            const totLateMin = lb.all.reduce((a, x) => a + x.totalLateMin, 0);
-            return {
-                N, onTime: c('PRESENT'), late: c('LATE'), leave: c('LEAVE'), absent: c('ABSENT'),
-                avgLate: late.length ? late.reduce((a, e) => a + e.lateMin, 0) / late.length : 0,
-                onTimePct: c('PRESENT') / N * 100, prevPct: y.onTime * 100, prevLate: Math.round(y.late * N),
-                totalOvertimeH: +(totOtMin / 60).toFixed(1),
-                totalLateMin: totLateMin,
-                netBalanceMin: totOtMin - totLateMin
-            };
-        }
-        const firstIdx = cur[0] ? cur[0].dayIndex : allDays.length - 1;
-        const prev = allDays.slice(Math.max(0, firstIdx - cur.length), firstIdx);
-        const avg = (arr, k) => arr.reduce((a, d) => a + d[k], 0) / (arr.length || 1);
+        const c = s => E.filter(e => e.status === s).length;
+        const onTime = c('PRESENT');
+        const late = c('LATE');
+        const leave = c('LEAVE');
+        const absent = c('ABSENT');
+        const lateEmps = E.filter(e => e.status === 'LATE' || (e.lateMin || 0) > 0);
+        const avgLate = lateEmps.length ? lateEmps.reduce((a, e) => a + (e.lateMin || 0), 0) / lateEmps.length : 0;
+        const withDist = E.filter(e => e.dist != null);
+        const geoOk = withDist.filter(e => e.dist <= 30).length;
+        const geofencePct = withDist.length ? +((geoOk / withDist.length) * 100).toFixed(1) : 98.6;
+        const y = allDays[allDays.length - 2] || allDays[allDays.length - 1] || { onTime: 0.9, late: 0.05 };
         const lb = D.computeLeaderboards(E, filterOpts());
-        const totOtMin = lb.all.reduce((a, x) => a + x.totalOvertimeMin, 0);
-        const totLateMin = lb.all.reduce((a, x) => a + x.totalLateMin, 0);
+        const isSingleToday = cur.length === 1 && !S.fromDate && !S.toDate;
+        const totOtMin = isSingleToday
+            ? E.reduce((a, e) => a + (e.overtimeMin || 0), 0)
+            : lb.all.reduce((a, x) => a + x.totalOvertimeMin, 0);
+        const totLateMin = isSingleToday
+            ? E.reduce((a, e) => a + (e.lateMin || 0), 0)
+            : lb.all.reduce((a, x) => a + x.totalLateMin, 0);
         return {
-            N, onTime: Math.round(avg(cur, 'onTime') * N), late: Math.round(avg(cur, 'late') * N),
-            leave: Math.round(avg(cur, 'leave') * N), absent: Math.round(avg(cur, 'absent') * N),
-            avgLate: avg(cur, 'lateMin'),
-            onTimePct: avg(cur, 'onTime') * 100, prevPct: avg(prev.length ? prev : cur, 'onTime') * 100,
-            prevLate: Math.round(avg(prev.length ? prev : cur, 'late') * N),
+            N,
+            onTime,
+            late,
+            leave,
+            absent,
+            attended: onTime + late,
+            avgLate,
+            geofencePct,
+            onTimePct: (onTime / N) * 100,
+            prevPct: (y.onTime || 0.9) * 100,
+            prevLate: Math.round((y.late || 0.05) * N),
             totalOvertimeH: +(totOtMin / 60).toFixed(1),
             totalLateMin: totLateMin,
             netBalanceMin: totOtMin - totLateMin
@@ -284,8 +289,8 @@
             return `
             ${dndToolbar()}
             <div class="grid g-4">
-                ${kpi({ label: 'Toplam personel', val: st.N, icon: 'users', tone: '', foot: S.branch === 'ALL' ? '6 şube · %98,6 geofence' : esc(brName(S.branch)) })}
-                ${kpi({ label: curDays.length === 1 ? 'Şu an ofiste' : 'Ortalama katılım', val: geldi, icon: 'check', tone: 'ok', delta: delta(st.onTimePct - st.prevPct, ' puan'), foot: '%' + A.pctText(geldi / st.N * 100) + ' katılım', spark: A.spark(daysChart.map(d => 1 - d.absent - d.leave), '#0E9F6E') })}
+                ${kpi({ label: 'Toplam personel', val: st.N, icon: 'users', tone: '', foot: S.branch === 'ALL' ? D.BRANCHES.length + ' şube · %' + A.pctText(st.geofencePct) + ' geofence' : esc(brName(S.branch)) })}
+                ${kpi({ label: 'Şu an içeride / katılım', val: geldi, icon: 'check', tone: 'ok', delta: delta(st.onTimePct - st.prevPct, ' puan'), foot: st.onTime + ' zamanında · %' + A.pctText(geldi / st.N * 100) + ' katılım', spark: A.spark(daysChart.map(d => 1 - d.absent - d.leave), '#0E9F6E') })}
                 ${kpi({ label: 'Toplam ek mesai', val: st.totalOvertimeH, dec: 1, unit: 'sa', icon: 'activity', tone: 'ok', foot: 'Net bakiye: ' + fmtMinSigned(st.netBalanceMin), spark: A.spark(daysChart.map(d => d.overtimeH), '#0E9F6E') })}
                 ${kpi({ label: 'Geç kalan / devamsız', val: st.late, icon: 'clock', tone: 'warn', delta: delta(st.late - st.prevLate, '', false), foot: 'ort. ' + Math.round(st.avgLate) + ' dk gecikme · ' + st.absent + ' devamsız', spark: A.spark(daysChart.map(d => d.late), '#C77700') })}
             </div>
@@ -654,10 +659,10 @@
             const st = stats(), curDays = activeDays(), d = curDays.length >= 3 ? curDays : D.DAYS.slice(-14);
             const avg = (k) => d.reduce((a, x) => a + x[k], 0) / (d.length || 1);
             const E = emps(), ds = deptStats(), lb = D.computeLeaderboards(E, filterOpts());
-            const geofencePct = +(98.4 - (S.branch === 'ALL' ? 0 : 0.3)).toFixed(1);
+            const geofencePct = st.geofencePct;
             const maxOnTime = Math.max(...d.map(x => A.num(x.onTime * 100)));
             const minOnTime = Math.min(...d.map(x => A.num(x.onTime * 100)));
-            const withIn = D.EMPLOYEES.filter(e => e.inMin != null);
+            const withIn = E.filter(e => e.inMin != null);
             const avgInMin = withIn.length ? Math.round(withIn.reduce((s, e) => s + e.inMin, 0) / withIn.length) : 526;
 
             return `${dndToolbar()}
@@ -844,8 +849,8 @@
                 A.placeSeg(rankSeg);
                 paintBranchRank();
             });
-            const lt = D.LEAVE_TYPES.map((t, i) => ({ label: t, value: D.LEAVES.filter(l => l.type === t).length, color: ['#1C1D1F', '#E31E24', '#8E949C', '#D9DBDF'][i] }));
-            A.donut($('#chLeaveType'), { items: lt, centerTop: D.LEAVES.length, centerSub: 'talep' });
+            const lt = D.LEAVE_TYPES.map((t, i) => ({ label: t, value: D.LEAVES.filter(l => l.type === t && (S.branch === 'ALL' || (emp(l.empId) && emp(l.empId).branch === S.branch))).length, color: ['#E31E24', '#1C1D1F', '#8E949C', '#B8161B', '#D9DBDF'][i % 5] }));
+            A.donut($('#chLeaveType'), { items: lt, centerTop: lt.reduce((s, x) => s + x.value, 0), centerSub: 'talep' });
             A.areaChart($('#chLateMin'), { labels: d.map(x => x.label), series: [{ data: d.map(x => Math.round(x.lateMin)) }], yFmt: v => v + ' dk', h: 200, tip: (i, v) => `<b>${d[i].fullDate}</b>${v[0]} dk ortalama` });
 
             $('#chWeekdayTable').innerHTML = `<div class="table-wrap"><table style="font-size:12.5px">
@@ -1307,9 +1312,14 @@
     };
 
     HR.reports = {
-        title: 'Kurumsal Raporlar', sub: () => 'Bordro, üst yönetim ve denetim için resmi OpenXML Excel (.xlsx) raporları · ' + rangeLabel(), tools: { range: 1, branch: 1 }, icon: 'file',
+        title: 'Kurumsal Raporlar', sub: () => 'Raporu seçerek ekranda inceleyin, yazdırın veya resmi OpenXML Excel (.xlsx) olarak indirin · ' + rangeLabel(), tools: { range: 1, branch: 1 }, icon: 'file',
         render() {
-            const st = stats(), ds = deptStats(), days = activeDays();
+            const st = stats(), ds = deptStats(), days = activeDays(), E = emps();
+            const lb = D.computeLeaderboards(E, filterOpts());
+            const lateList = lb.mostLate.filter(a => a.totalLateMin > 0);
+            const branchLeaves = D.LEAVES.filter(l => S.branch === 'ALL' || (emp(l.empId) && emp(l.empId).branch === S.branch));
+            const branchAlerts = D.ALERTS.filter(a => S.branch === 'ALL' || a.branch === S.branch);
+            const branchDevices = D.DEVICES.filter(d => S.branch === 'ALL' || (emp(d.empId) && emp(d.empId).branch === S.branch));
             const p2 = n => String(n).padStart(2, '0');
             const now = new Date();
             const stamp = `${p2(now.getDate())}.${p2(now.getMonth() + 1)}.${now.getFullYear()} ${p2(now.getHours())}:${p2(now.getMinutes())}`;
@@ -1317,24 +1327,236 @@
             const hazirlayan = S.user ? S.user.name + ' — ' + S.user.title : 'İnsan Kaynakları Yönetimi';
             const subeAdi = S.branch === 'ALL' ? `Tüm Şubeler (${D.BRANCHES.length} Lokasyon)` : brName(S.branch);
 
-            const kpiCards = [
-                { l: 'Toplam Personel', v: String(st.N), s: 'Aktif kadro', tone: '', icon: 'users' },
-                { l: 'Zamanında Giriş', v: '%' + A.pctText(st.onTimePct), s: st.onTime + ' personel zamanında', tone: 'ok', icon: 'check' },
-                { l: 'Toplam Gecikme', v: fmtMinDur(st.totalLateMin), s: st.late + ' personel geç kaldı', tone: 'bad', icon: 'clock' },
-                { l: 'Toplam Ek Mesai', v: A.numText(st.totalOvertimeH) + ' sa', s: 'Onaylı fazla çalışma', tone: 'ok', icon: 'up' },
-                { l: 'Net Süre Bakiyesi', v: fmtMinSigned(st.netBalanceMin), s: 'Ek mesai − gecikme', tone: 'info', icon: 'chart' },
-                { l: 'Geç Kalan / Devamsız', v: st.late + ' / ' + st.absent, s: 'Ort. ' + Math.round(st.avgLate) + ' dk gecikme', tone: 'warn', icon: 'alert' }
+            const reportsCatalog = [
+                {
+                    id: 'emps',
+                    no: '01',
+                    tag: 'Ana Puantaj',
+                    icon: 'users',
+                    exportAct: 'export-emps',
+                    title: 'Kurumsal Puantaj, Ek Mesai ve Net Bakiye Raporu',
+                    docTitle: 'KURUMSAL PERSONEL PUANTAJ, EK MESAİ VE NET BAKİYE RAPORU',
+                    docSub: 'Departman uyum matrisi ve personel bazlı giriş-çıkış, gecikme, ek mesai ve net süre bakiyesi cetveli',
+                    desc: 'Yönetici özeti, departman performans matrisi ve tüm personelin giriş-çıkış, gecikme, ek mesai ve net süre bakiyesi tablosu.',
+                    badge: `${st.N} personel · ${ds.length} departman`,
+                    stats: [
+                        ['Aktif Kadro', `${st.N} kişi`],
+                        ['Zamanında Uyum', `%${A.pctText(st.onTimePct)}`],
+                        ['Net Süre Bakiyesi', fmtMinSigned(st.netBalanceMin)]
+                    ],
+                    kpis: [
+                        { l: 'Toplam Personel', v: String(st.N), s: 'Seçili kapsamda aktif kadro', tone: '', icon: 'users' },
+                        { l: 'Zamanında Giriş', v: '%' + A.pctText(st.onTimePct), s: st.onTime + ' personel zamanında', tone: 'ok', icon: 'check' },
+                        { l: 'Toplam Gecikme', v: fmtMinDur(st.totalLateMin), s: st.late + ' personel geç kaldı', tone: 'bad', icon: 'clock' },
+                        { l: 'Toplam Ek Mesai', v: A.numText(st.totalOvertimeH) + ' sa', s: 'Onaylı fazla çalışma', tone: 'ok', icon: 'up' },
+                        { l: 'Net Süre Bakiyesi', v: fmtMinSigned(st.netBalanceMin), s: 'Ek mesai − gecikme', tone: 'info', icon: 'chart' },
+                        { l: 'Geç Kalan / Devamsız', v: st.late + ' / ' + st.absent, s: 'Ort. ' + Math.round(st.avgLate) + ' dk gecikme', tone: 'warn', icon: 'alert' }
+                    ],
+                    explain: [
+                        ['Ort. Giriş / Ort. Çıkış', 'Seçili dönemdeki aktif iş günlerinde personelin ilk giriş (CHECK_IN) ve son çıkış (CHECK_OUT) saatlerinin aritmetik ortalamasıdır.'],
+                        ['Top. Gecikme (dk)', 'Personelin vardiya başlangıç saati + hoşgörü süresinden (örn. 08:30 + 5 dk = 08:35) sonra yaptığı girişlerin toplam dakikasıdır. Onaylı saatlik izinler düşülür.'],
+                        ['Top. Ek Mesai (dk)', 'Vardiya bitiş saatinden (örn. 17:30) sonra yapılan onaylı fazla çalışmaların toplam dakikasıdır.'],
+                        ['Net Süre Bakiyesi', 'Toplam Ek Mesai (dk) − Toplam Gecikme (dk) formülüyle hesaplanır. Pozitif (+) değer fazla mesai üstünlüğünü, negatif (−) değer net süre kaybını gösterir.']
+                    ]
+                },
+                {
+                    id: 'leaderboards',
+                    no: '02',
+                    tag: 'Performans Ligi',
+                    icon: 'chart',
+                    exportAct: 'export-leaderboards',
+                    title: 'Fazla Mesai Liderleri ve Net Süre Bakiyesi Ligi',
+                    docTitle: 'FAZLA MESAİ LİDERLERİ VE NET SÜRE BAKİYESİ (MESAİ − GECİKME) RAPORU',
+                    docSub: 'Ek mesaiden gecikme çıkınca kalan net sürede en iyiler, en kötüler ve tüm kadro sıralaması',
+                    desc: 'En çok ek mesai yapan personel ile net süre bakiyesinde (ek mesai − gecikme) en iyiler ve en kötüler sıralaması.',
+                    badge: `${lb.all.length} personel sıralaması`,
+                    stats: [
+                        ['Mesai Lideri', lb.topOvertime[0] ? lb.topOvertime[0].emp.name : '—'],
+                        ['En İyi Net Bakiye', lb.bestNet[0] ? fmtMinSigned(lb.bestNet[0].netBalanceMin) : '—'],
+                        ['En Düşük Net Bakiye', lb.worstNet[0] ? fmtMinSigned(lb.worstNet[0].netBalanceMin) : '—']
+                    ],
+                    kpis: [
+                        { l: 'En Çok Mesai Yapan', v: lb.topOvertime[0] ? lb.topOvertime[0].emp.name : '—', s: lb.topOvertime[0] ? '+' + fmtMinDur(lb.topOvertime[0].totalOvertimeMin) : '', tone: 'ok', icon: 'up' },
+                        { l: 'Net Bakiye Lideri', v: lb.bestNet[0] ? lb.bestNet[0].emp.name : '—', s: lb.bestNet[0] ? fmtMinSigned(lb.bestNet[0].netBalanceMin) : '', tone: 'ok', icon: 'check' },
+                        { l: 'En Düşük Net Bakiye', v: lb.worstNet[0] ? lb.worstNet[0].emp.name : '—', s: lb.worstNet[0] ? fmtMinSigned(lb.worstNet[0].netBalanceMin) : '', tone: 'bad', icon: 'alert' },
+                        { l: 'Toplam Ek Mesai', v: A.numText(st.totalOvertimeH) + ' sa', s: 'Dönem toplamı', tone: 'ok', icon: 'activity' },
+                        { l: 'Toplam Gecikme', v: fmtMinDur(st.totalLateMin), s: 'Dönem toplamı', tone: 'bad', icon: 'clock' },
+                        { l: 'Kurum Net Bakiyesi', v: fmtMinSigned(st.netBalanceMin), s: 'Ek mesai − gecikme', tone: 'info', icon: 'chart' }
+                    ],
+                    explain: [
+                        ['Sıralama Kriteri (Net Bakiye)', 'Personeller Net Bakiye (dk) = Toplam Ek Mesai (dk) − Toplam Gecikme (dk) değerine göre büyükten küçüğe sıralanır.'],
+                        ['En Çok Mesai Günü', 'Haftanın 5 iş günü (Pazartesi–Cuma) içinde personelin en yüksek toplam fazla mesai ürettiği gündür.'],
+                        ['En Çok Geç Kalınan Gün', 'Haftanın günleri içinde personelin en fazla gecikme dakikası biriktirdiği gündür; 0 dk ise "Gecikme Yok" yazılır.'],
+                        ['Değerlendirme Durumu', 'Net bakiyesi ≥ 0 dk olan personel "Zamanında / Pozitif Bakiye", < 0 dk olan personel "Geç / Negatif Bakiye" olarak sınıflandırılır.']
+                    ]
+                },
+                {
+                    id: 'analytics',
+                    no: '03',
+                    tag: 'İK Analitik',
+                    icon: 'activity',
+                    exportAct: 'export-analytics',
+                    title: 'İK Performans, Departman Matrisi ve Günlük Eğilim Raporu',
+                    docTitle: 'İNSAN KAYNAKLARI PERFORMANS, FAZLA MESAİ VE ANALİTİK RAPORU',
+                    docSub: 'Departman karşılaştırma matrisi ve seçili dönemdeki iş günü bazlı katılım/mesai eğilimleri',
+                    desc: 'Departman bazlı katılım, ortalama giriş saati, fazla mesai yükü ve iş günü bazında zamanında geliş eğilim kırılımı.',
+                    badge: `${ds.length} departman · ${days.length} iş günü`,
+                    stats: [
+                        ['Uyum Oranı', `%${A.pctText(st.onTimePct)}`],
+                        ['Dönem İş Günü', `${days.length} gün`],
+                        ['Toplam Fazla Mesai', `${A.numText(st.totalOvertimeH)} sa`]
+                    ],
+                    kpis: [
+                        { l: 'Zamanında Katılım', v: '%' + A.pctText(st.onTimePct), s: 'Kurumsal hedef: %95,0', tone: 'ok', icon: 'check' },
+                        { l: 'Toplam Fazla Mesai', v: A.numText(st.totalOvertimeH) + ' sa', s: rangeLabel(), tone: 'ok', icon: 'up' },
+                        { l: 'Toplam Gecikme', v: fmtMinDur(st.totalLateMin), s: st.late + ' personel geç kaldı', tone: 'bad', icon: 'clock' },
+                        { l: 'Net Süre Bakiyesi', v: fmtMinSigned(st.netBalanceMin), s: 'Ek mesai − gecikme', tone: 'info', icon: 'chart' },
+                        { l: 'Ortalama Gecikme', v: Math.round(st.avgLate) + ' dk', s: 'Geç kalan personel ort.', tone: 'warn', icon: 'alert' },
+                        { l: 'Devamsız Kadro', v: String(st.absent), s: 'Kayıt açılmayan personel', tone: 'bad', icon: 'users' }
+                    ],
+                    explain: [
+                        ['Departman Uyum Oranı (%)', 'Departmandaki zamanında gelinen toplam personel-gün sayısının, toplam aktif çalışma gününe oranıdır: (Zamanında Gün / Aktif Gün) × 100.'],
+                        ['Günlük Zamanında / Geç / İzinli (%)', 'İlgili iş gününde zamanında gelen, geç kalan ve izinli olan personelin toplam kadroya yüzdesel oranıdır.'],
+                        ['Ort. Çalışma Süresi (Sa)', 'Giriş ve çıkış saatleri arasındaki süreden 1 saat (60 dk) öğle molası düşülerek bulunan günlük kişi başı fiili çalışma ortalamasıdır.'],
+                        ['Durum Değerlendirmesi', 'Günlük zamanında katılım oranı ≥ %92 olan günler "Zamanında (Hedef Üstü)", altındaki günler "Geç (İzlenmeli)" olarak işaretlenir.']
+                    ]
+                },
+                {
+                    id: 'late',
+                    no: '04',
+                    tag: 'Disiplin & Denetim',
+                    icon: 'alert',
+                    exportAct: 'export-late',
+                    title: 'Gecikme ve Devamsızlık Denetim Raporu',
+                    docTitle: 'GECİKME VE NET SÜRE BAKİYESİ DENETİM RAPORU',
+                    docSub: 'Gecikme kaydı bulunan personelin gecikme gün sayısı, en sık gecikilen gün ve net bakiye dökümü',
+                    desc: 'Geç kalan personel listesi, toplam gecikme dakikası, gecikme gün sayısı, en çok gecikilen gün ve şube kırılımı.',
+                    badge: `${st.late} bugün geç · ${lateList.length} dönem kaydı`,
+                    stats: [
+                        ['Bugün Geç Kalan', `${st.late} kişi`],
+                        ['Bugün Devamsız', `${st.absent} kişi`],
+                        ['Ort. Gecikme', `${Math.round(st.avgLate)} dk`]
+                    ],
+                    kpis: [
+                        { l: 'Bugün Geç Kalan', v: String(st.late), s: 'Aktif vardiyada geciken', tone: 'warn', icon: 'clock' },
+                        { l: 'Bugün Devamsız', v: String(st.absent), s: 'Giriş kaydı bulunmayan', tone: 'bad', icon: 'alert' },
+                        { l: 'Dönem Gecikme Kaydı', v: String(lateList.length), s: 'Gecikmesi olan personel', tone: 'info', icon: 'users' },
+                        { l: 'Toplam Gecikme Süresi', v: fmtMinDur(st.totalLateMin), s: rangeLabel(), tone: 'bad', icon: 'clock' },
+                        { l: 'Ortalama Gecikme', v: Math.round(st.avgLate) + ' dk', s: 'Vardiya + tolerans bazlı', tone: 'warn', icon: 'activity' },
+                        { l: 'Geofence Denetimi', v: '%' + A.pctText(st.geofencePct), s: '30 m şube sınırı aktif', tone: 'ok', icon: 'pin' }
+                    ],
+                    explain: [
+                        ['Gecikme Başlangıç Eşiği', 'Her personelin PostgreSQL shifts tablosundaki vardiya başlangıç saatine hoşgörü süresi (standart 08:30 + 5 dk = 08:35; GM 09:00 + 10 dk = 09:10) eklenir.'],
+                        ['Gecikme Gün Sayısı', 'Seçili dönemde personelin vardiya tolerans saatinden sonra giriş yaptığı toplam iş günü sayısıdır.'],
+                        ['Saatlik İzin Mahsubu', 'İK tarafından onaylanan saatlik izin süresi (durationMin), ilgili gündeki gecikme dakikasından otomatik düşülür.'],
+                        ['Telafi / Net Bakiye', 'Personelin yaptığı fazla mesai, toplam gecikmesinden büyükse Net Süre Bakiyesi pozitif (+) olur ve gecikmesini telafi ettiği görülür.']
+                    ]
+                },
+                {
+                    id: 'leaves',
+                    no: '05',
+                    tag: 'İK Kayıt',
+                    icon: 'calendar',
+                    exportAct: 'export-leaves',
+                    title: 'İzin, Saatlik İzin ve Mazeret Yönetim Raporu',
+                    docTitle: 'KURUMSAL İZİN, SAATLİK İZİN VE MAZERET TALEPLERİ RAPORU',
+                    docSub: 'Yıllık izin, saatlik izin, mazeret izni, saha görevi ve sağlık raporu kayıtlarının onay dökümü',
+                    desc: 'PostgreSQL leave_requests tablosundaki tam gün ve saatlik izin taleplerinin tür, süre, saat aralığı ve onay durumu dökümü.',
+                    badge: `${branchLeaves.length} talep · ${branchLeaves.filter(l => l.status === 'pending').length} bekleyen`,
+                    stats: [
+                        ['Toplam Talep', `${branchLeaves.length} kayıt`],
+                        ['Onay Bekleyen', `${branchLeaves.filter(l => l.status === 'pending').length} talep`],
+                        ['Saatlik İzin', `${branchLeaves.filter(l => l.isHourly).length} kayıt`]
+                    ],
+                    kpis: [
+                        { l: 'Toplam İzin Talebi', v: String(branchLeaves.length), s: 'PostgreSQL leave_requests', tone: '', icon: 'calendar' },
+                        { l: 'Onay Bekleyen', v: String(branchLeaves.filter(l => l.status === 'pending').length), s: 'İK onayı bekliyor', tone: 'warn', icon: 'clock' },
+                        { l: 'Onaylanan', v: String(branchLeaves.filter(l => l.status === 'approved').length), s: 'Puantaja işlendi', tone: 'ok', icon: 'check' },
+                        { l: 'Reddedilen', v: String(branchLeaves.filter(l => l.status === 'rejected').length), s: 'Kapatılan talep', tone: 'bad', icon: 'x' },
+                        { l: 'Saatlik İzin Kaydı', v: String(branchLeaves.filter(l => l.isHourly).length), s: 'Gecikmeden düşülen', tone: 'info', icon: 'activity' },
+                        { l: 'Bugün İzinli Kadro', v: String(st.leave), s: 'Aktif izinli personel', tone: 'info', icon: 'users' }
+                    ],
+                    explain: [
+                        ['Tam Gün vs Saatlik İzin', 'Tam gün izinler gün bazında (örn. 1–14 gün) yıllık izin kotasından düşer; saatlik izinler başlangıç-bitiş saatiyle (örn. 08:30–10:00, 90 dk) kaydedilir.'],
+                        ['Saatlik İzin Gecikme Etkisi', 'Saatlik izin "Onaylandı" (APPROVED) durumuna geçtiğinde, süresi kadar dakika personelin o günkü gecikme süresinden otomatik indirilir.'],
+                        ['İzin Kotası (Hak Edilen / Kullanılan)', 'Her personelin yıllık izin hakkı (leaveTotalDays) ve kullandığı gün (leaveUsedDays) PostgreSQL employees tablosunda takip edilir.'],
+                        ['Onay Akışı', 'Bekleyen (PENDING) talepler İK tarafından onaylandığında veya reddedildiğinde işlem zaman damgası ve denetim iziyle kaydedilir.']
+                    ]
+                },
+                {
+                    id: 'it',
+                    no: '06',
+                    tag: 'BT & Güvenlik',
+                    icon: 'shield',
+                    exportAct: 'export-it',
+                    title: 'BT Siber Güvenlik, Cihaz Eşleme ve Denetim Raporu',
+                    docTitle: 'BT SİBER GÜVENLİK, CİHAZ EŞLEME VE DENETİM RAPORU',
+                    docSub: 'Sahte GPS blokajları, 30m geofence ihlalleri, tekil cihaz eşlemeleri ve yönetici denetim günlüğü',
+                    desc: 'Sahte konum (Mock GPS), 30m şube sınırı aşımı, tekil cihaz eşleme durumu ve yönetici denetim günlüğü (audit_logs) raporu.',
+                    badge: `${branchAlerts.length} güvenlik kaydı · ${branchDevices.length} cihaz`,
+                    stats: [
+                        ['Açık Uyarı', `${branchAlerts.filter(a => !a.resolved).length} kayıt`],
+                        ['Eşlenmiş Cihaz', `${branchDevices.filter(d => d.status === 'BOUND').length} / ${branchDevices.length}`],
+                        ['Denetim Kaydı', `${D.AUDIT.length} işlem`]
+                    ],
+                    kpis: [
+                        { l: 'Eşlenmiş Cihaz', v: String(branchDevices.filter(d => d.status === 'BOUND').length), s: branchDevices.length + ' toplam cihaz', tone: 'ok', icon: 'phone' },
+                        { l: 'Açık Güvenlik Uyarısı', v: String(branchAlerts.filter(a => !a.resolved).length), s: branchAlerts.filter(a => !a.resolved && a.sev === 'HIGH').length + ' yüksek önem', tone: 'bad', icon: 'shield' },
+                        { l: 'Toplam Güvenlik Kaydı', v: String(branchAlerts.length), s: 'PostgreSQL security_alerts', tone: 'warn', icon: 'alert' },
+                        { l: 'Sahte GPS Blokajı', v: String(branchAlerts.filter(a => a.type === 'MOCK_GPS').length), s: 'Anında reddedilen deneme', tone: 'bad', icon: 'pin' },
+                        { l: '30m Sınır İhlali', v: String(branchAlerts.filter(a => a.type === 'GEOFENCE').length), s: 'Geofence dışı deneme', tone: 'warn', icon: 'pin' },
+                        { l: 'Denetim Günlüğü', v: String(D.AUDIT.length), s: 'Değiştirilemez audit_logs', tone: 'info', icon: 'list' }
+                    ],
+                    explain: [
+                        ['30m Geofence Mesafe Hesabı', 'Personel cihaz koordinatı ile şube merkez koordinatı arasındaki mesafe Haversine formülüyle metre cinsinden hesaplanır; > 30 m işlemler reddedilir.'],
+                        ['Sahte GPS (Mock Location) Tespiti', 'Android Location.isMock / isFromMockProvider, Bundle ekstraları, 0 m doğruluk anomalisi ve geliştirici sahte konum ayarları denetlenir; tespitte işlem mesafe kontrolünden önce engellenir.'],
+                        ['Tekil Cihaz Eşleme (Device Binding)', 'Her personel yalnızca onaylı tek bir mobil cihaz kimliği (deviceModel / deviceId) ile giriş yapabilir; farklı cihaz denemeleri uyarı üretir.'],
+                        ['Denetim Günlüğü (Audit Log)', 'Şube, personel, izin, vardiya ve güvenlik politikası üzerindeki tüm yönetici işlemleri zaman damgası ve kullanıcı bilgisiyle kaydedilir.']
+                    ]
+                }
             ];
 
-            const catalog = [
-                ['export-emps', 'Kurumsal Puantaj ve Devam Raporu', 'Yönetici özeti, departman matrisi ve personel bazlı giriş-çıkış, gecikme, ek mesai ve net bakiye tablosu.', 'Ana belge', 'users'],
-                ['export-leaderboards', 'Ek Mesai ve Net Süre Bakiyesi Ligi', 'En çok ek mesai yapanlar; net süre bakiyesinde en iyiler ve en kötüler sıralaması.', 'Sıralama', 'chart'],
-                ['export-analytics', 'İK Performans ve Departman Analitiği', 'Departman bazlı katılım, fazla mesai yükü ve günlük eğilim kırılımı.', 'Analitik', 'activity'],
-                ['export-late', 'Gecikme ve Devamsızlık Denetim Raporu', 'Geç kalan personel, gecikme günü ve şube kırılımı; disiplin süreci için.', 'Denetim', 'alert'],
-                ['export-leaves', 'İzin ve Mazeret Yönetim Raporu', 'İzin taleplerinin tür, süre ve onay durumu dökümü.', 'İK kayıt', 'calendar']
-            ];
+            const selected = reportsCatalog.find(r => r.id === S.ui.reportId) || null;
 
-            const rowsHtml = ds.map(x => `<tr>
+            // VARSAYILAN GÖRÜNÜM: Rapor seçilmediyse yalnızca Rapor Merkezi listesi/kartları gösterilir.
+            if (!selected) {
+                return `<div class="rpt-page">
+                  <section class="card flush">
+                    ${cardHead(
+                        'Kurumsal Rapor Merkezi',
+                        `${rangeLabel()} · ${subeAdi} — İncelemek, yazdırmak veya Excel (.xlsx) olarak indirmek istediğiniz rapora tıklayın`,
+                        `<span class="pill info">${reportsCatalog.length} rapor hazır</span>`
+                    )}
+                    <div class="rpt-hub-grid">
+                      ${reportsCatalog.map(r => `<article class="card rpt-hub-card lift" data-act="rpt-open" data-id="${r.id}" tabindex="0" role="button" aria-label="${esc(r.title)} raporunu görüntüle">
+                        <div class="rpt-card-top">
+                          <span class="rpt-card-no">${r.no}</span>
+                          <span class="rpt-tag">${esc(r.tag)}</span>
+                          <span class="pill mute">${esc(r.badge)}</span>
+                          <span class="rpt-card-ic">${ic(r.icon)}</span>
+                        </div>
+                        <div class="rpt-hub-body">
+                          <h4>${esc(r.title)}</h4>
+                          <p>${esc(r.desc)}</p>
+                        </div>
+                        <div class="stat-mini-grid rpt-hub-stats">
+                          ${r.stats.map(s => `<div class="stat-mini"><small>${esc(s[0])}</small><b>${esc(s[1])}</b></div>`).join('')}
+                        </div>
+                        <div class="rpt-hub-actions">
+                          <button type="button" class="btn btn-primary btn-sm" data-act="rpt-open" data-id="${r.id}">${ic('file')} Raporu Görüntüle</button>
+                          ${dlBtn(r.exportAct, 'Excel İndir (.xlsx)', { cls: 'btn-soft btn-sm' })}
+                        </div>
+                      </article>`).join('')}
+                    </div>
+                  </section>
+                </div>`;
+            }
+
+            // SEÇİLİ RAPOR İÇERİĞİ (Her rapor kendi gerçek PostgreSQL/analitik tablosunu üretir)
+            let bodySectionsHtml = '';
+            if (selected.id === 'emps') {
+                const list = filteredEmps().slice(0, 80);
+                const deptRowsHtml = ds.map(x => `<tr>
                     <td class="rpt-td-name">${esc(x.d)}</td>
                     <td class="num">${x.n}</td>
                     <td class="num">${esc(x.avgIn)}</td>
@@ -1343,66 +1565,183 @@
                     <td>${netPill(x.netMin)}</td>
                     <td class="num">%${A.pctText(x.pct)}</td>
                 </tr>`).join('');
+                const empRowsHtml = list.map(({ e, an }) => `<tr>
+                    <td class="mono">${esc(e.sicil)}</td>
+                    <td class="rpt-td-name">${esc(e.name)}</td>
+                    <td>${esc(e.dept)}</td>
+                    <td>${esc(brName(e.branch))}</td>
+                    <td class="num">${esc(an.avgCheckIn)} → ${esc(an.avgCheckOut)}</td>
+                    <td class="num bad">${an.totalLateMin > 0 ? '−' + fmtMinDur(an.totalLateMin) : '0 dk'}</td>
+                    <td class="num ok">+${fmtMinDur(an.totalOvertimeMin)}</td>
+                    <td>${netPill(an.netBalanceMin)}</td>
+                    <td>${pill(STATUS[e.status][0], STATUS[e.status][1])}</td>
+                </tr>`).join('');
+                bodySectionsHtml = `
+                  <h3 class="rpt-sec"><span>1</span> Departman Bazlı Uyum, Ek Mesai ve Net Bakiye Özeti</h3>
+                  <div class="rpt-tablewrap"><table class="rpt-table">
+                    <thead><tr><th>Departman</th><th class="num">Personel</th><th class="num">Ort. Giriş</th><th class="num">Top. Ek Mesai</th><th class="num">Top. Gecikme</th><th>Net Bakiye</th><th class="num">Uyum</th></tr></thead>
+                    <tbody>${deptRowsHtml}</tbody>
+                  </table></div>
+                  <h3 class="rpt-sec"><span>2</span> Personel Bazlı Puantaj ve Net Süre Bakiyesi Cetveli (${list.length} / ${st.N} kayıt önizlemesi · tamamı Excel'de)</h3>
+                  <div class="rpt-tablewrap"><table class="rpt-table">
+                    <thead><tr><th>Sicil No</th><th>Ad Soyad</th><th>Departman</th><th>Şube</th><th class="num">Ort. Giriş / Çıkış</th><th class="num">Top. Gecikme</th><th class="num">Top. Ek Mesai</th><th>Net Bakiye</th><th>Bugün</th></tr></thead>
+                    <tbody>${empRowsHtml}</tbody>
+                  </table></div>`;
+            } else if (selected.id === 'leaderboards') {
+                const top10Html = lb.bestNet.slice(0, 10).map((a, i) => `<tr>
+                    <td class="num">${i + 1}</td>
+                    <td class="mono">${esc(a.emp.sicil)}</td>
+                    <td class="rpt-td-name">${esc(a.emp.name)}</td>
+                    <td>${esc(a.emp.dept)}</td>
+                    <td class="num ok">+${fmtMinDur(a.totalOvertimeMin)}</td>
+                    <td class="num bad">${a.totalLateMin > 0 ? '−' + fmtMinDur(a.totalLateMin) : '0 dk'}</td>
+                    <td>${netPill(a.netBalanceMin)}</td>
+                </tr>`).join('');
+                const allSorted = lb.all.slice().sort((a, b) => b.netBalanceMin - a.netBalanceMin).slice(0, 80);
+                const allRowsHtml = allSorted.map(a => `<tr>
+                    <td class="mono">${esc(a.emp.sicil)}</td>
+                    <td class="rpt-td-name">${esc(a.emp.name)}</td>
+                    <td>${esc(a.emp.dept)}</td>
+                    <td>${esc(brName(a.emp.branch))}</td>
+                    <td class="num ok">+${a.totalOvertimeMin} dk</td>
+                    <td class="num bad">−${a.totalLateMin} dk</td>
+                    <td>${netPill(a.netBalanceMin)}</td>
+                    <td>${esc(a.mostOvertimeDay.dowName)} (+${a.mostOvertimeDay.totalOvertimeMin} dk)</td>
+                    <td>${a.mostLateDay.totalLateMin > 0 ? esc(a.mostLateDay.dowName) + ' (−' + a.mostLateDay.totalLateMin + ' dk)' : 'Gecikme Yok'}</td>
+                </tr>`).join('');
+                bodySectionsHtml = `
+                  <h3 class="rpt-sec"><span>1</span> Net Süre Bakiyesi En İyi 10 Personel (Ek Mesai − Gecikme)</h3>
+                  <div class="rpt-tablewrap"><table class="rpt-table">
+                    <thead><tr><th class="num">Sıra</th><th>Sicil No</th><th>Ad Soyad</th><th>Departman</th><th class="num">Top. Ek Mesai</th><th class="num">Top. Gecikme</th><th>Net Bakiye</th></tr></thead>
+                    <tbody>${top10Html}</tbody>
+                  </table></div>
+                  <h3 class="rpt-sec"><span>2</span> Fazla Mesai ve Net Süre Bakiyesi Sıralama Cetveli (${allSorted.length} / ${lb.all.length} kayıt)</h3>
+                  <div class="rpt-tablewrap"><table class="rpt-table">
+                    <thead><tr><th>Sicil No</th><th>Ad Soyad</th><th>Departman</th><th>Şube</th><th class="num">Ek Mesai</th><th class="num">Gecikme</th><th>Net Bakiye</th><th>En Çok Mesai Günü</th><th>En Çok Geç Kalınan Gün</th></tr></thead>
+                    <tbody>${allRowsHtml}</tbody>
+                  </table></div>`;
+            } else if (selected.id === 'analytics') {
+                const deptRowsHtml = ds.map(x => `<tr>
+                    <td class="rpt-td-name">${esc(x.d)}</td>
+                    <td class="num">${x.n}</td>
+                    <td class="num">${esc(x.avgIn)}</td>
+                    <td class="num">${String(x.avgWorkH).replace('.', ',')} sa</td>
+                    <td class="num ok">+${fmtMinDur(x.totalOvertimeMin)}</td>
+                    <td class="num bad">−${fmtMinDur(x.totalLateMin)}</td>
+                    <td>${netPill(x.netMin)}</td>
+                    <td class="num">%${A.pctText(x.pct)}</td>
+                </tr>`).join('');
+                const dayRowsHtml = days.map(x => `<tr>
+                    <td class="mono">${esc(x.fullDate)}</td>
+                    <td>${esc(x.dowName)}</td>
+                    <td class="num ok">%${A.pctText(x.onTime * 100)}</td>
+                    <td class="num bad">%${A.pctText(x.late * 100)}</td>
+                    <td class="num">%${A.pctText(x.leave * 100)}</td>
+                    <td class="num">${A.numText(x.workH)} sa</td>
+                    <td class="num ok">+${Math.round(x.overtimeH)} sa</td>
+                    <td>${pill(x.onTime >= 0.92 ? 'Zamanında (Hedef Üstü)' : 'İzlenmeli', x.onTime >= 0.92 ? 'ok' : 'warn')}</td>
+                </tr>`).join('');
+                bodySectionsHtml = `
+                  <h3 class="rpt-sec"><span>1</span> Departman Performans, Ek Mesai ve Net Bakiye Matrisi</h3>
+                  <div class="rpt-tablewrap"><table class="rpt-table">
+                    <thead><tr><th>Departman</th><th class="num">Kadro</th><th class="num">Ort. Giriş</th><th class="num">Ort. Mesai</th><th class="num">Top. Ek Mesai</th><th class="num">Top. Gecikme</th><th>Net Bakiye</th><th class="num">Uyum (%)</th></tr></thead>
+                    <tbody>${deptRowsHtml}</tbody>
+                  </table></div>
+                  <h3 class="rpt-sec"><span>2</span> Günlük Katılım, Çalışma Süresi ve Fazla Mesai Eğilim Cetveli (${days.length} iş günü)</h3>
+                  <div class="rpt-tablewrap"><table class="rpt-table">
+                    <thead><tr><th>Tarih</th><th>Gün</th><th class="num">Zamanında (%)</th><th class="num">Geç Kalan (%)</th><th class="num">İzinli (%)</th><th class="num">Ort. Çalışma</th><th class="num">Fazla Mesai</th><th>Değerlendirme</th></tr></thead>
+                    <tbody>${dayRowsHtml}</tbody>
+                  </table></div>`;
+            } else if (selected.id === 'late') {
+                const lateRowsHtml = lateList.slice(0, 80).map(a => `<tr>
+                    <td class="mono">${esc(a.emp.sicil)}</td>
+                    <td class="rpt-td-name">${esc(a.emp.name)}</td>
+                    <td>${esc(a.emp.dept)}</td>
+                    <td>${esc(brName(a.emp.branch))}</td>
+                    <td class="num bad">−${a.totalLateMin} dk</td>
+                    <td class="num">${a.lateDays} gün</td>
+                    <td>${esc(a.mostLateDay.dowName)} (−${a.mostLateDay.totalLateMin} dk)</td>
+                    <td class="num ok">+${a.totalOvertimeMin} dk</td>
+                    <td>${netPill(a.netBalanceMin)}</td>
+                </tr>`).join('');
+                bodySectionsHtml = `
+                  <h3 class="rpt-sec"><span>1</span> Gecikme ve Net Süre Bakiyesi Denetim Cetveli (${lateList.length} personel)</h3>
+                  <div class="rpt-tablewrap"><table class="rpt-table">
+                    <thead><tr><th>Sicil No</th><th>Ad Soyad</th><th>Departman</th><th>Şube</th><th class="num">Top. Gecikme</th><th class="num">Gecikme Günü</th><th>En Çok Geç Kaldığı Gün</th><th class="num">Top. Ek Mesai</th><th>Net Bakiye</th></tr></thead>
+                    <tbody>${lateRowsHtml || `<tr><td colspan="9">${empty('Gecikme kaydı bulunamadı')}</td></tr>`}</tbody>
+                  </table></div>`;
+            } else if (selected.id === 'leaves') {
+                const tone = { pending: ['Bekliyor', 'warn'], approved: ['Onaylandı', 'ok'], rejected: ['Reddedildi', 'bad'] };
+                const leaveRowsHtml = branchLeaves.map(l => {
+                    const e = emp(l.empId) || { sicil: l.sicil || '—', name: l.name || 'Bilinmeyen Personel', dept: '—' };
+                    const tn = tone[l.status] || [l.status, 'mute'];
+                    return `<tr>
+                        <td class="mono">${esc(l.code || ('LV-' + l.id))}</td>
+                        <td class="mono">${esc(e.sicil)}</td>
+                        <td class="rpt-td-name">${esc(e.name)}</td>
+                        <td>${esc(e.dept)}</td>
+                        <td>${esc(l.type)}</td>
+                        <td class="num">${l.isHourly && l.startClock ? `${esc(l.startClock)}–${esc(l.endClock)} (saatlik)` : `${l.days} gün`}</td>
+                        <td class="mono">${esc(l.from)}</td>
+                        <td>${esc(l.reason)}</td>
+                        <td>${pill(tn[0], tn[1])}</td>
+                    </tr>`;
+                }).join('');
+                bodySectionsHtml = `
+                  <h3 class="rpt-sec"><span>1</span> İzin, Saatlik İzin ve Mazeret Talepleri Dökümü (${branchLeaves.length} kayıt)</h3>
+                  <div class="rpt-tablewrap"><table class="rpt-table">
+                    <thead><tr><th>Talep No</th><th>Sicil No</th><th>Personel Adı</th><th>Departman</th><th>İzin Türü</th><th class="num">Süre / Saat</th><th>Başlangıç</th><th>Açıklama</th><th>Durum</th></tr></thead>
+                    <tbody>${leaveRowsHtml || `<tr><td colspan="9">${empty('İzin kaydı bulunamadı')}</td></tr>`}</tbody>
+                  </table></div>`;
+            } else if (selected.id === 'it') {
+                const auditRowsHtml = D.AUDIT.slice(0, 15).map(a => `<tr>
+                    <td class="mono">${esc(a.t)}</td>
+                    <td class="rpt-td-name">${esc(a.who)}</td>
+                    <td>${esc(a.act)}</td>
+                    <td class="mono">${esc(a.target)}</td>
+                    <td>${pill(a.cat, 'mute')}</td>
+                </tr>`).join('');
+                const alertRowsHtml = branchAlerts.map(a => {
+                    const e = emp(a.empId) || { sicil: '—', name: 'Bilinmeyen Personel' };
+                    const sevMap = { HIGH: ['Yüksek', 'bad'], MED: ['Orta', 'warn'], LOW: ['Düşük', 'mute'] }[a.sev] || [a.sev, 'mute'];
+                    return `<tr>
+                        <td class="mono">${esc(a.code || ('AL-' + a.id))}</td>
+                        <td class="mono">${esc(a.ago)}</td>
+                        <td class="mono">${esc(e.sicil)}</td>
+                        <td class="rpt-td-name">${esc(e.name)}</td>
+                        <td>${esc(brName(a.branch))}</td>
+                        <td>${esc(D.ALERT_TYPES[a.type] || a.rawType || a.type)}${a.dist ? ` · ${a.dist} m` : ''}</td>
+                        <td>${pill(sevMap[0], sevMap[1])}</td>
+                        <td>${pill(a.resolved ? 'Çözüldü' : 'Açık', a.resolved ? 'ok' : 'warn')}</td>
+                    </tr>`;
+                }).join('');
+                bodySectionsHtml = `
+                  <h3 class="rpt-sec"><span>1</span> Son Yönetici Denetim Günlüğü (Audit Log)</h3>
+                  <div class="rpt-tablewrap"><table class="rpt-table">
+                    <thead><tr><th>Saat</th><th>İşlemi Yapan</th><th>İşlem Açıklaması</th><th>Hedef Kayıt</th><th>Kategori</th></tr></thead>
+                    <tbody>${auditRowsHtml}</tbody>
+                  </table></div>
+                  <h3 class="rpt-sec"><span>2</span> Güvenlik İhlalleri, Sahte GPS ve 30m Geofence Denetim Kayıtları (${branchAlerts.length} kayıt)</h3>
+                  <div class="rpt-tablewrap"><table class="rpt-table">
+                    <thead><tr><th>Uyarı No</th><th>Zaman</th><th>Sicil No</th><th>Personel</th><th>Şube</th><th>Güvenlik Olayı</th><th>Önem</th><th>Durum</th></tr></thead>
+                    <tbody>${alertRowsHtml || `<tr><td colspan="8">${empty('Güvenlik kaydı bulunamadı')}</td></tr>`}</tbody>
+                  </table></div>`;
+            }
 
             return `<div class="rpt-page">
-              <section class="card rpt-hero">
-                <div class="rpt-hero-main">
-                  <img class="rpt-hero-logo" src="assets/branding/albayrak_pdks_logo.svg" alt="Albayrak Finans kurumsal logosu" width="58" height="49">
-                  <div class="rpt-hero-txt">
-                    <span class="rpt-eyebrow">İnsan Kaynakları Müdürlüğü · Kurumsal Raporlama</span>
-                    <h2>Personel puantaj, devam ve performans raporları</h2>
-                    <p>${esc(rangeLabel())} dönemi için kurumsal antetli, A4 dikey yazdırmaya hazır OpenXML (.xlsx) belgeleri.</p>
-                    <div class="rpt-chips">
-                      <span class="pill mute">Rapor No: ${esc(reportNo)}</span>
-                      <span class="pill mute">Üretim: ${esc(stamp)}</span>
-                      <span class="pill info">${days.length} iş günü</span>
-                      <span class="pill mute">${esc(subeAdi)}</span>
-                    </div>
+              <section class="card rpt-toolbar no-print">
+                <div class="rpt-toolbar-top">
+                  <button type="button" class="btn btn-soft btn-sm" data-act="rpt-close">← Tüm Raporlara Dön</button>
+                  <div class="chips">
+                    ${reportsCatalog.map(r => `<button type="button" class="chip${r.id === selected.id ? ' is-active' : ''}" data-act="rpt-open" data-id="${r.id}"><span class="mono">${r.no}</span> ${esc(r.tag)}</button>`).join('')}
                   </div>
-                </div>
-                <div class="rpt-hero-actions">
-                  <button type="button" class="btn btn-primary btn-sm" data-act="rpt-print">${ic('file')} A4 Yazdır</button>
-                  ${dlBtn('export-emps', 'Puantaj Excel (.xlsx)', { cls: 'btn-dark btn-sm' })}
+                  <span class="grow"></span>
+                  <div class="rpt-toolbar-actions">
+                    <button type="button" class="btn btn-soft btn-sm" data-act="rpt-print">${ic('file')} Yazdır</button>
+                    ${dlBtn(selected.exportAct, 'Excel İndir (.xlsx)', { cls: 'btn-primary btn-sm' })}
+                  </div>
                 </div>
               </section>
-
-              <div class="grid g-3 mt rpt-kpi-grid">
-                ${kpiCards.map(k => `<article class="card kpi rpt-kpi-card ${k.tone}">
-                  <div class="kpi-top"><span class="kpi-label">${esc(k.l)}</span><span class="kpi-ic ${k.tone}">${ic(k.icon)}</span></div>
-                  <div class="kpi-val">${esc(k.v)}</div>
-                  <div class="kpi-foot"><span>${esc(k.s)}</span></div>
-                </article>`).join('')}
-              </div>
-
-              <section class="rpt-section-head">
-                <div>
-                  <h3>Hızlı rapor indirme</h3>
-                  <p>Seçili dönem ve şube kapsamı için tek tıkla .xlsx indirin; her belgede rapor numarası, imza bloğu ve sayfa numarası bulunur.</p>
-                </div>
-                <span class="pill ok">${catalog.length} belge</span>
-              </section>
-              <div class="grid g-3 rpt-catalog-grid">
-                ${catalog.map((c, i) => `<article class="card rpt-card">
-                  <div class="rpt-card-top">
-                    <span class="rpt-card-no">${String(i + 1).padStart(2, '0')}</span>
-                    <span class="rpt-tag">${esc(c[3])}</span>
-                    <span class="rpt-card-ic">${ic(c[4])}</span>
-                  </div>
-                  <h4>${esc(c[1])}</h4>
-                  <p>${esc(c[2])}</p>
-                  ${dlBtn(c[0], 'Excel İndir (.xlsx)', { cls: 'btn-soft btn-sm btn-block' })}
-                </article>`).join('')}
-                <article class="card rpt-card rpt-card-print">
-                  <div class="rpt-card-top">
-                    <span class="rpt-card-no">06</span>
-                    <span class="rpt-tag">Çıktı</span>
-                    <span class="rpt-card-ic">${ic('file')}</span>
-                  </div>
-                  <h4>Kurumsal A4 Yazdırma</h4>
-                  <p>Kurumsal antetli puantaj önizlemesini A4 dikey yazdırın veya PDF olarak kaydedin.</p>
-                  <button type="button" class="btn btn-dark btn-sm btn-block" data-act="rpt-print">${ic('file')} Yazdır (Ctrl+P)</button>
-                </article>
-              </div>
 
               <section class="card flush mt rpt-preview">
                 <div class="rpt-doc">
@@ -1410,14 +1749,14 @@
                     <img class="rpt-logo" src="assets/branding/albayrak_pdks_logo.svg" alt="Albayrak Finans kurumsal logosu" width="62" height="52">
                     <div class="rpt-head-txt">
                       <h2>ALBAYRAK TASARRUF FİNANSMAN A.Ş.</h2>
-                      <p>Personel Devam Kontrol Sistemi (PDKS) · İnsan Kaynakları Müdürlüğü</p>
-                      <p class="rpt-kunye"><span>Rapor No: <b>${esc(reportNo)}</b></span><span>Üretim: ${esc(stamp)}</span><span>Nüsha: Orijinal</span></p>
+                      <p>Personel Devam Kontrol Sistemi (PDKS) · İnsan Kaynakları ve Bilgi Teknolojileri Raporlama Merkezi</p>
+                      <p class="rpt-kunye"><span>Rapor No: <b>${esc(reportNo)}-${selected.no}</b></span><span>Üretim: <b>${esc(stamp)}</b></span><span>Kategori: <b>${esc(selected.tag)}</b></span></p>
                     </div>
                   </header>
                   <div class="rpt-rule"></div>
                   <div class="rpt-title">
-                    <h1>PERSONEL PUANTAJ, DEVAM VE PERFORMANS RAPORU</h1>
-                    <p>Gecikme, fazla mesai, net süre bakiyesi ve 30 m şube geofence doğrulama özeti</p>
+                    <h1>${esc(selected.docTitle)}</h1>
+                    <p>${esc(selected.docSub)}</p>
                   </div>
                   <dl class="rpt-meta">
                     <div><dt>Rapor Dönemi</dt><dd>${esc(rangeLabel())}</dd></div>
@@ -1426,26 +1765,56 @@
                     <div><dt>Hazırlayan</dt><dd>${esc(hazirlayan)}</dd></div>
                   </dl>
 
-                  <h3 class="rpt-sec"><span>1</span> Departman Bazlı Performans Özeti</h3>
-                  <div class="rpt-tablewrap"><table class="rpt-table">
-                    <thead><tr><th>Departman</th><th>Personel</th><th>Ort. Giriş</th><th>Top. Ek Mesai</th><th>Top. Gecikme</th><th>Net Bakiye</th><th>Uyum</th></tr></thead>
-                    <tbody>${rowsHtml}</tbody>
-                  </table></div>
+                  <div class="grid g-3 mt rpt-kpi-grid">
+                    ${selected.kpis.map(k => `<article class="card kpi rpt-kpi-card ${k.tone}">
+                      <div class="kpi-top"><span class="kpi-label">${esc(k.l)}</span><span class="kpi-ic ${k.tone}">${ic(k.icon)}</span></div>
+                      <div class="kpi-val">${esc(k.v)}</div>
+                      <div class="kpi-foot"><span>${esc(k.s)}</span></div>
+                    </article>`).join('')}
+                  </div>
 
-                  <h3 class="rpt-sec"><span>2</span> Değerlendirme ve Metodoloji Notu</h3>
-                  <ol class="rpt-notes">
-                    <li>Gecikme süresi, vardiya başlangıç saatine göre hesaplanan pozitif sapmadır.</li>
-                    <li>Ek mesai süresi, vardiya bitişinden sonra gerçekleşen onaylı çalışma süresidir.</li>
-                    <li>Net süre bakiyesi = <b>Toplam ek mesai − Toplam gecikme</b>. Negatif bakiye kayıp süreyi gösterir.</li>
-                    <li>Konum doğrulaması şube merkezine 30 metre yarıçapla sınırlıdır; sahte konum (mock GPS) tespiti blokajla sonuçlanır.</li>
-                    <li>Kayıtlar KVKK kapsamında yalnızca puantaj ve iş hukuku yükümlülükleri için işlenir.</li>
-                  </ol>
+                  ${bodySectionsHtml}
 
                   <footer class="rpt-sign">
                     <div class="rpt-sign-col"><span>Hazırlayan</span><b>${esc(hazirlayan)}</b></div>
                     <div class="rpt-sign-col"><span>Onaylayan</span><b>İnsan Kaynakları Müdürlüğü</b></div>
                   </footer>
-                  <p class="rpt-foot">Bu belge Albayrak Tasarruf Finansman A.Ş. PDKS sistemi tarafından otomatik üretilmiştir. Yetkisiz kopyalanması ve dağıtılması yasaktır.</p>
+                  <p class="rpt-foot">Bu belge Albayrak Tasarruf Finansman A.Ş. PDKS sistemi tarafından PostgreSQL 18 canlı verisinden üretilmiştir.</p>
+                </div>
+              </section>
+
+              <section class="card mt rpt-methodology no-print">
+                ${cardHead(
+                    'Bu Rapor Nasıl Hesaplanır? · Terimler ve Metodoloji Rehberi',
+                    'Aşağıdaki açıklamalar yalnızca ekranda bilgilendirme amaçlıdır; yazdırma çıktısına ve indirilen Excel (.xlsx) dosyasına dahil edilmez',
+                    `<span class="pill mute">${esc(selected.tag)} Metodolojisi</span>`
+                )}
+                <div class="grid g-2">
+                  ${selected.explain.map((ex, idx) => `<div class="rpt-method-item">
+                    <div class="rpt-method-top">
+                      <span class="rpt-method-num">${idx + 1}</span>
+                      <b>${esc(ex[0])}</b>
+                    </div>
+                    <p>${esc(ex[1])}</p>
+                  </div>`).join('')}
+                </div>
+                <div class="rpt-method- divider"></div>
+                <div class="grid g-3 mt">
+                  <div class="stat-mini">
+                    <small>Vardiya ve Gecikme Formülü</small>
+                    <b>Gecikme = Giriş − (Vardiya + Tolerans)</b>
+                    <span class="muted" style="font-size:11.5px;display:block;margin-top:4px">Standart 08:30 (+5 dk), Erken 08:00 (+5 dk), GM 09:00 (+10 dk). Onaylı saatlik izinler gecikmeden otomatik düşülür.</span>
+                  </div>
+                  <div class="stat-mini">
+                    <small>Ek Mesai ve Net Süre Bakiyesi</small>
+                    <b>Net Bakiye = Ek Mesai − Gecikme</b>
+                    <span class="muted" style="font-size:11.5px;display:block;margin-top:4px">Vardiya bitişinden sonraki onaylı çalışma ek mesaidir. Fiili mesai süresinden 60 dk öğle arası düşülür.</span>
+                  </div>
+                  <div class="stat-mini">
+                    <small>30m Geofence ve Sahte Konum</small>
+                    <b>Haversine ≤ 30 m & Mock GPS Blokajı</b>
+                    <span class="muted" style="font-size:11.5px;display:block;margin-top:4px">Şube merkezine 30 m dışındaki veya sahte GPS (geliştirici sahte konum) tespit edilen işlemler engellenir.</span>
+                  </div>
                 </div>
               </section>
             </div>`;
@@ -1736,7 +2105,7 @@
 
                             <label class="field">
                                 <span>Yetkili Olduğu Şube Kapsamı</span>
-                                <div>${selectEl('adm-branch', [{ v: 'ALL', l: 'Tüm Şubeler (Genel Merkez & 6 Şube)' }].concat(D.BRANCHES.map(b => ({ v: b.code, l: b.name, sub: b.city }))), u.branch, 'Şube kapsamı')}</div>
+                                <div>${selectEl('adm-branch', [{ v: 'ALL', l: `Tüm Şubeler (${D.BRANCHES.length} Lokasyon)` }].concat(D.BRANCHES.map(b => ({ v: b.code, l: b.name, sub: b.city }))), u.branch, 'Şube kapsamı')}</div>
                             </label>
 
                             <div>
@@ -1865,11 +2234,17 @@
     }
     const onShiftsPage = () => !!(S.user && S.page === 'shifts' && PAGES[S.user.role] && PAGES[S.user.role].shifts);
     let shiftsSyncDrawAt = 0;
-    function scheduleShiftsSyncDraw() {
+    function scheduleShiftsSyncDraw(ev) {
         const now = Date.now();
         if (now - shiftsSyncDrawAt < 250) return;
         shiftsSyncDrawAt = now;
-        if (S.user && (S.page === 'shifts' || S.page === 'branches')) draw(false);
+        if (!S.user) return;
+        renderBranchMenu();
+        buildNav();
+        const active = document.activeElement;
+        const isTypingInPage = active && active.closest && active.closest('#page') && (active.tagName === 'INPUT' || active.tagName === 'SELECT' || active.tagName === 'TEXTAREA');
+        if (ev && ev.detail && ev.detail.background && isTypingInPage) return;
+        draw(false);
     }
     // SSE açılamazsa (proxy/tarayıcı tamponu) veri 20 sn'de bir sessizce tazelenir.
     let livePollTimer = null;
@@ -1892,16 +2267,18 @@
         return {
             title: 'Vardiya & canlı akış',
             sub: () => 'PostgreSQL 18 + Prisma + SSE · ' + perspective + (D.SYNC && D.SYNC.lastSync ? ' · son eşitleme ' + new Date(D.SYNC.lastSync).toLocaleTimeString('tr-TR') : ' · canlı veri bekleniyor'),
-            tools: {},
+            tools: { branch: 1 },
             icon: 'activity',
             render() {
-                const E = D.EMPLOYEES, logs = D.ACCESS_LOGS || [], shifts = D.SHIFTS || [], sync = D.SYNC || {};
+                const E = emps(), st = stats(), allLogs = D.ACCESS_LOGS || [], shifts = D.SHIFTS || [], sync = D.SYNC || {};
+                const logs = S.branch === 'ALL' ? allLogs : allLogs.filter(l => l.branch === S.branch);
+                const branchLeaves = D.LEAVES.filter(l => S.branch === 'ALL' || (emp(l.empId) && emp(l.empId).branch === S.branch));
                 const u = S.ui.shifts;
-                const present = E.filter(e => e.status === 'PRESENT' || e.status === 'LATE').length;
-                const late = E.filter(e => e.status === 'LATE').length;
-                const leave = E.filter(e => e.status === 'LEAVE').length;
-                const pending = D.LEAVES.filter(l => l.status === 'pending');
-                const hourly = D.LEAVES.filter(l => l.isHourly).length;
+                const present = st.attended;
+                const late = st.late;
+                const leave = st.leave;
+                const pending = branchLeaves.filter(l => l.status === 'pending');
+                const hourly = branchLeaves.filter(l => l.isHourly).length;
                 const latestDate = logs.reduce((m, l) => (l.dateIstanbul && l.dateIstanbul > m ? l.dateIstanbul : m), '');
                 const sseTone = sync.sse === 'open' ? 'ok' : sync.sse === 'retry' ? 'warn' : sync.sse === 'connecting' ? 'info' : 'mute';
                 const sseLabel = sync.sse === 'open' ? 'SSE canlı' : sync.sse === 'retry' ? 'SSE yeniden bağlanıyor' : sync.sse === 'connecting' ? 'SSE bağlanıyor…' : 'SSE bekliyor';
@@ -1914,10 +2291,10 @@
                 const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Istanbul' });
 
                 return `<div class="grid g-4">
-                    ${kpi({ label: 'Şu an içeride', val: present, unit: 'personel', icon: 'check', tone: 'ok', foot: E.length + ' aktif kadro · PostgreSQL' })}
-                    ${kpi({ label: 'Bugün geç kalan', val: late, unit: 'kişi', icon: 'clock', tone: 'warn', foot: 'Vardiya toleransı aşımı' })}
+                    ${kpi({ label: 'Şu an içeride / katılım', val: present, unit: 'personel', icon: 'check', tone: 'ok', foot: st.onTime + ' zamanında · ' + E.length + ' aktif kadro' })}
+                    ${kpi({ label: 'Geç kalan / devamsız', val: late, unit: 'kişi', icon: 'clock', tone: 'warn', foot: 'ort. ' + Math.round(st.avgLate) + ' dk gecikme · ' + st.absent + ' devamsız' })}
                     ${kpi({ label: 'İzinli / raporlu', val: leave, unit: 'kişi', icon: 'calendar', tone: 'info', foot: hourly + ' saatlik izin kaydı' })}
-                    ${kpi({ label: 'Gün içi ham geçiş', val: (sync.accessLogTotal || logs.length), unit: 'AccessLog', icon: 'activity', tone: '', foot: (latestDate ? trShort(latestDate) : 'kayıt yok') + ' · son 120 kayıt yüklü' })}
+                    ${kpi({ label: 'Gün içi ham geçiş', val: (S.branch === 'ALL' ? (sync.accessLogTotal || logs.length) : logs.length), unit: 'AccessLog', icon: 'activity', tone: '', foot: (latestDate ? trShort(latestDate) : 'kayıt yok') + ' · son 120 kayıt yüklü' })}
                 </div>
 
                 <div class="shifts-head mt">
@@ -2034,8 +2411,8 @@
                     <section class="card flush">
                         ${cardHead('İzin onay akışı', 'Pending → Approved / Rejected · ' + pending.length + ' bekleyen', '')}
                         <div class="list">
-                            ${D.LEAVES.slice(0, 24).map(l => {
-                                const empRow = E.find(e => e.id === l.empId);
+                            ${branchLeaves.slice(0, 24).map(l => {
+                                const empRow = E.find(e => e.id === l.empId) || emp(l.empId);
                                 const tone = l.status === 'approved' ? ['Onaylandı', 'ok'] : l.status === 'rejected' ? ['Reddedildi', 'bad'] : ['Bekliyor', 'warn'];
                                 return `<div class="list-item">
                                     <div class="grow">
@@ -2060,7 +2437,7 @@
             },
             mount() {
                 const byDept = new Map();
-                D.EMPLOYEES.forEach(e => {
+                emps().forEach(e => {
                     const cur = byDept.get(e.dept) || { dept: String(e.dept || '').replace(' Finansmanı', '').replace(' Finansman', ''), overtimeMin: 0, lateMin: 0, present: 0, late: 0 };
                     cur.overtimeMin += e.overtimeMin || 0;
                     cur.lateMin += e.lateMin || 0;
@@ -2634,7 +3011,7 @@
                 STATUS[e.status][0]
             ])
         });
-        A.toast('Puantaj Excel (.xlsx) raporu indirildi (A4 yazdırmaya hazır)');
+        A.toast('Puantaj Excel (.xlsx) raporu indirildi');
     }
 
     function exportLeaderboardsExcel() {
@@ -2671,7 +3048,7 @@
                 a.netBalanceMin >= 0 ? 'Zamanında / Pozitif Bakiye' : 'Geç / Negatif Bakiye'
             ])
         });
-        A.toast('Mesai ve Net Bakiye Ligi (.xlsx) raporu indirildi (A4 yazdırmaya hazır)');
+        A.toast('Mesai ve Net Bakiye Ligi (.xlsx) raporu indirildi');
     }
 
     function exportAnalyticsExcel() {
@@ -2709,7 +3086,7 @@
                 x.onTime >= 0.92 ? 'Zamanında (Hedef Üstü)' : 'Geç (İzlenmeli)'
             ])
         });
-        A.toast('İK Analitik Raporu (.xlsx) indirildi (A4 yazdırmaya hazır)');
+        A.toast('İK Analitik Raporu (.xlsx) indirildi');
     }
 
     function exportLateExcel() {
@@ -2784,7 +3161,7 @@
                 return ['AL-' + a.id, a.ago + ' önce', e.sicil, e.name, brName(a.branch), D.ALERT_TYPES[a.type], a.sev === 'HIGH' ? 'Yüksek' : a.sev === 'MED' ? 'Orta' : 'Düşük', a.resolved ? 'Çözüldü' : 'Bekliyor'];
             })
         });
-        A.toast('BT Güvenlik ve Denetim Raporu (.xlsx) indirildi (A4 yazdırmaya hazır)');
+        A.toast('BT Güvenlik ve Denetim Raporu (.xlsx) indirildi');
     }
 
     function exportOneExcel(empId) {
@@ -3036,8 +3413,32 @@
         'tk-progress': el => { setTk(el.dataset.id, 'progress'); A.toast('Talep işleme alındı'); draw(false); },
         'tk-done': el => { setTk(el.dataset.id, 'done'); A.toast('Talep çözüldü olarak işaretlendi'); draw(false); },
         'al-sev': el => { S.ui.alert.sev = el.dataset.v; draw(false); },
-        'al-resolve': el => { const a = D.ALERTS.find(x => x.id === +el.dataset.id); a.resolved = true; audit('Güvenlik uyarısı kapatıldı', 'AL-' + a.id, 'SECURITY'); A.toast('Uyarı çözüldü'); draw(false); },
-        'al-block': el => { const a = D.ALERTS.find(x => x.id === +el.dataset.id), d = D.DEVICES.find(x => x.empId === a.empId); a.resolved = true; if (d) d.status = 'BLOCKED'; audit('Cihaz engellendi', emp(a.empId).sicil, 'SECURITY'); A.toast('Cihaz engellendi'); draw(false); },
+        'al-resolve': syncGuard(async el => {
+            const a = D.ALERTS.find(x => x.id === +el.dataset.id);
+            if (!a) return;
+            a.resolved = true;
+            if (a.code) {
+                try { await postJson('/api/v1/alerts', { code: a.code }, 'PATCH'); } catch (_) {}
+            }
+            audit('Güvenlik uyarısı kapatıldı', a.code || ('AL-' + a.id), 'SECURITY');
+            A.toast('Uyarı çözüldü olarak işaretlendi');
+            const synced = await D.syncAllFromPostgres({ force: true });
+            if (!synced) draw(false);
+        }),
+        'al-block': syncGuard(async el => {
+            const a = D.ALERTS.find(x => x.id === +el.dataset.id);
+            if (!a) return;
+            const d = D.DEVICES.find(x => x.empId === a.empId);
+            a.resolved = true;
+            if (d) d.status = 'BLOCKED';
+            if (a.code) {
+                try { await postJson('/api/v1/alerts', { code: a.code }, 'PATCH'); } catch (_) {}
+            }
+            audit('Cihaz engellendi', emp(a.empId) ? emp(a.empId).sicil : ('AL-' + a.id), 'SECURITY');
+            A.toast('Cihaz engellendi ve uyarı kapatıldı');
+            const synced = await D.syncAllFromPostgres({ force: true });
+            if (!synced) draw(false);
+        }),
         'dv-unbind': el => { const d = D.DEVICES.find(x => x.id === el.dataset.id); d.status = 'PENDING'; audit('Cihaz eşlemesi sıfırlandı', d.id, 'DEVICE'); A.toast('Eşleme sıfırlandı'); draw(false); },
         'dv-unblock': el => { const d = D.DEVICES.find(x => x.id === el.dataset.id); d.status = 'BOUND'; audit('Cihaz engeli kaldırıldı', d.id, 'DEVICE'); A.toast('Engel kaldırıldı'); draw(false); },
         'au-cat': el => { S.ui.audit.cat = el.dataset.v; draw(false); },
@@ -3512,6 +3913,17 @@
                 el.disabled = false;
             }
         }),
+        'rpt-open': el => {
+            if (el.target && el.target.closest && el.target.closest('[data-act^="export-"]')) return;
+            S.ui.reportId = el.dataset.id || null;
+            draw(false);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        },
+        'rpt-close': () => {
+            S.ui.reportId = null;
+            draw(false);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        },
         'rpt-print': () => { window.print(); },
         'modal-close': closeModal
     };
@@ -3658,9 +4070,7 @@
         });
         $('#authLogo').style.color = '#fff'; $('#sideLogo').style.color = 'var(--charcoal)';
         syncTheme();
-        if (D.syncEmployeesFromBackend) {
-            D.syncEmployeesFromBackend(() => { if (S.user) draw(false); });
-        }
+        D.syncAllFromPostgres();
         $('#themeBtn').onclick = () => { const t = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'; localStorage.setItem('atf_theme', t); syncTheme(); if (S.user) draw(false); };
 
         $('#portalSeg').addEventListener('click', e => { const b = e.target.closest('.seg-btn'); if (!b) return; $$('#portalSeg .seg-btn').forEach(x => { x.classList.toggle('is-active', x === b); x.setAttribute('aria-selected', x === b); }); S.portal = b.dataset.portal; A.placeSeg($('#portalSeg')); $('#loginError').hidden = true; });

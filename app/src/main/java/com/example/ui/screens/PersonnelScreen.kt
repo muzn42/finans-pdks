@@ -193,7 +193,100 @@ fun PersonnelScreen(viewModel: MainViewModel) {
         }
     }
 
-    // Son işlem geri bildirimi ve kurumsal harmonik ses efekti
+    // Geliştirici Seçenekleri / Sahte Konum (Mock GPS) canlı güvenlik denetimi
+    var mockSecurityReport by remember {
+        mutableStateOf(LocationHelper.inspectDeviceMockSecurity(context, userLocation))
+    }
+    var showDevMockWarningDialog by remember { mutableStateOf(false) }
+    var lastWarnedState by remember { mutableStateOf(false) }
+
+    LaunchedEffect(userLocation) {
+        while (true) {
+            val report = LocationHelper.inspectDeviceMockSecurity(context, userLocation)
+            mockSecurityReport = report
+            if (report.hasSecurityWarning && !lastWarnedState) {
+                lastWarnedState = true
+                showDevMockWarningDialog = true
+                SoundEffectPlayer.playWarningTone(context)
+            } else if (!report.hasSecurityWarning) {
+                lastWarnedState = false
+                showDevMockWarningDialog = false
+            }
+            delay(1500L)
+        }
+    }
+
+    val openDeveloperSettings = {
+        runCatching {
+            val intent = Intent(android.provider.Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+        }.onFailure {
+            runCatching {
+                val fallback = Intent(android.provider.Settings.ACTION_SETTINGS).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(fallback)
+            }
+        }
+    }
+
+    if (showDevMockWarningDialog && mockSecurityReport.hasSecurityWarning) {
+        AlertDialog(
+            onDismissRequest = { showDevMockWarningDialog = false },
+            title = {
+                Text(
+                    text = mockSecurityReport.summaryTitle,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 16.sp,
+                    color = StatusBad
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = mockSecurityReport.summaryMessage,
+                        fontSize = 13.5.sp,
+                        lineHeight = 19.sp,
+                        color = InkPrimary
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = StatusBadSoft,
+                        border = BorderStroke(1.dp, StatusBad.copy(alpha = 0.35f))
+                    ) {
+                        Text(
+                            text = "Kurumsal PDKS Güvenlik Kuralı: Geliştirici Seçenekleri veya Sahte Konum açıkken yapılan yoklama denemeleri otomatik olarak reddedilir ve İK / BT birimlerine güvenlik ihlali olarak raporlanır.",
+                            fontSize = 11.5.sp,
+                            lineHeight = 16.sp,
+                            color = StatusBad,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(10.dp)
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDevMockWarningDialog = false
+                        openDeveloperSettings()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = StatusBad)
+                ) {
+                    Text("Geliştirici Ayarlarını Aç", color = Color.White, fontSize = 12.sp)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDevMockWarningDialog = false }) {
+                    Text("Anladım", color = InkSecondary)
+                }
+            }
+        )
+    }
+
+    // Son işlem geri bildirimi ve kurumsal harmonik ses efekti + sonuç dialogu
     LaunchedEffect(actionResult) {
         actionResult?.let { res ->
             val msg = when (res) {
@@ -219,8 +312,14 @@ fun PersonnelScreen(viewModel: MainViewModel) {
                 }
             }
             Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-            viewModel.dismissActionResult()
         }
+    }
+
+    actionResult?.let { res ->
+        AttendanceResultDialog(
+            result = res,
+            onDismiss = { viewModel.dismissActionResult() }
+        )
     }
 
     LazyColumn(
@@ -230,6 +329,65 @@ fun PersonnelScreen(viewModel: MainViewModel) {
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+        // 0. GELİŞTİRİCİ SEÇENEKLERİ / SAHTE KONUM GÜVENLİK UYARI KARTI
+        if (mockSecurityReport.hasSecurityWarning) {
+            item(key = "mock_dev_security_warning") {
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = StatusBadSoft,
+                    border = BorderStroke(1.5.dp, StatusBad)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = "Güvenlik Uyarısı",
+                                tint = StatusBad,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text(
+                                text = mockSecurityReport.summaryTitle,
+                                color = StatusBad,
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                        }
+                        Text(
+                            text = mockSecurityReport.summaryMessage,
+                            color = InkPrimary,
+                            fontSize = 12.sp,
+                            lineHeight = 17.sp
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            Button(
+                                onClick = { openDeveloperSettings() },
+                                colors = ButtonDefaults.buttonColors(containerColor = StatusBad),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = "Geliştirici Ayarlarını Kapat",
+                                    color = Color.White,
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // 1. ANA YOKLAMA KARTI (Çok Katmanlı Kuantum Giriş / Çıkış Buton Animasyonu)
         item(key = "punch_orb_card") {
             Surface(

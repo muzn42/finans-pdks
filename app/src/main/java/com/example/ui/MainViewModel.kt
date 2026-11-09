@@ -251,7 +251,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (list.isNotEmpty() && _selectedBranch.value == null) {
                     val defaultB = list.find { it.isDefault } ?: list.first()
                     _selectedBranch.value = defaultB
-                    setSimulatedDistance(2.5)
+                    if (!_isRealGpsActive.value) {
+                        setSimulatedDistance(2.5)
+                    } else {
+                        val (lat, lng) = LocationHelper.generateCoordinateAtDistance(
+                            centerLat = defaultB.latitude,
+                            centerLon = defaultB.longitude,
+                            distanceMeters = 2.5
+                        )
+                        _userLocation.value = _userLocation.value.copy(
+                            latitude = lat,
+                            longitude = lng,
+                            isSimulated = false
+                        )
+                    }
                 }
             }
         }
@@ -274,13 +287,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         branches.value.find { it.id == employee.branchId }?.let {
             _selectedBranch.value = it
-            setSimulatedDistance(distanceToBranch.value)
+            if (!_isRealGpsActive.value) {
+                setSimulatedDistance(distanceToBranch.value)
+            }
         }
     }
 
     fun selectBranch(branch: BranchEntity) {
         _selectedBranch.value = branch
-        setSimulatedDistance(distanceToBranch.value)
+        if (!_isRealGpsActive.value) {
+            setSimulatedDistance(distanceToBranch.value)
+        }
     }
 
     fun setSimulatedDistance(targetDistanceMeters: Double) {
@@ -303,6 +320,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun startRealGps(context: Context = getApplication()) {
         val appContext = context.applicationContext ?: getApplication()
         _isRealGpsActive.value = true
+        val sec = LocationHelper.inspectDeviceMockSecurity(appContext, _userLocation.value)
+        _userLocation.value = _userLocation.value.copy(
+            isSimulated = false,
+            isMock = sec.isMockLocationDetected || sec.isAllowMockSettingEnabled
+        )
         viewModelScope.launch {
             try {
                 LocationHelper.getLocationFlow(appContext).collect { loc ->

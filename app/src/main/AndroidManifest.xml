@@ -9,6 +9,21 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <queries>
+        <package android:name="com.lexa.fakegps" />
+        <package android:name="com.incorporateapps.fakegps.fre" />
+        <package android:name="com.incorporateapps.fakegps_route" />
+        <package android:name="ru.gavrikov.mocklocations" />
+        <package android:name="com.blogspot.newapphorizons.fakegps" />
+        <package android:name="com.evezzon.fakegps" />
+        <package android:name="com.gsmartstudio.fakegps" />
+        <package android:name="com.theappninjas.fakegpsjoystick" />
+        <package android:name="com.lkr.fakelocation" />
+        <package android:name="com.useapp.fakegps" />
+        <package android:name="org.hola.gpslocation" />
+        <package android:name="com.fly.gps" />
+    </queries>
+
     <application
         android:allowBackup="true"
         android:usesCleartextTraffic="true"

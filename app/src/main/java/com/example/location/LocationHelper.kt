@@ -2,9 +2,14 @@ package com.example.location
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
 import android.location.Location
+import android.location.LocationManager
 import android.os.Build
 import android.os.Looper
+import android.provider.Settings
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
@@ -27,9 +32,39 @@ data class UserLocationData(
     val isSimulated: Boolean = false
 )
 
+data class DeviceMockSecurityReport(
+    val isMockLocationDetected: Boolean,
+    val isDeveloperOptionsEnabled: Boolean,
+    val isAllowMockSettingEnabled: Boolean,
+    val detectedMockApps: List<String>,
+    val summaryTitle: String,
+    val summaryMessage: String
+) {
+    val hasSecurityWarning: Boolean
+        get() = isMockLocationDetected ||
+                isDeveloperOptionsEnabled ||
+                isAllowMockSettingEnabled ||
+                detectedMockApps.isNotEmpty()
+}
+
 object LocationHelper {
 
     const val STRICT_GEOFENCE_RADIUS_METERS = 30.0
+
+    private val KNOWN_MOCK_GPS_PACKAGES = setOf(
+        "com.lexa.fakegps",
+        "com.incorporateapps.fakegps.fre",
+        "com.incorporateapps.fakegps_route",
+        "ru.gavrikov.mocklocations",
+        "com.blogspot.newapphorizons.fakegps",
+        "com.evezzon.fakegps",
+        "com.gsmartstudio.fakegps",
+        "com.theappninjas.fakegpsjoystick",
+        "com.lkr.fakelocation",
+        "com.useapp.fakegps",
+        "org.hola.gpslocation",
+        "com.fly.gps"
+    )
 
     /**
      * Haversine formülü ile iki koordinat arasındaki mesafeyi metre cinsinden hesaplar.
@@ -83,6 +118,121 @@ object LocationHelper {
     }
 
     /**
+     * Cihazın Geliştirici Seçenekleri, Sahte Konum (ALLOW_MOCK_LOCATION),
+     * aktif LocationManager sağlayıcıları ve yüklü sahte GPS uygulamalarını denetler.
+     */
+    @SuppressLint("MissingPermission")
+    fun inspectDeviceMockSecurity(
+        context: Context,
+        currentLocation: UserLocationData? = null
+    ): DeviceMockSecurityReport {
+        val cr = context.contentResolver
+
+        val devOptionsEnabled = runCatching {
+            Settings.Global.getInt(cr, Settings.Global.DEVELOPMENT_SETTINGS_ENABLED, 0) != 0
+        }.getOrDefault(false)
+
+        val allowMockSetting = runCatching {
+            @Suppress("DEPRECATION")
+            Settings.Secure.getInt(cr, Settings.Secure.ALLOW_MOCK_LOCATION, 0) != 0
+        }.getOrDefault(false)
+
+        var providerMockDetected = currentLocation?.isMock == true
+        runCatching {
+            val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+            val providers = listOf(
+                LocationManager.GPS_PROVIDER,
+                LocationManager.NETWORK_PROVIDER,
+                LocationManager.PASSIVE_PROVIDER,
+                "fused"
+            )
+            for (provider in providers) {
+                val last = runCatching { lm?.getLastKnownLocation(provider) }.getOrNull()
+                if (last != null && isMockLocation(last)) {
+                    providerMockDetected = true
+                    break
+                }
+            }
+        }
+
+        val detectedApps = mutableListOf<String>()
+        runCatching {
+            val pm = context.packageManager
+            for (pkg in KNOWN_MOCK_GPS_PACKAGES) {
+                val info = runCatching {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        pm.getApplicationInfo(pkg, PackageManager.ApplicationInfoFlags.of(0))
+                    } else {
+                        @Suppress("DEPRECATION")
+                        pm.getApplicationInfo(pkg, 0)
+                    }
+                }.getOrNull()
+                if (info != null) {
+                    val label = runCatching { pm.getApplicationLabel(info).toString() }.getOrDefault(pkg)
+                    detectedApps.add(label)
+                }
+            }
+
+            // İzin tabanlı tarama (ACCESS_MOCK_LOCATION isteyen 3. parti uygulamalar)
+            val packages: List<PackageInfo> = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                pm.getInstalledPackages(PackageManager.PackageInfoFlags.of(PackageManager.GET_PERMISSIONS.toLong()))
+            } else {
+                @Suppress("DEPRECATION")
+                pm.getInstalledPackages(PackageManager.GET_PERMISSIONS)
+            }
+            for (pi in packages) {
+                if (pi.packageName == context.packageName) continue
+                val appInfo = pi.applicationInfo ?: continue
+                val isSystem = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0 ||
+                        (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+                if (isSystem) continue
+                val perms = pi.requestedPermissions ?: continue
+                if (perms.any { it == "android.permission.ACCESS_MOCK_LOCATION" }) {
+                    val label = runCatching { pm.getApplicationLabel(appInfo).toString() }.getOrDefault(pi.packageName)
+                    if (!detectedApps.contains(label)) {
+                        detectedApps.add(label)
+                    }
+                }
+            }
+        }
+
+        val title: String
+        val message: String
+        when {
+            providerMockDetected -> {
+                title = "🚫 Sahte Konum (Mock GPS) Tespit Edildi"
+                message = "Cihazınızda aktif sahte konum (Mock GPS) sinyali tespit edildi. Kurumsal güvenlik politikası gereği sahte konum açıkken yoklama yapılamaz."
+            }
+            allowMockSetting || detectedApps.isNotEmpty() -> {
+                val appList = detectedApps.joinToString(", ")
+                title = "🚫 Sahte Konum Uygulaması / Ayarı Aktif"
+                message = if (appList.isNotEmpty()) {
+                    "Cihazınızda sahte konum uygulaması ($appList) tespit edildi. Yoklama işlemi için sahte konum uygulamasını ve Geliştirici Seçeneklerini kapatın."
+                } else {
+                    "Geliştirici Seçeneklerinde 'Sahte Konum' ayarı açık tespit edildi. Yoklama işlemi için bu ayarı kapatmanız gerekmektedir."
+                }
+            }
+            devOptionsEnabled -> {
+                title = "⚠️ Geliştirici Seçenekleri Açık (Sahte Konum Riski)"
+                message = "Cihazınızda Geliştirici Seçenekleri açık durumda. Sahte konum (Mock GPS) suistimalini önlemek amacıyla canlı GPS ile yoklama yapmadan önce Geliştirici Seçeneklerini kapatmanız gerekmektedir."
+            }
+            else -> {
+                title = "Konum Güvenliği Doğrulandı"
+                message = "Gerçek GPS donanımı aktif."
+            }
+        }
+
+        return DeviceMockSecurityReport(
+            isMockLocationDetected = providerMockDetected,
+            isDeveloperOptionsEnabled = devOptionsEnabled,
+            isAllowMockSettingEnabled = allowMockSetting,
+            detectedMockApps = detectedApps,
+            summaryTitle = title,
+            summaryMessage = message
+        )
+    }
+
+    /**
      * Gerçek GPS lokasyon akışı
      */
     @SuppressLint("MissingPermission")
@@ -90,21 +240,40 @@ object LocationHelper {
         val fusedClient: FusedLocationProviderClient =
             LocationServices.getFusedLocationProviderClient(context)
 
-        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 3000L)
-            .setMinUpdateIntervalMillis(1500L)
-            .setMinUpdateDistanceMeters(0.5f)
-            .build()
-
-        val locationCallback = object : LocationCallback() {
-            override fun onLocationResult(result: LocationResult) {
-                val loc: Location? = result.lastLocation
+        // Açılışta son bilinen konumu hemen kontrol et (cihaz hareket etmese bile sahte konumu yakala)
+        runCatching {
+            val sec = inspectDeviceMockSecurity(context)
+            fusedClient.lastLocation.addOnSuccessListener { loc: Location? ->
                 if (loc != null) {
                     trySend(
                         UserLocationData(
                             latitude = loc.latitude,
                             longitude = loc.longitude,
                             accuracyMeters = loc.accuracy,
-                            isMock = isMockLocation(loc),
+                            isMock = isMockLocation(loc) || sec.isMockLocationDetected || sec.isAllowMockSettingEnabled,
+                            isSimulated = false
+                        )
+                    )
+                }
+            }
+        }
+
+        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 2500L)
+            .setMinUpdateIntervalMillis(1200L)
+            .setMinUpdateDistanceMeters(0f)
+            .build()
+
+        val locationCallback = object : LocationCallback() {
+            override fun onLocationResult(result: LocationResult) {
+                val loc: Location? = result.lastLocation
+                if (loc != null) {
+                    val sec = inspectDeviceMockSecurity(context)
+                    trySend(
+                        UserLocationData(
+                            latitude = loc.latitude,
+                            longitude = loc.longitude,
+                            accuracyMeters = loc.accuracy,
+                            isMock = isMockLocation(loc) || sec.isMockLocationDetected || sec.isAllowMockSettingEnabled,
                             isSimulated = false
                         )
                     )
