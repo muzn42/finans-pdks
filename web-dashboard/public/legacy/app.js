@@ -1308,20 +1308,20 @@
             const subeAdi = S.branch === 'ALL' ? 'Tüm Şubeler (6 Lokasyon)' : brName(S.branch);
 
             const kpiCards = [
-                { l: 'Toplam Personel', v: String(st.N), s: 'Aktif kadro', tone: '' },
-                { l: 'Zamanında Giriş', v: '%' + A.pctText(st.onTimePct), s: st.onTime + ' personel zamanında', tone: 'ok' },
-                { l: 'Toplam Gecikme', v: fmtMinDur(st.totalLateMin), s: st.late + ' personel geç kaldı', tone: 'bad' },
-                { l: 'Toplam Ek Mesai', v: A.numText(st.totalOvertimeH) + ' sa', s: 'Onaylı fazla çalışma', tone: 'ok' },
-                { l: 'Net Süre Bakiyesi', v: fmtMinSigned(st.netBalanceMin), s: 'Ek mesai − gecikme', tone: 'info' },
-                { l: 'Geç Kalan / Devamsız', v: st.late + ' / ' + st.absent, s: 'Ort. ' + Math.round(st.avgLate) + ' dk gecikme', tone: 'warn' }
+                { l: 'Toplam Personel', v: String(st.N), s: 'Aktif kadro', tone: '', icon: 'users' },
+                { l: 'Zamanında Giriş', v: '%' + A.pctText(st.onTimePct), s: st.onTime + ' personel zamanında', tone: 'ok', icon: 'check' },
+                { l: 'Toplam Gecikme', v: fmtMinDur(st.totalLateMin), s: st.late + ' personel geç kaldı', tone: 'bad', icon: 'clock' },
+                { l: 'Toplam Ek Mesai', v: A.numText(st.totalOvertimeH) + ' sa', s: 'Onaylı fazla çalışma', tone: 'ok', icon: 'up' },
+                { l: 'Net Süre Bakiyesi', v: fmtMinSigned(st.netBalanceMin), s: 'Ek mesai − gecikme', tone: 'info', icon: 'chart' },
+                { l: 'Geç Kalan / Devamsız', v: st.late + ' / ' + st.absent, s: 'Ort. ' + Math.round(st.avgLate) + ' dk gecikme', tone: 'warn', icon: 'alert' }
             ];
 
             const catalog = [
-                ['export-emps', 'Kurumsal Puantaj ve Devam Raporu', 'Yönetici özeti, departman matrisi ve personel bazlı giriş-çıkış, gecikme, ek mesai ve net bakiye tablosu.', 'Ana belge'],
-                ['export-leaderboards', 'Ek Mesai ve Net Süre Bakiyesi Ligi', 'En çok ek mesai yapanlar; net süre bakiyesinde en iyiler ve en kötüler sıralaması.', 'Sıralama'],
-                ['export-analytics', 'İK Performans ve Departman Analitiği', 'Departman bazlı katılım, fazla mesai yükü ve günlük eğilim kırılımı.', 'Analitik'],
-                ['export-late', 'Gecikme ve Devamsızlık Denetim Raporu', 'Geç kalan personel, gecikme günü ve şube kırılımı; disiplin süreci için.', 'Denetim'],
-                ['export-leaves', 'İzin ve Mazeret Yönetim Raporu', 'İzin taleplerinin tür, süre ve onay durumu dökümü.', 'İK kayıt']
+                ['export-emps', 'Kurumsal Puantaj ve Devam Raporu', 'Yönetici özeti, departman matrisi ve personel bazlı giriş-çıkış, gecikme, ek mesai ve net bakiye tablosu.', 'Ana belge', 'users'],
+                ['export-leaderboards', 'Ek Mesai ve Net Süre Bakiyesi Ligi', 'En çok ek mesai yapanlar; net süre bakiyesinde en iyiler ve en kötüler sıralaması.', 'Sıralama', 'chart'],
+                ['export-analytics', 'İK Performans ve Departman Analitiği', 'Departman bazlı katılım, fazla mesai yükü ve günlük eğilim kırılımı.', 'Analitik', 'activity'],
+                ['export-late', 'Gecikme ve Devamsızlık Denetim Raporu', 'Geç kalan personel, gecikme günü ve şube kırılımı; disiplin süreci için.', 'Denetim', 'alert'],
+                ['export-leaves', 'İzin ve Mazeret Yönetim Raporu', 'İzin taleplerinin tür, süre ve onay durumu dökümü.', 'İK kayıt', 'calendar']
             ];
 
             const rowsHtml = ds.map(x => `<tr>
@@ -1333,80 +1333,111 @@
                     <td>${netPill(x.netMin)}</td>
                     <td class="num">%${A.pctText(x.pct)}</td>
                 </tr>`).join('');
-            return `<div class="rpt-shell">
-              <article class="rpt-doc">
-                <header class="rpt-head">
-                  <img class="rpt-logo" src="assets/branding/albayrak_pdks_logo.svg" alt="Albayrak Finans kurumsal logosu" width="62" height="52">
-                  <div class="rpt-head-txt">
-                    <h2>ALBAYRAK TASARRUF FİNANSMAN A.Ş.</h2>
-                    <p>Personel Devam Kontrol Sistemi (PDKS) · İnsan Kaynakları Müdürlüğü</p>
-                    <p class="rpt-kunye"><span>Rapor No: <b>${esc(reportNo)}</b></span><span>Üretim: ${esc(stamp)}</span><span>Nüsha: Orijinal</span></p>
+
+            return `<div class="rpt-page">
+              <section class="card rpt-hero">
+                <div class="rpt-hero-main">
+                  <img class="rpt-hero-logo" src="assets/branding/albayrak_pdks_logo.svg" alt="Albayrak Finans kurumsal logosu" width="58" height="49">
+                  <div class="rpt-hero-txt">
+                    <span class="rpt-eyebrow">İnsan Kaynakları Müdürlüğü · Kurumsal Raporlama</span>
+                    <h2>Personel puantaj, devam ve performans raporları</h2>
+                    <p>${esc(rangeLabel())} dönemi için kurumsal antetli, A4 dikey yazdırmaya hazır OpenXML (.xlsx) belgeleri.</p>
+                    <div class="rpt-chips">
+                      <span class="pill mute">Rapor No: ${esc(reportNo)}</span>
+                      <span class="pill mute">Üretim: ${esc(stamp)}</span>
+                      <span class="pill info">${days.length} iş günü</span>
+                      <span class="pill mute">${esc(subeAdi)}</span>
+                    </div>
                   </div>
-                </header>
-                <div class="rpt-rule"></div>
-                <div class="rpt-title">
-                  <h1>PERSONEL PUANTAJ, DEVAM VE PERFORMANS RAPORU</h1>
-                  <p>Gecikme, fazla mesai, net süre bakiyesi ve 30 m şube geofence doğrulama özeti</p>
                 </div>
-                <dl class="rpt-meta">
-                  <div><dt>Rapor Dönemi</dt><dd>${esc(rangeLabel())}</dd></div>
-                  <div><dt>Şube Kapsamı</dt><dd>${esc(subeAdi)}</dd></div>
-                  <div><dt>İş Günü Sayısı</dt><dd>${days.length} iş günü</dd></div>
-                  <div><dt>Hazırlayan</dt><dd>${esc(hazirlayan)}</dd></div>
-                </dl>
+                <div class="rpt-hero-actions">
+                  <button type="button" class="btn btn-primary btn-sm" data-act="rpt-print">${ic('file')} A4 Yazdır</button>
+                  ${dlBtn('export-emps', 'Puantaj Excel (.xlsx)', { cls: 'btn-dark btn-sm' })}
+                </div>
+              </section>
 
-                <h3 class="rpt-sec"><span>1</span> Yönetici Özeti Göstergeleri</h3>
-                <div class="rpt-kpis">${kpiCards.map(k => `<div class="rpt-kpi ${k.tone}"><span>${esc(k.l)}</span><b>${esc(k.v)}</b><small>${esc(k.s)}</small></div>`).join('')}</div>
+              <div class="grid g-3 mt rpt-kpi-grid">
+                ${kpiCards.map(k => `<article class="card kpi rpt-kpi-card ${k.tone}">
+                  <div class="kpi-top"><span class="kpi-label">${esc(k.l)}</span><span class="kpi-ic ${k.tone}">${ic(k.icon)}</span></div>
+                  <div class="kpi-val">${esc(k.v)}</div>
+                  <div class="kpi-foot"><span>${esc(k.s)}</span></div>
+                </article>`).join('')}
+              </div>
 
-                <h3 class="rpt-sec"><span>2</span> Departman Bazlı Performans Özeti</h3>
-                <div class="rpt-tablewrap"><table class="rpt-table">
-                  <thead><tr><th>Departman</th><th>Personel</th><th>Ort. Giriş</th><th>Top. Ek Mesai</th><th>Top. Gecikme</th><th>Net Bakiye</th><th>Uyum</th></tr></thead>
-                  <tbody>${rowsHtml}</tbody>
-                </table></div>
-
-                <h3 class="rpt-sec"><span>3</span> Rapor Kataloğu ve İndirme</h3>
-                <p class="rpt-lead">Aşağıdaki belgeler seçili dönem ve şube kapsamı için <b>A4 dikey</b> yazdırmaya hazır, kurumsal antetli ve logolu <b>.xlsx</b> biçiminde üretilir. Her belgede rapor numarası, hazırlayan / onaylayan imza bloğu, tekrarlanan tablo başlığı ve sayfa numarası bulunur.</p>
-                <div class="rpt-catalog">${catalog.map((c, i) => `<div class="rpt-doc-row">
-                    <span class="rpt-doc-no">${String(i + 1).padStart(2, '0')}</span>
-                    <div class="rpt-doc-txt"><b>${esc(c[1])}</b><small>${esc(c[2])}</small></div>
+              <section class="rpt-section-head">
+                <div>
+                  <h3>Hızlı rapor indirme</h3>
+                  <p>Seçili dönem ve şube kapsamı için tek tıkla .xlsx indirin; her belgede rapor numarası, imza bloğu ve sayfa numarası bulunur.</p>
+                </div>
+                <span class="pill ok">${catalog.length} belge</span>
+              </section>
+              <div class="grid g-3 rpt-catalog-grid">
+                ${catalog.map((c, i) => `<article class="card rpt-card">
+                  <div class="rpt-card-top">
+                    <span class="rpt-card-no">${String(i + 1).padStart(2, '0')}</span>
                     <span class="rpt-tag">${esc(c[3])}</span>
-                    ${dlBtn(c[0], 'İndir (.xlsx)', { cls: 'btn-dark btn-sm' })}
-                  </div>`).join('')}</div>
-
-                <h3 class="rpt-sec"><span>4</span> Değerlendirme ve Metodoloji Notu</h3>
-                <ol class="rpt-notes">
-                  <li>Gecikme süresi, vardiya başlangıç saatine göre hesaplanan pozitif sapmadır.</li>
-                  <li>Ek mesai süresi, vardiya bitişinden sonra gerçekleşen onaylı çalışma süresidir.</li>
-                  <li>Net süre bakiyesi = <b>Toplam ek mesai − Toplam gecikme</b>. Negatif bakiye kayıp süreyi gösterir.</li>
-                  <li>Konum doğrulaması şube merkezine 30 metre yarıçapla sınırlıdır; sahte konum (mock GPS) tespiti blokajla sonuçlanır.</li>
-                  <li>Kayıtlar KVKK kapsamında yalnızca puantaj ve iş hukuku yükümlülükleri için işlenir.</li>
-                </ol>
-
-                <footer class="rpt-sign">
-                  <div class="rpt-sign-col"><span>Hazırlayan</span><b>${esc(hazirlayan)}</b></div>
-                  <div class="rpt-sign-col"><span>Onaylayan</span><b>İnsan Kaynakları Müdürlüğü</b></div>
-                </footer>
-                <p class="rpt-foot">Bu belge Albayrak Tasarruf Finansman A.Ş. PDKS sistemi tarafından otomatik üretilmiştir. Yetkisiz kopyalanması ve dağıtılması yasaktır.</p>
-              </article>
-
-              <aside class="rpt-side">
-                <section class="card flush">
-                  ${cardHead('Belge ayarları', 'Tüm çıktılar için geçerli')}
-                  <div class="rpt-spec">
-                    <div><span>Kağıt</span><b>A4 · Dikey</b></div>
-                    <div><span>Ölçek</span><b>1 sayfa genişliği</b></div>
-                    <div><span>Başlık tekrarı</span><b>Her sayfada</b></div>
-                    <div><span>Alt bilgi</span><b>Rapor no · Sayfa X / Y</b></div>
-                    <div><span>Kurumsal antet</span><b>Logo + unvan</b></div>
-                    <div><span>İmza bloğu</span><b>Hazırlayan / Onaylayan</b></div>
-                    <div><span>Format</span><b>OpenXML .xlsx</b></div>
+                    <span class="rpt-card-ic">${ic(c[4])}</span>
                   </div>
-                </section>
-                <section class="card flush mt">
-                  ${cardHead('Veri saklama', 'KVKK kapsamında')}
-                  <p class="rpt-kvkk">Giriş-çıkış ve konum doğrulama kayıtları yalnızca puantaj ve iş hukuku yükümlülükleri için işlenir. Saklama süresi sonunda kayıtlar silinir veya anonimleştirilir. Ayrıntılar için üst çubuktaki kilit simgesine tıklayın.</p>
-                </section>
-              </aside>
+                  <h4>${esc(c[1])}</h4>
+                  <p>${esc(c[2])}</p>
+                  ${dlBtn(c[0], 'Excel İndir (.xlsx)', { cls: 'btn-soft btn-sm btn-block' })}
+                </article>`).join('')}
+                <article class="card rpt-card rpt-card-print">
+                  <div class="rpt-card-top">
+                    <span class="rpt-card-no">06</span>
+                    <span class="rpt-tag">Çıktı</span>
+                    <span class="rpt-card-ic">${ic('file')}</span>
+                  </div>
+                  <h4>Kurumsal A4 Yazdırma</h4>
+                  <p>Kurumsal antetli puantaj önizlemesini A4 dikey yazdırın veya PDF olarak kaydedin.</p>
+                  <button type="button" class="btn btn-dark btn-sm btn-block" data-act="rpt-print">${ic('file')} Yazdır (Ctrl+P)</button>
+                </article>
+              </div>
+
+              <section class="card flush mt rpt-preview">
+                <div class="rpt-doc">
+                  <header class="rpt-head">
+                    <img class="rpt-logo" src="assets/branding/albayrak_pdks_logo.svg" alt="Albayrak Finans kurumsal logosu" width="62" height="52">
+                    <div class="rpt-head-txt">
+                      <h2>ALBAYRAK TASARRUF FİNANSMAN A.Ş.</h2>
+                      <p>Personel Devam Kontrol Sistemi (PDKS) · İnsan Kaynakları Müdürlüğü</p>
+                      <p class="rpt-kunye"><span>Rapor No: <b>${esc(reportNo)}</b></span><span>Üretim: ${esc(stamp)}</span><span>Nüsha: Orijinal</span></p>
+                    </div>
+                  </header>
+                  <div class="rpt-rule"></div>
+                  <div class="rpt-title">
+                    <h1>PERSONEL PUANTAJ, DEVAM VE PERFORMANS RAPORU</h1>
+                    <p>Gecikme, fazla mesai, net süre bakiyesi ve 30 m şube geofence doğrulama özeti</p>
+                  </div>
+                  <dl class="rpt-meta">
+                    <div><dt>Rapor Dönemi</dt><dd>${esc(rangeLabel())}</dd></div>
+                    <div><dt>Şube Kapsamı</dt><dd>${esc(subeAdi)}</dd></div>
+                    <div><dt>İş Günü Sayısı</dt><dd>${days.length} iş günü</dd></div>
+                    <div><dt>Hazırlayan</dt><dd>${esc(hazirlayan)}</dd></div>
+                  </dl>
+
+                  <h3 class="rpt-sec"><span>1</span> Departman Bazlı Performans Özeti</h3>
+                  <div class="rpt-tablewrap"><table class="rpt-table">
+                    <thead><tr><th>Departman</th><th>Personel</th><th>Ort. Giriş</th><th>Top. Ek Mesai</th><th>Top. Gecikme</th><th>Net Bakiye</th><th>Uyum</th></tr></thead>
+                    <tbody>${rowsHtml}</tbody>
+                  </table></div>
+
+                  <h3 class="rpt-sec"><span>2</span> Değerlendirme ve Metodoloji Notu</h3>
+                  <ol class="rpt-notes">
+                    <li>Gecikme süresi, vardiya başlangıç saatine göre hesaplanan pozitif sapmadır.</li>
+                    <li>Ek mesai süresi, vardiya bitişinden sonra gerçekleşen onaylı çalışma süresidir.</li>
+                    <li>Net süre bakiyesi = <b>Toplam ek mesai − Toplam gecikme</b>. Negatif bakiye kayıp süreyi gösterir.</li>
+                    <li>Konum doğrulaması şube merkezine 30 metre yarıçapla sınırlıdır; sahte konum (mock GPS) tespiti blokajla sonuçlanır.</li>
+                    <li>Kayıtlar KVKK kapsamında yalnızca puantaj ve iş hukuku yükümlülükleri için işlenir.</li>
+                  </ol>
+
+                  <footer class="rpt-sign">
+                    <div class="rpt-sign-col"><span>Hazırlayan</span><b>${esc(hazirlayan)}</b></div>
+                    <div class="rpt-sign-col"><span>Onaylayan</span><b>İnsan Kaynakları Müdürlüğü</b></div>
+                  </footer>
+                  <p class="rpt-foot">Bu belge Albayrak Tasarruf Finansman A.Ş. PDKS sistemi tarafından otomatik üretilmiştir. Yetkisiz kopyalanması ve dağıtılması yasaktır.</p>
+                </div>
+              </section>
             </div>`;
         }
     };
@@ -2913,6 +2944,7 @@
             acts['adm-edit-perms'](el);
             draw(false);
         },
+        'rpt-print': () => { window.print(); },
         'modal-close': closeModal
     };
 

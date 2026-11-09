@@ -16,10 +16,10 @@ import { LiveRealtimeHub } from "@/components/live/LiveRealtimeHub";
  */
 
 const PDKS_SCRIPTS = [
-  "/core-xlsx.js?v=9.9",
-  "/legacy/data.js?v=9.9",
-  "/legacy/app.js?v=9.9",
-  "/legacy/landing.js?v=9.9"
+  "/core-xlsx.js?v=9.10",
+  "/legacy/data.js?v=9.10",
+  "/legacy/app.js?v=9.10",
+  "/legacy/landing.js?v=9.10"
 ] as const;
 
 /** Her script tamamlandığında ince kırmızı boot çizgisinin ulaşacağı ilerleme. */
