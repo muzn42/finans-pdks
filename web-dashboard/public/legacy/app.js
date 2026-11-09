@@ -92,7 +92,7 @@
             leave: { f: 'pending', type: 'ALL' }, alert: { sev: 'ALL', type: 'ALL', show: 'open' },
             tk: { f: 'open', type: 'ALL', q: '' }, dev: { q: '', status: 'ALL', ver: 'ALL' }, audit: { cat: 'ALL' },
             policies: { geofence30m: true, mockGpsBlock: true, singleDevice: true, autoTimeout: true },
-            simBranch: 'ŞB-001', simDist: 14, brQ: ''
+            simBranch: 'ŞB-001', simDist: 14, brQ: '', branchRank: { q: '', limit: 10 }
         }
     };
     let fails = 0, lockUntil = 0, idleTimer = null, leaving = false;
@@ -231,6 +231,28 @@
     const searchEl = (id, val, ph) => `<label class="search">${ic('search')}<input id="${id}" data-bind="${id}" value="${esc(val)}" placeholder="${esc(ph)}" autocomplete="off"></label>`;
     const cardHead = (t, sub, right) => `<div class="card-head"><div><h3>${esc(t)}</h3>${sub ? `<p>${esc(sub)}</p>` : ''}</div>${right || ''}</div>`;
     const rank = (items, cls) => `<div class="rank">${items.map((it, i) => `<div class="rank-row"><div class="rank-top"><span>${esc(it.l)}</span><b>${it.v}</b></div><div class="bar-track"><div class="bar-fill ${it.cls || cls || ''}" style="--w:${it.w}%;--k:${i}"></div></div></div>`).join('')}</div>`;
+
+    /* Şubelere göre zamanında gelme: 54 şube kartı büyütmesin diye arama + İlk 10 / Tümü
+       ve kart içinde kaydırma (`.rank-scroll`) ile sınırlandırılır. */
+    function branchRankData() {
+        const q = (S.ui.branchRank.q || '').trim().toLocaleLowerCase('tr');
+        const rows = D.BRANCHES.map(b => {
+            const L = D.EMPLOYEES.filter(e => e.branch === b.code);
+            const p = A.clamp((L.filter(e => e.status === 'PRESENT').length / (L.length || 1)) * 100, 0, 100);
+            return { l: b.name, v: A.pctText(p) + '%', w: p, cls: p > 92 ? 'ok' : '', n: L.length };
+        }).filter(x => !q || x.l.toLocaleLowerCase('tr').includes(q))
+            .sort((a, b) => b.w - a.w || a.l.localeCompare(b.l, 'tr'));
+        return { rows, shown: S.ui.branchRank.limit > 0 ? rows.slice(0, S.ui.branchRank.limit) : rows };
+    }
+    function paintBranchRank() {
+        const host = $('#chBranch'); if (!host) return;
+        const { rows, shown } = branchRankData();
+        host.innerHTML = shown.length
+            ? rank(shown)
+            : `<div class="rank-empty">${esc(S.ui.branchRank.q ? 'Eşleşen şube yok.' : 'Şube verisi yok.')}</div>`;
+        const meta = $('#brRankMeta');
+        if (meta) meta.textContent = `${shown.length}/${rows.length} şube`;
+    }
     const empty = (t, s) => `<div class="empty"><b>${esc(t)}</b>${esc(s || '')}</div>`;
     const dndToolbar = () => `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;flex-wrap:wrap">
         <span class="muted" style="font-size:12.5px;display:inline-flex;align-items:center;gap:6px">${ic('grip')} Kutuları sürükleyip bırakarak kendi ekran düzeninizi oluşturabilirsiniz · <b>Dönem: ${esc(rangeLabel())}</b></span>
@@ -714,7 +736,18 @@
             </div>
 
             <div class="grid g-3 mt">
-                <section class="card">${cardHead('Şubelere göre zamanında gelme', rangeLabel())}<div id="chBranch"></div></section>
+                <section class="card">
+                    ${cardHead('Şubelere göre zamanında gelme', rangeLabel(), '<span class="pill info" id="brRankMeta"></span>')}
+                    <div class="rank-tools">
+                        <label class="search">${ic('search')}<input id="brRankQ" type="search" value="${esc(S.ui.branchRank.q)}" placeholder="Şube ara" autocomplete="off" aria-label="Şube ara"></label>
+                        <div class="seg" id="brRankSeg" role="group" aria-label="Şube listesi uzunluğu">
+                            <span class="seg-thumb"></span>
+                            <button type="button" class="seg-btn ${S.ui.branchRank.limit === 10 ? 'is-active' : ''}" data-rank-limit="10" aria-pressed="${S.ui.branchRank.limit === 10}">İlk 10</button>
+                            <button type="button" class="seg-btn ${S.ui.branchRank.limit === 0 ? 'is-active' : ''}" data-rank-limit="0" aria-pressed="${S.ui.branchRank.limit === 0}">Tümü</button>
+                        </div>
+                    </div>
+                    <div id="chBranch" class="rank-scroll"></div>
+                </section>
                 <section class="card">${cardHead('İzin & mazeret türleri', 'Onaylanan ve bekleyen talep dağılımı')}<div id="chLeaveType"></div></section>
                 <section class="card">${cardHead('Gecikme süresi trendi', 'Günlük ortalama gecikme (dk)')}<div id="chLateMin"></div></section>
             </div>
@@ -790,7 +823,17 @@
                 tip: x => `<b>${x.name}</b>Toplam Gecikme: ${x.value} sa · Ek Mesai: +${x.otH} sa`
             });
             A.areaChart($('#chOT'), { labels: d.map(x => x.label), series: [{ data: d.map(x => Math.round(x.overtimeH)) }], yFmt: v => v + ' sa', tip: (i, v) => `<b>${d[i].fullDate} (${d[i].dowName})</b>${v[0]} saat fazla mesai` });
-            $('#chBranch').innerHTML = rank(D.BRANCHES.map(b => { const L = D.EMPLOYEES.filter(e => e.branch === b.code), p = A.clamp((L.filter(e => e.status === 'PRESENT').length / (L.length || 1)) * 100, 0, 100); return { l: b.name, v: A.pctText(p) + '%', w: p, cls: p > 92 ? 'ok' : '' }; }));
+            paintBranchRank();
+            const rankQ = $('#brRankQ'), rankSeg = $('#brRankSeg');
+            if (rankSeg) A.placeSeg(rankSeg);
+            if (rankQ) rankQ.addEventListener('input', () => { S.ui.branchRank.q = rankQ.value; paintBranchRank(); });
+            if (rankSeg) rankSeg.addEventListener('click', e => {
+                const b = e.target.closest('.seg-btn'); if (!b) return;
+                S.ui.branchRank.limit = +b.dataset.rankLimit;
+                $$('#brRankSeg .seg-btn').forEach(x => { const on = x === b; x.classList.toggle('is-active', on); x.setAttribute('aria-pressed', String(on)); });
+                A.placeSeg(rankSeg);
+                paintBranchRank();
+            });
             const lt = D.LEAVE_TYPES.map((t, i) => ({ label: t, value: D.LEAVES.filter(l => l.type === t).length, color: ['#1C1D1F', '#E31E24', '#8E949C', '#D9DBDF'][i] }));
             A.donut($('#chLeaveType'), { items: lt, centerTop: D.LEAVES.length, centerSub: 'talep' });
             A.areaChart($('#chLateMin'), { labels: d.map(x => x.label), series: [{ data: d.map(x => Math.round(x.lateMin)) }], yFmt: v => v + ' dk', h: 200, tip: (i, v) => `<b>${d[i].fullDate}</b>${v[0]} dk ortalama` });
