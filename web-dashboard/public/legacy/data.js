@@ -130,10 +130,10 @@
         let status = 'PRESENT', inMin = null, late = 0, outMin = null, otMin = 0;
         if (r < 0.068) {
             status = 'LATE';
-            inMin = 9 * 60 + 4 + Math.floor(rnd() * 52);
-            late = inMin - 9 * 60;
+            inMin = 8 * 60 + 35 + 1 + Math.floor(rnd() * 52);
+            late = inMin - (8 * 60 + 35);
             outMin = 17 * 60 + 30 + Math.floor(rnd() * 45);
-            otMin = Math.max(0, outMin - 18 * 60);
+            otMin = Math.max(0, outMin - (17 * 60 + 30));
         } else if (r < 0.10) {
             status = 'LEAVE';
         } else if (r < 0.122) {
@@ -141,7 +141,7 @@
         } else {
             inMin = 8 * 60 + 5 + Math.floor((rnd() + rnd()) / 2 * 52);
             outMin = 17 * 60 + 30 + Math.floor(rnd() * 115);
-            otMin = Math.max(0, outMin - 18 * 60);
+            otMin = Math.max(0, outMin - (17 * 60 + 30));
         }
         const name = FN[(i * 7 + Math.floor(rnd() * 5)) % FN.length] + ' ' + LN[(i * 11 + 3) % LN.length];
         // Her personelin karakteristik "en çok geç kaldığı gün" ve "en çok mesai yaptığı gün" eğilimi
@@ -225,7 +225,7 @@
                     const otChance = r() + (day.dow === e.proneOtDow ? 0.35 : 0) + (e.workHabitBias > 0.55 ? 0.28 : 0);
                     if (otChance > 0.68) {
                         oMin = 20 + Math.floor(r() * 85) + (e.workHabitBias > 0.7 ? 25 : 0);
-                        outM = 18 * 60 + oMin;
+                        outM = 17 * 60 + 30 + oMin;
                     } else {
                         oMin = e.overtimeMin || 0;
                         outM = 17 * 60 + 32 + Math.floor(r() * 24) + oMin;
@@ -242,7 +242,7 @@
                 } else if (roll < 0.036 + lateThreshold) {
                     st = 'LATE';
                     lMin = 6 + Math.floor(r() * 38) + (day.dow === e.proneLateDow ? 11 : 0) + (e.workHabitBias < 0.2 ? 14 : 0);
-                    inM = 9 * 60 + lMin;
+                    inM = 8 * 60 + 35 + lMin;
                 } else {
                     st = 'PRESENT';
                     inM = 8 * 60 + 6 + Math.floor(r() * 48);
@@ -252,7 +252,7 @@
                     const otRoll = r() + (day.dow === e.proneOtDow ? 0.32 : 0) + (e.workHabitBias > 0.5 ? 0.25 : -0.1);
                     if (otRoll > 0.62) {
                         oMin = 18 + Math.floor(r() * 78) + (day.dow === e.proneOtDow ? 22 : 0) + (e.workHabitBias > 0.75 ? 30 : 0);
-                        outM = 18 * 60 + oMin;
+                        outM = 17 * 60 + 30 + oMin;
                     } else {
                         oMin = 0;
                         outM = 17 * 60 + 30 + Math.floor(r() * 25);

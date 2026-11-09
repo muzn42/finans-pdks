@@ -39,7 +39,11 @@ data class EmployeeEntity(
     val password: String = "123456",
     val isKvkkConsentGiven: Boolean = true,
     val kvkkConsentTimestamp: Long? = 1714000000000L,
-    val profileImageUrl: String = ""
+    val profileImageUrl: String = "",
+    // PostgreSQL shifts tablosundan gelen vardiya penceresi (dakika cinsinden)
+    val shiftStartMin: Int = 510, // 08:30
+    val shiftEndMin: Int = 1050, // 17:30
+    val shiftGraceMin: Int = 5
 )
 
 @Entity(tableName = "attendance_records")

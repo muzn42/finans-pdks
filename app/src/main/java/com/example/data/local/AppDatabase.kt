@@ -20,7 +20,7 @@ import java.util.Locale
         SecurityAlertEntity::class,
         NotificationEntity::class
     ],
-    version = 10,
+    version = 11,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -31,9 +31,10 @@ abstract class AppDatabase : RoomDatabase() {
         private var INSTANCE: AppDatabase? = null
 
         fun getDatabase(context: Context): AppDatabase {
+            val appContext = context.applicationContext
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
-                    context.applicationContext,
+                    appContext,
                     AppDatabase::class.java,
                     "finans_pdks_database"
                 )
@@ -43,7 +44,7 @@ abstract class AppDatabase : RoomDatabase() {
                         super.onCreate(db)
                         CoroutineScope(Dispatchers.IO).launch {
                             INSTANCE?.let { database ->
-                                seedInitialData(database.attendanceDao())
+                                seedInitialData(appContext, database.attendanceDao())
                             }
                         }
                     }
@@ -52,7 +53,7 @@ abstract class AppDatabase : RoomDatabase() {
                         super.onDestructiveMigration(db)
                         CoroutineScope(Dispatchers.IO).launch {
                             INSTANCE?.let { database ->
-                                seedInitialData(database.attendanceDao())
+                                seedInitialData(appContext, database.attendanceDao())
                             }
                         }
                     }
@@ -63,7 +64,46 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        private suspend fun seedInitialData(dao: AttendanceDao) {
+        /**
+         * PostgreSQL 18'den üretilmiş 500 personeli okur (bkz. scratch/export_android_seed.js).
+         * Asset bulunamazsa eski deterministik üretici yedek olarak kullanılır.
+         */
+        private fun loadEmployeesFromAsset(context: Context): List<EmployeeEntity>? {
+            return try {
+                val json = context.assets.open("pdks_employees.json")
+                    .bufferedReader(Charsets.UTF_8)
+                    .use { it.readText() }
+                val array = org.json.JSONArray(json)
+                val list = ArrayList<EmployeeEntity>(array.length())
+                for (i in 0 until array.length()) {
+                    val o = array.getJSONObject(i)
+                    val branchCode = o.optString("branchCode", "ŞB-001")
+                    val branchId = (branchCode.substringAfterLast("-").toIntOrNull() ?: 1).toLong()
+                    list.add(
+                        EmployeeEntity(
+                            id = o.optLong("id", 0L),
+                            employeeCode = o.optString("sicil"),
+                            fullName = o.optString("name"),
+                            email = o.optString("email", ""),
+                            department = o.optString("dept", ""),
+                            title = o.optString("title", ""),
+                            branchId = branchId,
+                            deviceId = o.optString("deviceId", "FN-DEV-9842"),
+                            role = "PERSONNEL",
+                            password = "123",
+                            shiftStartMin = o.optInt("shiftStartMin", 510),
+                            shiftEndMin = o.optInt("shiftEndMin", 1050),
+                            shiftGraceMin = o.optInt("shiftGraceMin", 5)
+                        )
+                    )
+                }
+                list.ifEmpty { null }
+            } catch (_: Exception) {
+                null
+            }
+        }
+
+        private suspend fun seedInitialData(context: Context, dao: AttendanceDao) {
             val branches = listOf(
                 BranchEntity(
                     id = 1,
@@ -770,21 +810,27 @@ abstract class AppDatabase : RoomDatabase() {
             )
             dao.insertBranches(branches)
 
-            val employees = MockDataGenerator.generate500Employees()
+            val employees = loadEmployeesFromAsset(context) ?: MockDataGenerator.generate500Employees()
             dao.insertEmployees(employees)
 
             val now = System.currentTimeMillis()
             val initialRecords = MockDataGenerator.generateSampleRecords(employees, branches)
             dao.insertAttendanceRecords(initialRecords)
 
-            // Seed sample security alert
+            val firstEmp = employees.firstOrNull()
+            val firstEmpId = firstEmp?.id ?: 501L
+            val firstEmpName = firstEmp?.fullName ?: "Caner Öztürk"
+            val firstEmpBranch = branches.firstOrNull { it.id == firstEmp?.branchId }?.name
+                ?: "Albayrak Finans Genel Müdürlük (Ataşehir)"
+
+            // Seed sample security alert (PostgreSQL seed'indeki ilk personel ile aynı)
             dao.insertSecurityAlert(
                 SecurityAlertEntity(
                     id = 1,
                     timestamp = now - (1 * 3600 * 1000),
-                    employeeId = 1,
-                    employeeName = "Ahmet Yılmaz",
-                    branchName = "Albayrak Finans Genel Müdürlük (Ataşehir)",
+                    employeeId = firstEmpId,
+                    employeeName = firstEmpName,
+                    branchName = firstEmpBranch,
                     alertType = "30M_VIOLATION_ATTEMPT",
                     message = "Personel şube merkezine 48.5 metre mesafeden giriş yapmayı denedi. 30 metre güvenlik kuralı uyarınca işlem engellendi.",
                     distanceMeters = 48.5,
@@ -792,17 +838,19 @@ abstract class AppDatabase : RoomDatabase() {
                 )
             )
 
-            // Seed sample notifications for İK & BT
+            // Seed sample notifications for İK & BT (gerçek PostgreSQL personel adlarıyla)
+            val nEmp2 = employees.getOrNull(1)?.fullName ?: "Deniz Yılmaz"
+            val nEmp3 = employees.getOrNull(2)?.fullName ?: "Melis Yılmaz"
             val initialNotifications = listOf(
                 NotificationEntity(
                     id = 1,
                     timestamp = now - (3 * 3600 * 1000 + 15 * 60 * 1000),
                     targetDepartment = "HR",
-                    title = "Mesai Girişi: Zeynep Kaya",
-                    message = "Zeynep Kaya (Maslak Şubesi) 08:45'te 2.1m mesafeden kurallara uygun giriş yaptı.",
+                    title = "Mesai Girişi: $nEmp2",
+                    message = "$nEmp2 08:32'de 2.1m mesafeden kurallara uygun giriş yaptı.",
                     category = "ATTENDANCE_IN",
-                    employeeName = "Zeynep Kaya",
-                    branchName = "Maslak Finans Merkezi Şubesi",
+                    employeeName = nEmp2,
+                    branchName = firstEmpBranch,
                     distanceMeters = 2.1,
                     isRead = false
                 ),
@@ -810,11 +858,11 @@ abstract class AppDatabase : RoomDatabase() {
                     id = 2,
                     timestamp = now - (2 * 3600 * 1000 + 40 * 60 * 1000),
                     targetDepartment = "HR",
-                    title = "⚠️ Geç Kalma Bildirimi: Caner Özdemir",
-                    message = "Caner Özdemir (Kadıköy Şubesi) 09:20'de (20 dk gecikmeli) giriş yaptı.",
+                    title = "⚠️ Geç Kalma Bildirimi: $nEmp3",
+                    message = "$nEmp3 08:48'de (13 dk gecikmeli) giriş yaptı.",
                     category = "ATTENDANCE_IN",
-                    employeeName = "Caner Özdemir",
-                    branchName = "Kadıköy Rıhtım Ticari Şube",
+                    employeeName = nEmp3,
+                    branchName = firstEmpBranch,
                     distanceMeters = 3.4,
                     isRead = false
                 ),
@@ -823,10 +871,10 @@ abstract class AppDatabase : RoomDatabase() {
                     timestamp = now - (1 * 3600 * 1000),
                     targetDepartment = "IT",
                     title = "🚨 30 Metre Sınırı İhlal Uyarısı!",
-                    message = "Ahmet Yılmaz şube merkezine 48.5m mesafedeyken giriş yapmaya çalıştı! Sistem işlemi durdurdu ve İK/BT'ye bildirdi.",
+                    message = "$firstEmpName şube merkezine 48.5m mesafedeyken giriş yapmaya çalıştı! Sistem işlemi durdurdu ve İK/BT'ye bildirdi.",
                     category = "GEOFENCE_BREACH",
-                    employeeName = "Ahmet Yılmaz",
-                    branchName = "Albayrak Finans Genel Müdürlük (Ataşehir)",
+                    employeeName = firstEmpName,
+                    branchName = firstEmpBranch,
                     distanceMeters = 48.5,
                     isRead = false
                 )

@@ -220,18 +220,19 @@ class PdksRepository(
         }
 
         // 30 METRE İÇERİSİNDE - İŞLEM ONAYLANDI
-        // Mesai ve Gecikme Hesaplaması (Mesai başlangıç 09:00, bitiş 18:00)
+        // Mesai ve gecikme hesabı, PostgreSQL shifts tablosundan gelen personel
+        // vardiyasına göre yapılır (varsayılan: 08:30 – 17:30, 5 dk tolerans).
         var lateMinutes = 0
         var overtimeMinutes = 0
+        val standardStartMinutes = employee.shiftStartMin + employee.shiftGraceMin
+        val standardEndMinutes = employee.shiftEndMin
         if (type == "GİRİŞ") {
             val totalMinutes = currentHour * 60 + currentMinute
-            val standardStartMinutes = 9 * 60 // 09:00
             if (totalMinutes > standardStartMinutes) {
                 lateMinutes = totalMinutes - standardStartMinutes
             }
         } else if (type == "ÇIKIŞ") {
             val totalMinutes = currentHour * 60 + currentMinute
-            val standardEndMinutes = 18 * 60 // 18:00
             if (totalMinutes > standardEndMinutes) {
                 overtimeMinutes = totalMinutes - standardEndMinutes
             }
