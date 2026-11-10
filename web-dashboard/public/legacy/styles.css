@@ -305,7 +305,7 @@ html.has-saved-session #authView { visibility: hidden; }
 .select:hover, .select:focus-within { border-color: #CFD2D8; }
 .select select { appearance: none; border: 0; outline: 0; background: transparent; font-weight: 600; font-size: 13px; color: var(--ink); padding-right: 18px; cursor: pointer; max-width: 190px;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23868B93' stroke-width='2.5' stroke-linecap='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right center; }
-.select select option { color: #17181A; }
+.select select option { color: var(--ink); background: var(--surface); }
 .select.plain { height: 32px; border-radius: 10px; }
 
 .page { padding: 8px 32px 56px; max-width: 1480px; width: 100%; margin: 0 auto; outline: 0; }
@@ -637,6 +637,8 @@ tbody tr { animation: rowIn .45s var(--ease) backwards; animation-delay: calc(va
 .pager .cselect-menu { top: auto; bottom: calc(100% + 6px); transform: translateY(6px) scale(.98); }
 .pager .cselect.is-open .cselect-menu { transform: none; }
 .cselect.is-open .cselect-menu { opacity: 1; transform: none; pointer-events: auto; }
+/* Açılır menü alttaki kartın arkasında kalmasın: kartı üst katmana taşı */
+.card.has-open-cselect { position: relative; z-index: 60; }
 .cselect-item {
     display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%;
     padding: 9px 11px; border-radius: 10px; font-size: 13px; font-weight: 600; color: var(--ink-2);
@@ -1072,7 +1074,9 @@ p { line-height: var(--lh-normal); }
     .rpt-hero-actions .btn { flex: 1 1 auto; }
 }
 
-/* Rapor sayfası yazdırma (Ctrl+P) — yalnızca kurumsal belge önizlemesi, metodoloji hariç */
+/* Rapor sayfası yazdırma (Ctrl+P) — yalnızca kurumsal belge önizlemesi, metodoloji hariç.
+   "Yazdır" butonu ise uygulama CSS'inden izole, bağımsız bir A4 belgesini (ATF.buildExecutivePrintHtml)
+   iframe içinde yazdırır; bu yüzden aşağıdaki kurallar yalnızca Ctrl+P önizlemesini kapsar. */
 @media print {
     @page { size: A4 portrait; margin: 10mm; }
     html, body { background: #fff !important; }
@@ -1094,7 +1098,6 @@ p { line-height: var(--lh-normal); }
     .rpt-sec { break-after: avoid; }
     .rpt-sign, .rpt-table tr { break-inside: avoid; }
 }
-
 
 /* =========================================================================
    PERSONEL LISTESI — SATIR ALTINDA ACILAN "DETAYLAR" PANELI
@@ -1400,9 +1403,36 @@ th.th-sort.is-sorted .sort-ind { opacity: 1; color: var(--red); }
 .shift-check { display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; font-size: 12px; color: var(--ink-2); }
 .shift-check input { accent-color: var(--red); margin-top: 2px; }
 .shift-list { display: grid; gap: 8px; }
-.shift-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--surface-2); }
+.shift-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--surface-2); flex-wrap: wrap; }
 .shift-item b { font-size: 12.5px; }
 .shift-item small { display: block; font-size: 11px; color: var(--muted); margin-top: 2px; }
+.shift-item .row-actions { flex-wrap: wrap; }
+.shift-form-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-bottom: 4px; border-bottom: 1px dashed var(--line); }
+.shift-form-head b { font-size: 12.5px; }
+.shift-assign { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.shift-assign select[multiple] { height: auto; min-height: 132px; padding: 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); font-weight: 500; font-size: 12.5px; }
+.shift-assign select[multiple] option { padding: 3px 6px; border-radius: 4px; }
+.shift-assign select[multiple] option:checked { background: var(--red-soft); color: var(--ink); }
+/* Açılır liste (popup) seçenekleri tarayıcıda beyaz zeminle açılır; koyu temada
+   metin okunur kalsın diye option renkleri tema değişkenleriyle açıkça verilir. */
+select option {
+    background: var(--surface);
+    color: var(--ink);
+    font-weight: 500;
+}
+select option:checked {
+    background: var(--red-soft);
+    color: var(--ink);
+}
+[data-theme="dark"] select option {
+    background: #1C1F24;
+    color: #F3F4F6;
+}
+[data-theme="dark"] select option:checked {
+    background: #3A1D1F;
+    color: #FFFFFF;
+}
+.shift-assign .muted { font-size: 11px; }
 .live-feed { display: grid; gap: 8px; max-height: 360px; overflow-y: auto; padding-right: 4px; scrollbar-width: thin; }
 .live-item { display: flex; align-items: flex-start; gap: 9px; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--surface-2); font-size: 12px; }
 .live-item b { display: block; font-size: 12.5px; color: var(--ink); }

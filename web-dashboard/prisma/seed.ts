@@ -306,7 +306,7 @@ async function main() {
         {
           employeeId: e.id,
           eventType: "CHECK_IN",
-          source: idx % 3 === 0 ? "QR_TURNSTILE" : "MOBILE_GEOFENCE",
+          source: "MOBILE_GEOFENCE",
           branchCode: e.branchCode,
           distanceMeters: e.distMeters,
           isMockGps: false,
@@ -316,21 +316,21 @@ async function main() {
         {
           employeeId: e.id,
           eventType: "LUNCH_OUT",
-          source: "QR_TURNSTILE",
+          source: "MOBILE_GEOFENCE",
           branchCode: e.branchCode,
           distanceMeters: 4.2,
           isMockGps: false,
-          note: "Öğle arası turnike çıkışı",
+          note: "Öğle arası çıkış",
           timestampUtc: lunchOutUtc
         },
         {
           employeeId: e.id,
           eventType: "LUNCH_IN",
-          source: "QR_TURNSTILE",
+          source: "MOBILE_GEOFENCE",
           branchCode: e.branchCode,
           distanceMeters: 3.8,
           isMockGps: false,
-          note: "Öğle arası turnike dönüşü",
+          note: "Öğle arası dönüş",
           timestampUtc: lunchInUtc
         }
       );
@@ -340,7 +340,7 @@ async function main() {
         accessSeed.push({
           employeeId: e.id,
           eventType: "CHECK_OUT",
-          source: idx % 3 === 0 ? "QR_TURNSTILE" : "MOBILE_GEOFENCE",
+          source: "MOBILE_GEOFENCE",
           branchCode: e.branchCode,
           distanceMeters: e.distMeters,
           isMockGps: false,
@@ -350,7 +350,7 @@ async function main() {
       }
     }
     await prisma.accessLog.createMany({ data: accessSeed });
-    console.log(`${accessSeed.length} adet gün içi AccessLog (mola/turnike/mobil) kaydı oluşturuldu.`);
+    console.log(`${accessSeed.length} adet gün içi AccessLog (mola/mobil konum) kaydı oluşturuldu.`);
   }
 
   // İzin Talepleri (Yıllık, Rapor, Saha ve Saatlik İzin dahil)

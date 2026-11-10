@@ -68,7 +68,9 @@ data class AttendanceRecordEntity(
     val lateMinutes: Int = 0, // 09:00'dan sonraki gecikme dakikası
     val overtimeMinutes: Int = 0, // 18:00'dan sonraki fazla mesai dakikası
     val verificationMethod: String = "ONE_TAP_GEOFENCE", // ONE_TAP_GEOFENCE, NFC, QR
-    val securityStatus: String = "VERIFIED" // VERIFIED, FLAGGED, EXCUSED
+    val securityStatus: String = "VERIFIED", // VERIFIED, FLAGGED, EXCUSED
+    val lateReasonCode: String = "", // Geç giriş gerekçe şablonu (örn. TRAFIK)
+    val lateReasonNote: String = "" // "Diğer" seçildiğinde personelin yazdığı açıklama
 )
 
 @Entity(tableName = "security_alerts")

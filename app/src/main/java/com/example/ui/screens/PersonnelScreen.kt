@@ -56,13 +56,16 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.example.data.local.BranchEntity
 import com.example.data.repository.AttendanceResult
+import com.example.location.LocationHelper
 import com.example.location.UserLocationData
 import com.example.ui.MainViewModel
 import com.example.ui.components.*
 import com.example.ui.theme.*
 import com.example.util.SoundEffectPlayer
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.cos
@@ -84,6 +87,9 @@ fun PersonnelScreen(viewModel: MainViewModel) {
     var showExcuseModal by remember { mutableStateOf(false) }
     var showBranchSelectorModal by remember { mutableStateOf(false) }
     var noteInput by remember { mutableStateOf("") }
+
+    // Geç giriş gerekçesi: aynı kayıt için "Daha Sonra" denildiyse tekrar açılmaz
+    var lateReasonDismissedId by remember { mutableStateOf(0L) }
 
     // Patlama / Dalga (Burst) Animasyon Tetikleyicisi
     val burstProgress = remember { Animatable(0f) }
@@ -202,7 +208,10 @@ fun PersonnelScreen(viewModel: MainViewModel) {
 
     LaunchedEffect(userLocation) {
         while (true) {
-            val report = LocationHelper.inspectDeviceMockSecurity(context, userLocation)
+            // Paket taraması ve ayar okumaları ana iş parçacığını meşgul etmesin.
+            val report = withContext(Dispatchers.IO) {
+                LocationHelper.inspectDeviceMockSecurity(context, userLocation)
+            }
             mockSecurityReport = report
             if (report.hasSecurityWarning && !lastWarnedState) {
                 lastWarnedState = true
@@ -315,11 +324,37 @@ fun PersonnelScreen(viewModel: MainViewModel) {
         }
     }
 
+    // Geç girişte önce gerekçe ekranı gösterilir; diğer sonuçlarda standart sonuç dialogu açılır.
+    val lateReasonRecord = (actionResult as? AttendanceResult.Success)?.record?.takeIf {
+        it.recordType == "GİRİŞ" &&
+                it.lateMinutes > 0 &&
+                it.lateReasonCode.isBlank() &&
+                it.id > 0L &&
+                it.id != lateReasonDismissedId
+    }
+
     actionResult?.let { res ->
-        AttendanceResultDialog(
-            result = res,
-            onDismiss = { viewModel.dismissActionResult() }
-        )
+        if (lateReasonRecord != null) {
+            LateReasonDialog(
+                lateMinutes = lateReasonRecord.lateMinutes,
+                checkInTime = lateReasonRecord.formattedTime,
+                onDismiss = {
+                    lateReasonDismissedId = lateReasonRecord.id
+                    viewModel.dismissActionResult()
+                },
+                onSubmit = { code, note ->
+                    viewModel.submitLateReason(lateReasonRecord.id, code, note)
+                    lateReasonDismissedId = lateReasonRecord.id
+                    viewModel.dismissActionResult()
+                    Toast.makeText(context, "Geç giriş gerekçeniz kaydedildi.", Toast.LENGTH_SHORT).show()
+                }
+            )
+        } else {
+            AttendanceResultDialog(
+                result = res,
+                onDismiss = { viewModel.dismissActionResult() }
+            )
+        }
     }
 
     LazyColumn(

@@ -13,7 +13,8 @@ export interface SseEventPayload {
     | "LEAVE_UPDATE"
     | "SECURITY_ALERT"
     | "EMPLOYEE_CRUD"
-    | "SHIFT_UPDATE";
+    | "SHIFT_UPDATE"
+    | "LATE_REASON_UPDATE";
   title: string;
   message: string;
   severity?: "info" | "ok" | "warn" | "bad";

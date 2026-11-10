@@ -80,7 +80,7 @@ export const AccessLogCreateSchema = z.object({
   eventType: z.enum(VALID_ACCESS_EVENTS, {
     errorMap: () => ({ message: "Geçersiz geçiş hareketi tipi." })
   }),
-  source: z.enum(["MOBILE_GEOFENCE", "QR_TURNSTILE", "WEB_MANUAL"]).default("MOBILE_GEOFENCE"),
+  source: z.enum(["MOBILE_GEOFENCE", "WEB_MANUAL"]).default("MOBILE_GEOFENCE"),
   branchCode: z.string().trim().default("ŞB-001"),
   distanceMeters: z.coerce.number().min(0).max(5000).default(5.4),
   isMockGps: z.boolean().default(false),
@@ -132,4 +132,27 @@ export const ShiftCreateSchema = z.object({
   breakMin: z.coerce.number().int().min(0).max(180).default(60),
   graceMin: z.coerce.number().int().min(0).max(60).default(5),
   isFlexible: z.boolean().default(false)
+});
+
+export const ShiftAssignSchema = z.object({
+  scope: z.enum(["all", "branches", "employees"]),
+  branchCodes: z.array(z.string().trim().min(1)).default([]),
+  employeeIds: z.array(z.coerce.number().int().positive()).default([])
+}).refine(
+  (v) => v.scope !== "branches" || v.branchCodes.length > 0,
+  { message: "En az bir şube seçmelisiniz.", path: ["branchCodes"] }
+).refine(
+  (v) => v.scope !== "employees" || v.employeeIds.length > 0,
+  { message: "En az bir personel seçmelisiniz.", path: ["employeeIds"] }
+);
+
+export const ShiftUpdateSchema = z.object({
+  code: z.string().trim().min(2).max(24).optional(),
+  name: z.string().trim().min(3).max(80).optional(),
+  startClock: z.string().regex(hhmmRegex, "Başlangıç saati SS:DD olmalıdır.").optional(),
+  endClock: z.string().regex(hhmmRegex, "Bitiş saati SS:DD olmalıdır.").optional(),
+  breakMin: z.coerce.number().int().min(0).max(180).optional(),
+  graceMin: z.coerce.number().int().min(0).max(60).optional(),
+  isFlexible: z.boolean().optional(),
+  assignment: ShiftAssignSchema.optional()
 });

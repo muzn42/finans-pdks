@@ -59,7 +59,7 @@ object PdksAnalysisService {
         • Güvenlik İncelemesi: Tamamlandı (Sistem Güvenli)
         • Sahte Konum (Mock GPS) Tespitleri: $mockCount vaka
         • 30 Metre Kuralı İhlal Denemeleri: $violations engellendi
-        • Şube İçi Ağ Entegrasyonu: Aktif (SSID & Kurumsal IP Doğrulaması)
+        • Şube İçi Ağ Entegrasyonu: Aktif (Kurumsal Wi-Fi Doğrulaması)
 
         🔍 Güvenlik Bulguları:
         - Tüm giriş-çıkış işlemleri şube yerel subnet (10.14.x.x / 10.16.x.x) ve 30m geofence koordinatlarıyla izlenmektedir.

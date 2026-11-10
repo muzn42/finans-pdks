@@ -251,19 +251,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (list.isNotEmpty() && _selectedBranch.value == null) {
                     val defaultB = list.find { it.isDefault } ?: list.first()
                     _selectedBranch.value = defaultB
+                    // Gerçek GPS aktifse koordinatları simülasyon değeriyle ezme.
                     if (!_isRealGpsActive.value) {
                         setSimulatedDistance(2.5)
-                    } else {
-                        val (lat, lng) = LocationHelper.generateCoordinateAtDistance(
-                            centerLat = defaultB.latitude,
-                            centerLon = defaultB.longitude,
-                            distanceMeters = 2.5
-                        )
-                        _userLocation.value = _userLocation.value.copy(
-                            latitude = lat,
-                            longitude = lng,
-                            isSimulated = false
-                        )
                     }
                 }
             }
@@ -313,7 +303,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             longitude = lng,
             accuracyMeters = 0.5f,
             isMock = false,
-            isSimulated = true
+            isSimulated = true,
+            hasRealFix = true
         )
     }
 
@@ -323,7 +314,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val sec = LocationHelper.inspectDeviceMockSecurity(appContext, _userLocation.value)
         _userLocation.value = _userLocation.value.copy(
             isSimulated = false,
-            isMock = sec.isMockLocationDetected || sec.isAllowMockSettingEnabled
+            isMock = sec.isMockLocationDetected || sec.isAllowMockSettingEnabled,
+            hasRealFix = false
         )
         viewModelScope.launch {
             try {
@@ -354,6 +346,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 userLng = loc.longitude,
                 isMock = loc.isMock,
                 isSimulated = loc.isSimulated,
+                hasRealFix = loc.hasRealFix,
                 note = note
             )
             _actionResult.value = result
@@ -374,6 +367,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 userLng = loc.longitude,
                 isMock = loc.isMock,
                 isSimulated = loc.isSimulated,
+                hasRealFix = loc.hasRealFix,
                 note = note
             )
             _actionResult.value = result
@@ -382,6 +376,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun dismissActionResult() {
         _actionResult.value = null
+    }
+
+    /* Geç giriş gerekçesini kayda işler; personel "Diğer" seçtiyse açıklama serbest metindir. */
+    fun submitLateReason(recordId: Long, code: String, note: String) {
+        if (recordId <= 0L) return
+        viewModelScope.launch {
+            repository.updateLateReason(recordId, code, note.trim())
+        }
     }
 
     fun markNotificationAsRead(id: Long) {

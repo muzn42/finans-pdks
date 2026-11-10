@@ -29,7 +29,9 @@ data class UserLocationData(
     val longitude: Double,
     val accuracyMeters: Float = 1.0f,
     val isMock: Boolean = false,
-    val isSimulated: Boolean = false
+    val isSimulated: Boolean = false,
+    /** Gerçek GPS sağlayıcısından en az bir konum sabitlemesi alındı mı? */
+    val hasRealFix: Boolean = false
 )
 
 data class DeviceMockSecurityReport(
@@ -161,7 +163,7 @@ object LocationHelper {
             for (pkg in KNOWN_MOCK_GPS_PACKAGES) {
                 val info = runCatching {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        pm.getApplicationInfo(pkg, PackageManager.ApplicationInfoFlags.of(0))
+                        pm.getApplicationInfo(pkg, PackageManager.ApplicationInfoFlags.of(0L))
                     } else {
                         @Suppress("DEPRECATION")
                         pm.getApplicationInfo(pkg, 0)
@@ -251,7 +253,8 @@ object LocationHelper {
                             longitude = loc.longitude,
                             accuracyMeters = loc.accuracy,
                             isMock = isMockLocation(loc) || sec.isMockLocationDetected || sec.isAllowMockSettingEnabled,
-                            isSimulated = false
+                            isSimulated = false,
+                            hasRealFix = true
                         )
                     )
                 }
@@ -274,7 +277,8 @@ object LocationHelper {
                             longitude = loc.longitude,
                             accuracyMeters = loc.accuracy,
                             isMock = isMockLocation(loc) || sec.isMockLocationDetected || sec.isAllowMockSettingEnabled,
-                            isSimulated = false
+                            isSimulated = false,
+                            hasRealFix = true
                         )
                     )
                 }

@@ -82,11 +82,21 @@ fun RecordsScreen(viewModel: MainViewModel) {
                     rec.branchName.contains(searchQuery, ignoreCase = true) ||
                     rec.formattedDate.contains(searchQuery, ignoreCase = true)
 
-            val dateMatch = if (customFromDate.isNotBlank() || customToDate.isNotBlank()) {
-                val f = customFromDate.ifBlank { "01.01.2000" }
-                val t = customToDate.ifBlank { "31.12.2099" }
-                rec.formattedDate in f..t || rec.formattedDate.reversed() in f..t
-            } else true
+            val dateMatch = when {
+                customFromDate.isNotBlank() || customToDate.isNotBlank() -> {
+                    val fromMs = parseDmyToMillis(customFromDate) ?: Long.MIN_VALUE
+                    val toRaw = parseDmyToMillis(customToDate) ?: Long.MAX_VALUE
+                    // Bitiş gününün tamamı dahil olsun
+                    val toMs = if (toRaw == Long.MAX_VALUE) toRaw else toRaw + DAY_MS - 1
+                    rec.timestamp in fromMs..toMs
+                }
+                else -> {
+                    // "Bugün / 7 Gün / 30 Gün / 60 Gün" seçimi kayıtları gerçekten süzer
+                    val cutoff = startOfTodayMillis() -
+                            (selectedPeriodDays.coerceAtLeast(1) - 1).toLong() * DAY_MS
+                    rec.timestamp >= cutoff
+                }
+            }
 
             typeMatch && queryMatch && dateMatch
         }
@@ -143,7 +153,7 @@ fun RecordsScreen(viewModel: MainViewModel) {
                                 ReportKpiItem("Geç Giriş", lateCount.toString(), "Mesai sonrası"),
                                 ReportKpiItem("30m Sınır Dışı", outsideCount.toString(), "Geofence ihlali")
                             ),
-                            headers = listOf("Tarih", "Saat", "Personel Ad Soyad", "Şube", "İşlem", "Mesafe (30m)", "Durum"),
+                            headers = listOf("Tarih", "Saat", "Personel Ad Soyad", "Şube", "İşlem", "Mesafe (30m)", "Durum", "Geç Gerekçesi"),
                             rows = filteredRecords.take(100).map { rec ->
                                 val statusText = when {
                                     !rec.isWithin5Meters -> "Alan Dışı (30m+)"
@@ -151,6 +161,9 @@ fun RecordsScreen(viewModel: MainViewModel) {
                                     rec.overtimeMinutes > 0 -> "+${rec.overtimeMinutes} dk Mesai"
                                     else -> "Zamanında"
                                 }
+                                val reasonText = if (rec.lateReasonCode.isBlank()) "—" else
+                                    lateReasonLabel(rec.lateReasonCode) +
+                                            (if (rec.lateReasonNote.isNotBlank()) " (${rec.lateReasonNote})" else "")
                                 listOf(
                                     rec.formattedDate,
                                     rec.formattedTime,
@@ -158,7 +171,8 @@ fun RecordsScreen(viewModel: MainViewModel) {
                                     rec.branchName,
                                     rec.recordType,
                                     String.format(Locale.US, "%.1f m", rec.distanceMeters),
-                                    statusText
+                                    statusText,
+                                    reasonText
                                 )
                             }
                         )
@@ -452,6 +466,15 @@ private fun MinimalRecordRowCard(
                             fontFamily = FontFamily.Monospace
                         )
                     }
+                    if (record.lateReasonCode.isNotBlank()) {
+                        Text(
+                            text = "Geç Kalma Gerekçesi: " + lateReasonLabel(record.lateReasonCode) +
+                                    (if (record.lateReasonNote.isNotBlank()) " — ${record.lateReasonNote}" else ""),
+                            color = if (record.lateReasonCode == LATE_REASON_OTHER_CODE) InkSecondary else AlbayrakRed,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
                     if (record.note.isNotBlank()) {
                         Text(
                             text = "Not: ${record.note}",
@@ -464,3 +487,27 @@ private fun MinimalRecordRowCard(
         }
     }
 }
+
+/* ---- Geç giriş gerekçesi ---- */
+private fun lateReasonLabel(code: String): String =
+    LATE_REASON_TEMPLATES.firstOrNull { it.code == code }?.label ?: code
+
+/* ---- Tarih aralığı yardımcıları (Kayıtlar ekranı) ---- */
+private const val DAY_MS = 86_400_000L
+
+private fun parseDmyToMillis(text: String): Long? {
+    val s = text.trim()
+    if (s.isBlank()) return null
+    return runCatching {
+        java.text.SimpleDateFormat("dd.MM.yyyy", java.util.Locale("tr", "TR"))
+            .apply { isLenient = false }
+            .parse(s)?.time
+    }.getOrNull()
+}
+
+private fun startOfTodayMillis(): Long = java.util.Calendar.getInstance().apply {
+    set(java.util.Calendar.HOUR_OF_DAY, 0)
+    set(java.util.Calendar.MINUTE, 0)
+    set(java.util.Calendar.SECOND, 0)
+    set(java.util.Calendar.MILLISECOND, 0)
+}.timeInMillis

@@ -987,23 +987,26 @@
         return Promise.resolve(logoBytesCache);
     }
 
-    /* Logo cizim parcasi (drawing1.xml) */
-    function logoDrawingXml(widthPx) {
+    /* Logo ve Exhibit Grafik cizim parcasi (drawing1.xml) */
+    function buildDrawingXml(items) {
         const emu = px => Math.round(px * 9525);
-        const cx = emu(widthPx);
-        const cy = emu(Math.round(widthPx * LOGO_ASPECT));
-        return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-  <xdr:oneCellAnchor>
-    <xdr:from><xdr:col>0</xdr:col><xdr:colOff>95250</xdr:colOff><xdr:row>1</xdr:row><xdr:rowOff>19050</xdr:rowOff></xdr:from>
+        const anchors = (items || []).map((it, idx) => {
+            const cx = emu(it.widthPx || 88);
+            const cy = emu(it.heightPx || Math.round((it.widthPx || 88) * LOGO_ASPECT));
+            const col = it.col || 0;
+            const row = it.row || 1;
+            const colOff = it.colOff != null ? it.colOff : 95250;
+            const rowOff = it.rowOff != null ? it.rowOff : 19050;
+            return `  <xdr:oneCellAnchor>
+    <xdr:from><xdr:col>${col}</xdr:col><xdr:colOff>${colOff}</xdr:colOff><xdr:row>${row}</xdr:row><xdr:rowOff>${rowOff}</xdr:rowOff></xdr:from>
     <xdr:ext cx="${cx}" cy="${cy}"/>
     <xdr:pic>
       <xdr:nvPicPr>
-        <xdr:cNvPr id="2" name="Albayrak Finans Logosu" descr="Albayrak Tasarruf Finansman A.Ş. kurumsal logosu"/>
+        <xdr:cNvPr id="${idx + 2}" name="${xmlEsc(it.name || ('Resim ' + (idx + 1)))}" descr="${xmlEsc(it.descr || '')}"/>
         <xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr>
       </xdr:nvPicPr>
       <xdr:blipFill>
-        <a:blip r:embed="rId1"/>
+        <a:blip r:embed="${it.rId || ('rId' + (idx + 1))}"/>
         <a:stretch><a:fillRect/></a:stretch>
       </xdr:blipFill>
       <xdr:spPr>
@@ -1012,14 +1015,23 @@
       </xdr:spPr>
     </xdr:pic>
     <xdr:clientData/>
-  </xdr:oneCellAnchor>
+  </xdr:oneCellAnchor>`;
+        }).join('\n');
+        return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+${anchors}
 </xdr:wsDr>`;
     }
 
-    const drawingRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    function buildDrawingRelsXml(items) {
+        const rels = (items || []).map((it, idx) =>
+            `  <Relationship Id="${it.rId || ('rId' + (idx + 1))}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/${it.mediaFile || ('image' + (idx + 1) + '.png')}"/>`
+        ).join('\n');
+        return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image1.png"/>
+${rels}
 </Relationships>`;
+    }
 
     const sheet1RelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
@@ -1037,11 +1049,640 @@
             .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
     }
 
+    /* =========================================================================
+       MCKINSEY / ZELAZNY STANDARDI VEKTÖREL EXHIBIT (GRAFİK) MOTORU
+       - Hem A4 Kurumsal Yazdırma (Vektörel SVG) hem de Excel .xlsx (300 DPI PNG)
+         tarafından ortak kullanılır.
+       - 3D, gölge, gereksiz lejant veya dekoratif gürültü yoktur.
+       - Her grafik doğrudan veri etiketli, sıfır taban çizgili ve tek vurgu renklidir.
+       ========================================================================= */
+    ATF.renderExhibitSvg = function (ex) {
+        if (!ex) return '';
+        const W = ex.width || 620;
+        const H = ex.height || 265;
+        const font = "'Plus Jakarta Sans','Segoe UI',Calibri,Arial,sans-serif";
+        const esc = ATF.esc;
+        const kind = ex.kind || 'hbar';
+        const figNo = ex.figNo || 'SERGİ 1';
+        const title = ex.title || '';
+        const subtitle = ex.subtitle || '';
+        const unit = ex.unit || '';
+        const source = ex.source || 'Kaynak: Albayrak Finans PDKS (PostgreSQL 18 canlı veri tabanı)';
+
+        // Üst başlık bloğu (McKinsey Exhibit Header: Fig No + Action Headline + Subtitle/Unit)
+        let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="background:#FFFFFF;font-family:${font}">`;
+        svg += `<rect x="0" y="0" width="${W}" height="${H}" fill="#FFFFFF"/>`;
+        svg += `<line x1="0" y1="1.5" x2="72" y2="1.5" stroke="#E11D24" stroke-width="3"/>`;
+        svg += `<line x1="72" y1="1.5" x2="${W}" y2="1.5" stroke="#CBD5E1" stroke-width="1"/>`;
+        svg += `<text x="0" y="18" font-size="9.5" font-weight="800" fill="#E11D24" letter-spacing="0.8">${esc(figNo.toLocaleUpperCase('tr-TR'))}</text>`;
+        if (unit) {
+            svg += `<text x="${W}" y="18" font-size="9" font-weight="600" fill="#64748B" text-anchor="end">${esc(unit)}</text>`;
+        }
+        svg += `<text x="0" y="34" font-size="12.5" font-weight="800" fill="#0F172A">${esc(title)}</text>`;
+        if (subtitle) {
+            svg += `<text x="0" y="48" font-size="9.8" font-weight="500" fill="#475569">${esc(subtitle)}</text>`;
+        }
+        svg += `<line x1="0" y1="55" x2="${W}" y2="55" stroke="#E2E8F0" stroke-width="1"/>`;
+
+        const topY = 64;
+        const botY = H - 24;
+        const plotH = botY - topY;
+
+        if (kind === 'hbar') {
+            // Yatay çubuk grafik + opsiyonel hedef çizgisi (ör. Departman Uyum Oranı vs %95 Hedef)
+            const items = (ex.data || []).slice(0, 8);
+            const n = Math.max(1, items.length);
+            const labelW = ex.labelWidth || 152;
+            const rightPad = 76;
+            const plotX = labelW;
+            const plotW = W - plotX - rightPad;
+            const maxVal = ex.max != null ? ex.max : Math.max(100, ...items.map(d => Math.abs(+d.value || 0)), ex.target || 0);
+            const rowH = plotH / n;
+            const barH = Math.min(18, Math.max(9, rowH * 0.56));
+            const xOf = v => plotX + Math.max(0, Math.min(1, (+v || 0) / (maxVal || 1))) * plotW;
+
+            // Sıfır ekseni
+            svg += `<line x1="${plotX}" y1="${topY}" x2="${plotX}" y2="${botY}" stroke="#94A3B8" stroke-width="1.2"/>`;
+
+            items.forEach((d, idx) => {
+                const cy = topY + (idx + 0.5) * rowH;
+                const by = cy - barH / 2;
+                const val = +d.value || 0;
+                const bw = Math.max(2, xOf(val) - plotX);
+                const isBelowTarget = ex.target != null ? (ex.lowerIsBetter ? val > ex.target : val < ex.target) : false;
+                const fill = d.color || (isBelowTarget ? '#E11D24' : (d.highlight ? '#0B7A53' : '#1E293B'));
+                const valTxt = d.display != null ? d.display : (String(val).replace('.', ',') + (ex.suffix || ''));
+
+                if (idx % 2 === 1) {
+                    svg += `<rect x="0" y="${topY + idx * rowH}" width="${W}" height="${rowH}" fill="#F8FAFC"/>`;
+                }
+                svg += `<text x="${plotX - 10}" y="${cy + 3.5}" font-size="10" font-weight="600" fill="#1E293B" text-anchor="end">${esc(d.label)}</text>`;
+                svg += `<rect x="${plotX}" y="${by}" width="${bw.toFixed(1)}" height="${barH.toFixed(1)}" rx="2" fill="${fill}"/>`;
+                svg += `<text x="${(plotX + bw + 6).toFixed(1)}" y="${cy + 3.5}" font-size="9.8" font-weight="700" fill="${fill}">${esc(valTxt)}</text>`;
+            });
+
+            if (ex.target != null) {
+                const tx = xOf(ex.target);
+                svg += `<line x1="${tx.toFixed(1)}" y1="${topY - 3}" x2="${tx.toFixed(1)}" y2="${botY + 2}" stroke="#E11D24" stroke-width="1.4" stroke-dasharray="4 3"/>`;
+                const tLbl = ex.targetLabel || ('Hedef: ' + String(ex.target).replace('.', ',') + (ex.suffix || ''));
+                svg += `<rect x="${Math.min(W - 95, Math.max(plotX, tx - 36)).toFixed(1)}" y="${topY - 9}" width="78" height="13" rx="2" fill="#FEF2F2" stroke="#FCA5A5" stroke-width="0.8"/>`;
+                svg += `<text x="${Math.min(W - 56, Math.max(plotX + 39, tx + 3)).toFixed(1)}" y="${topY}" font-size="8.5" font-weight="800" fill="#B91C1C" text-anchor="middle">${esc(tLbl)}</text>`;
+            }
+        } else if (kind === 'diverging') {
+            // Sıfır eksenli çift yönlü yatay bar (Net Süre Bakiyesi + / - dk)
+            const items = (ex.data || []).slice(0, 8);
+            const n = Math.max(1, items.length);
+            const labelW = ex.labelWidth || 156;
+            const rightPad = 56;
+            const plotX = labelW;
+            const plotW = W - plotX - rightPad;
+            const maxAbs = Math.max(30, ...items.map(d => Math.abs(+d.value || 0))) * 1.18;
+            const zeroX = plotX + plotW / 2;
+            const rowH = plotH / n;
+            const barH = Math.min(17, Math.max(9, rowH * 0.56));
+
+            svg += `<line x1="${zeroX.toFixed(1)}" y1="${topY}" x2="${zeroX.toFixed(1)}" y2="${botY}" stroke="#475569" stroke-width="1.2"/>`;
+            svg += `<text x="${zeroX.toFixed(1)}" y="${topY - 3}" font-size="8.5" font-weight="700" fill="#64748B" text-anchor="middle">0 dk (Denge)</text>`;
+
+            items.forEach((d, idx) => {
+                const cy = topY + (idx + 0.5) * rowH;
+                const by = cy - barH / 2;
+                const val = +d.value || 0;
+                const w = Math.max(2, (Math.abs(val) / maxAbs) * (plotW / 2));
+                const isPos = val >= 0;
+                const bx = isPos ? zeroX : (zeroX - w);
+                const fill = isPos ? '#0B7A53' : '#C8191E';
+                const valTxt = d.display != null ? d.display : ((val > 0 ? '+' : '') + val + ' dk');
+
+                if (idx % 2 === 1) {
+                    svg += `<rect x="0" y="${topY + idx * rowH}" width="${W}" height="${rowH}" fill="#F8FAFC"/>`;
+                }
+                svg += `<text x="${plotX - 10}" y="${cy + 3.5}" font-size="9.6" font-weight="600" fill="#1E293B" text-anchor="end">${esc(d.label)}</text>`;
+                svg += `<rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${w.toFixed(1)}" height="${barH.toFixed(1)}" rx="2" fill="${fill}"/>`;
+                const tx = isPos ? (zeroX + w + 5) : (zeroX - w - 5);
+                const anchor = isPos ? 'start' : 'end';
+                svg += `<text x="${tx.toFixed(1)}" y="${cy + 3.5}" font-size="9.2" font-weight="700" fill="${fill}" text-anchor="${anchor}">${esc(valTxt)}</text>`;
+            });
+        } else if (kind === 'waterfall') {
+            // McKinsey Köprü (Bridge / Waterfall) Grafiği
+            const steps = ex.data || [];
+            const n = Math.max(1, steps.length);
+            const L = 46, R = 24, B = 24;
+            const pW = W - L - R;
+            const pH = plotH - B;
+            let running = 0;
+            const computed = steps.map(s => {
+                const v = +s.value || 0;
+                if (s.isTotal) {
+                    const start = 0, end = v;
+                    running = v;
+                    return Object.assign({}, s, { start, end, v });
+                }
+                const start = running;
+                const end = running + v;
+                running = end;
+                return Object.assign({}, s, { start, end, v });
+            });
+            const allVals = [0, ...computed.flatMap(c => [c.start, c.end])];
+            const minV = Math.min(0, ...allVals);
+            const maxV = Math.max(10, ...allVals);
+            const span = (maxV - minV) * 1.18 || 1;
+            const yOf = v => topY + pH - ((v - minV) / span) * pH;
+            const zeroY = yOf(0);
+            const colW = Math.min(72, pW / n * 0.54);
+
+            svg += `<line x1="${L}" y1="${zeroY.toFixed(1)}" x2="${W - R}" y2="${zeroY.toFixed(1)}" stroke="#94A3B8" stroke-width="1.2"/>`;
+
+            computed.forEach((c, i) => {
+                const cx = L + (i + 0.5) * (pW / n);
+                const x = cx - colW / 2;
+                const y1 = yOf(Math.max(c.start, c.end));
+                const y2 = yOf(Math.min(c.start, c.end));
+                const h = Math.max(3, y2 - y1);
+                const fill = c.color || (c.isTotal ? '#1E293B' : (c.v >= 0 ? '#0B7A53' : '#C8191E'));
+                svg += `<rect x="${x.toFixed(1)}" y="${y1.toFixed(1)}" width="${colW.toFixed(1)}" height="${h.toFixed(1)}" rx="2.5" fill="${fill}"/>`;
+                if (i < computed.length - 1) {
+                    const nextX = L + (i + 1.5) * (pW / n) - colW / 2;
+                    const connY = yOf(c.end);
+                    svg += `<line x1="${(x + colW).toFixed(1)}" y1="${connY.toFixed(1)}" x2="${nextX.toFixed(1)}" y2="${connY.toFixed(1)}" stroke="#94A3B8" stroke-width="1" stroke-dasharray="3 2"/>`;
+                }
+                const lbl = c.display != null ? c.display : ((c.v > 0 && !c.isTotal ? '+' : '') + String(c.v).replace('.', ','));
+                const ly = c.v >= 0 || c.isTotal ? (y1 - 6) : (y2 + 12);
+                svg += `<text x="${cx.toFixed(1)}" y="${Math.max(topY + 9, ly).toFixed(1)}" font-size="10" font-weight="800" fill="${fill}" text-anchor="middle">${esc(lbl)}</text>`;
+                svg += `<text x="${cx.toFixed(1)}" y="${(topY + pH + 15).toFixed(1)}" font-size="9.5" font-weight="600" fill="#1E293B" text-anchor="middle">${esc(c.label)}</text>`;
+            });
+        } else if (kind === 'stacked100') {
+            // %100 Yığılmış Yatay Bar (örn. İzin Türü x Onay Durumu)
+            const rows = (ex.data || []).slice(0, 7);
+            const segKeys = ex.segments || [
+                { key: 'ok', label: 'Onaylandı', color: '#0B7A53' },
+                { key: 'warn', label: 'Bekliyor', color: '#B4690E' },
+                { key: 'bad', label: 'Reddedildi', color: '#C8191E' }
+            ];
+            const labelW = ex.labelWidth || 148;
+            const rightPad = 68;
+            const plotX = labelW;
+            const plotW = W - plotX - rightPad;
+            const legH = 16;
+            const availH = plotH - legH;
+            const n = Math.max(1, rows.length);
+            const rowH = availH / n;
+            const barH = Math.min(18, Math.max(10, rowH * 0.56));
+
+            // Üst kompakt lejant
+            let lx = plotX;
+            segKeys.forEach(sk => {
+                svg += `<rect x="${lx}" y="${topY - 2}" width="9" height="9" rx="2" fill="${sk.color}"/>`;
+                svg += `<text x="${lx + 13}" y="${topY + 6}" font-size="9" font-weight="700" fill="#334155">${esc(sk.label)}</text>`;
+                lx += 88;
+            });
+
+            rows.forEach((r, idx) => {
+                const cy = topY + legH + (idx + 0.5) * rowH;
+                const by = cy - barH / 2;
+                const tot = segKeys.reduce((s, sk) => s + (+r[sk.key] || 0), 0) || 1;
+                svg += `<text x="${plotX - 10}" y="${cy + 3.5}" font-size="9.8" font-weight="600" fill="#1E293B" text-anchor="end">${esc(r.label)}</text>`;
+                let curX = plotX;
+                segKeys.forEach(sk => {
+                    const v = +r[sk.key] || 0;
+                    if (v <= 0) return;
+                    const sw = (v / tot) * plotW;
+                    svg += `<rect x="${curX.toFixed(1)}" y="${by.toFixed(1)}" width="${Math.max(1.5, sw).toFixed(1)}" height="${barH.toFixed(1)}" fill="${sk.color}"/>`;
+                    if (sw >= 26) {
+                        svg += `<text x="${(curX + sw / 2).toFixed(1)}" y="${cy + 3.5}" font-size="8.8" font-weight="700" fill="#FFFFFF" text-anchor="middle">${v}</text>`;
+                    }
+                    curX += sw;
+                });
+                svg += `<text x="${(plotX + plotW + 8).toFixed(1)}" y="${cy + 3.5}" font-size="9.5" font-weight="700" fill="#334155">Top: ${r.total != null ? r.total : tot}</text>`;
+            });
+        } else if (kind === 'trend') {
+            // Zaman Serisi Çizgi + Hedef Eşiği + Nokta Etiketleri
+            const pts = ex.data || [];
+            const n = Math.max(1, pts.length);
+            const L = 42, R = 22, B = 22;
+            const pW = W - L - R;
+            const pH = plotH - B;
+            const vals = pts.map(p => +p.value || 0);
+            const minV = ex.min != null ? ex.min : Math.max(0, Math.floor(Math.min(...vals, ex.target || 100) - 6));
+            const maxV = ex.max != null ? ex.max : Math.ceil(Math.max(...vals, ex.target || 100) + 4);
+            const span = (maxV - minV) || 1;
+            const xOf = i => L + (n === 1 ? pW / 2 : (i * pW / (n - 1)));
+            const yOf = v => topY + pH - ((v - minV) / span) * pH;
+
+            for (let g = 0; g <= 3; g++) {
+                const gv = minV + (span * g / 3);
+                const gy = yOf(gv);
+                svg += `<line x1="${L}" y1="${gy.toFixed(1)}" x2="${W - R}" y2="${gy.toFixed(1)}" stroke="#E2E8F0" stroke-width="1"/>`;
+                svg += `<text x="${L - 6}" y="${(gy + 3).toFixed(1)}" font-size="8.8" fill="#64748B" text-anchor="end">${Math.round(gv)}${esc(ex.suffix || '')}</text>`;
+            }
+
+            if (ex.target != null) {
+                const ty = yOf(ex.target);
+                svg += `<line x1="${L}" y1="${ty.toFixed(1)}" x2="${W - R}" y2="${ty.toFixed(1)}" stroke="#E11D24" stroke-width="1.3" stroke-dasharray="4 3"/>`;
+                svg += `<text x="${L + 2}" y="${(ty - 4).toFixed(1)}" font-size="8.5" font-weight="700" fill="#E11D24">${esc(ex.targetLabel || ('Hedef: ' + ex.target + (ex.suffix || '')))}</text>`;
+            }
+
+            if (pts.length > 1) {
+                const poly = pts.map((p, i) => `${xOf(i).toFixed(1)},${yOf(+p.value || 0).toFixed(1)}`).join(' ');
+                const area = `M${xOf(0).toFixed(1)},${(topY + pH).toFixed(1)} L` + pts.map((p, i) => `${xOf(i).toFixed(1)},${yOf(+p.value || 0).toFixed(1)}`).join(' L') + ` L${xOf(n - 1).toFixed(1)},${(topY + pH).toFixed(1)} Z`;
+                svg += `<path d="${area}" fill="#1E293B" fill-opacity="0.07"/>`;
+                svg += `<polyline fill="none" stroke="#1E293B" stroke-width="2.2" points="${poly}"/>`;
+            }
+
+            const stepLbl = Math.max(1, Math.ceil(n / 7));
+            pts.forEach((p, i) => {
+                const px = xOf(i), py = yOf(+p.value || 0);
+                const below = ex.target != null && (+p.value || 0) < ex.target;
+                const dotCol = below ? '#E11D24' : '#0B7A53';
+                svg += `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${below ? 3.8 : 3}" fill="${dotCol}" stroke="#FFFFFF" stroke-width="1"/>`;
+                if (i === 0 || i === n - 1 || i % stepLbl === 0 || below) {
+                    svg += `<text x="${px.toFixed(1)}" y="${(py - 6).toFixed(1)}" font-size="8.4" font-weight="700" fill="${below ? '#C8191E' : '#1E293B'}" text-anchor="middle">${String(p.value).replace('.', ',')}${esc(ex.suffix || '')}</text>`;
+                }
+                if (i === 0 || i === n - 1 || i % stepLbl === 0) {
+                    svg += `<text x="${px.toFixed(1)}" y="${(topY + pH + 14).toFixed(1)}" font-size="8.6" fill="#475569" text-anchor="middle">${esc(p.label)}</text>`;
+                }
+            });
+        } else {
+            // Dikey Sütun / Pareto Grafiği (vbar)
+            const items = (ex.data || []).slice(0, 8);
+            const n = Math.max(1, items.length);
+            const L = 42, R = 18, B = 24;
+            const pW = W - L - R;
+            const pH = plotH - B;
+            const maxV = Math.max(1, ...items.map(d => +d.value || 0), ex.target || 0) * 1.18;
+            const yOf = v => topY + pH - ((+v || 0) / maxV) * pH;
+            const bw = Math.min(54, pW / n * 0.56);
+
+            svg += `<line x1="${L}" y1="${(topY + pH).toFixed(1)}" x2="${W - R}" y2="${(topY + pH).toFixed(1)}" stroke="#94A3B8" stroke-width="1.2"/>`;
+
+            const maxItemVal = Math.max(...items.map(d => +d.value || 0));
+            items.forEach((d, i) => {
+                const cx = L + (i + 0.5) * (pW / n);
+                const val = +d.value || 0;
+                const by = yOf(val);
+                const bh = Math.max(2, topY + pH - by);
+                const isPeak = val === maxItemVal && val > 0;
+                const fill = d.color || (isPeak ? '#E11D24' : '#1E293B');
+                const valTxt = d.display != null ? d.display : (String(val).replace('.', ',') + (ex.suffix || ''));
+
+                svg += `<rect x="${(cx - bw / 2).toFixed(1)}" y="${by.toFixed(1)}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}" rx="2" fill="${fill}"/>`;
+                svg += `<text x="${cx.toFixed(1)}" y="${(by - 5).toFixed(1)}" font-size="9.2" font-weight="700" fill="${fill}" text-anchor="middle">${esc(valTxt)}</text>`;
+                svg += `<text x="${cx.toFixed(1)}" y="${(topY + pH + 14).toFixed(1)}" font-size="9" font-weight="600" fill="#1E293B" text-anchor="middle">${esc(d.label)}</text>`;
+            });
+
+            if (ex.target != null && ex.target > 0) {
+                const ty = yOf(ex.target);
+                svg += `<line x1="${L}" y1="${ty.toFixed(1)}" x2="${W - R}" y2="${ty.toFixed(1)}" stroke="#64748B" stroke-width="1.2" stroke-dasharray="4 3"/>`;
+                svg += `<text x="${W - R}" y="${(ty - 4).toFixed(1)}" font-size="8.5" font-weight="700" fill="#475569" text-anchor="end">${esc(ex.targetLabel || ('Ort: ' + ex.target))}</text>`;
+            }
+        }
+
+        // Alt kaynak şeridi
+        svg += `<line x1="0" y1="${H - 15}" x2="${W}" y2="${H - 15}" stroke="#E2E8F0" stroke-width="0.8"/>`;
+        svg += `<text x="0" y="${H - 4}" font-size="8.2" fill="#64748B">${esc(source)}</text>`;
+        svg += `</svg>`;
+        return svg;
+    };
+
+    /* SVG dizgesini yüksek çözünürlüklü (300 DPI eşdeğeri) PNG Uint8Array baytlarına çevirir */
+    ATF.svgToPngBytes = function (svgMarkup, widthPx, heightPx, scale) {
+        if (!svgMarkup || typeof document === 'undefined' || typeof Image === 'undefined') {
+            return Promise.resolve(null);
+        }
+        const w = widthPx || 620;
+        const h = heightPx || 265;
+        const sc = scale || 2.5;
+        return new Promise(resolve => {
+            try {
+                const img = new Image();
+                const svgBlob = new Blob([svgMarkup], { type: 'image/svg+xml;charset=utf-8' });
+                const url = URL.createObjectURL(svgBlob);
+                img.onload = () => {
+                    try {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = Math.round(w * sc);
+                        canvas.height = Math.round(h * sc);
+                        const ctx = canvas.getContext('2d');
+                        ctx.fillStyle = '#FFFFFF';
+                        ctx.fillRect(0, 0, canvas.width, canvas.height);
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        URL.revokeObjectURL(url);
+                        const dataUrl = canvas.toDataURL('image/png');
+                        const b64 = dataUrl.split(',')[1] || '';
+                        const bin = atob(b64);
+                        const bytes = new Uint8Array(bin.length);
+                        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+                        resolve(bytes.length ? bytes : null);
+                    } catch (err) {
+                        URL.revokeObjectURL(url);
+                        resolve(null);
+                    }
+                };
+                img.onerror = () => {
+                    URL.revokeObjectURL(url);
+                    resolve(null);
+                };
+                img.src = url;
+            } catch (e) {
+                resolve(null);
+            }
+        });
+    };
+
+    /* =========================================================================
+       KURUMSAL EXCEL (.xlsx) VE A4 YAYIN YARDIMCILARI (Sayısal Ayrıştırıcı & A4 Print)
+       ========================================================================= */
+    function parseCorporateNumericCell(val, colHeader) {
+        if (typeof val === 'number' && Number.isFinite(val)) {
+            const h = String(colHeader || '').toLocaleLowerCase('tr-TR');
+            if (h.includes('(%)') || h.includes('oran') || h.includes('uyum')) {
+                return { num: val > 1 ? +(val / 100).toFixed(4) : +val.toFixed(4), kind: 'pct' };
+            }
+            if (!Number.isInteger(val)) return { num: +val.toFixed(2), kind: 'dec' };
+            return { num: val, kind: 'int' };
+        }
+        if (typeof val !== 'string') return null;
+        const s = val.trim();
+        if (!s || s === '—' || s === '-') return null;
+        // Sicil, talep kodu, saat aralığı veya tarih formatlarını metin olarak koru
+        if (/^(ALB-|LV-|AL-|SH-|TK-|ŞB-)/i.test(s)) return null;
+        if (/^\d{2}:\d{2}/.test(s) || /^\d{2}\.\d{2}\.\d{4}/.test(s) || /^\d{4}-\d{2}-\d{2}/.test(s)) return null;
+
+        // "%94,2" veya "% 94.2" -> yüzde
+        const pctMatch = s.match(/^%\s*([+-]?\d+(?:[.,]\d+)?)$/) || s.match(/^([+-]?\d+(?:[.,]\d+)?)\s*%$/);
+        if (pctMatch) {
+            const n = parseFloat(pctMatch[1].replace(',', '.'));
+            if (Number.isFinite(n)) return { num: +(n / 100).toFixed(4), kind: 'pct' };
+        }
+
+        // "+2 sa 15 dk" veya "−1 sa 10 dk" -> toplam dakika (signed)
+        const hrMinMatch = s.match(/^([+−-])?\s*(\d+)\s*sa\s*(\d+)\s*dk$/i);
+        if (hrMinMatch) {
+            const sign = (hrMinMatch[1] === '-' || hrMinMatch[1] === '−') ? -1 : 1;
+            const totalMin = sign * (parseInt(hrMinMatch[2], 10) * 60 + parseInt(hrMinMatch[3], 10));
+            return { num: totalMin, kind: hrMinMatch[1] ? 'signed' : 'int' };
+        }
+
+        // "+120 dk", "-45 dk", "185 dk", "8,5 sa", "14 gün", "18 m"
+        const unitMatch = s.match(/^([+−-])?\s*(\d+(?:[.,]\d+)?)\s*(dk|sa|saat|gün|kişi|kayıt|m)?$/i);
+        if (unitMatch) {
+            const signStr = unitMatch[1] || '';
+            const sign = (signStr === '-' || signStr === '−') ? -1 : 1;
+            const raw = parseFloat(unitMatch[2].replace(',', '.'));
+            if (!Number.isFinite(raw)) return null;
+            const num = sign * raw;
+            if (signStr) return { num, kind: 'signed' };
+            if (!Number.isInteger(num)) return { num, kind: 'dec' };
+            return { num, kind: 'int' };
+        }
+        return null;
+    }
+
+    /* =========================================================================
+       A4 KURUMSAL YAYIN MOTORU — Bağımsız belge (kendi CSS'i, iframe ile yazdırır)
+       Uygulama stil dosyasından izoledir; koyu zemin/beyaz metin kullanmaz, bu
+       yüzden tarayıcı "arka plan grafikleri" kapalı olsa da okunaklı basar.
+       ========================================================================= */
+    ATF.buildExecutivePrintHtml = function (model) {
+        const m = model || {};
+        const esc = ATF.esc;
+        const nowStr = new Date().toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+        const reportNo = m.reportNo || ('PDKS-' + new Date().toISOString().slice(0, 10));
+        const scqa = m.scqa || [];
+        const kpis = m.kpis || [];
+        const exhibits = (m.exhibits || []).slice(0, 2);
+        const summaryHeaders = m.summaryHeaders || [];
+        const summaryRows = m.summaryRows || [];
+        const headers = m.headers || [];
+        const rows = (m.rows || []).slice(0, 100);
+        const notes = m.notes || [];
+
+        const toneOf = k => {
+            if (k.tone) return k.tone;
+            if (k.color === '#C8191E') return 'bad';
+            if (k.color === '#B4690E') return 'warn';
+            return 'ok';
+        };
+        const toneText = t => t === 'bad' ? 'Aksiyon Gerekli' : (t === 'warn' ? 'İzlenmeli' : 'Hedefle Uyumlu');
+
+        const scqaHtml = scqa.map(item => {
+            const tag = item.tag || item[0] || 'BULGU';
+            const txt = item.text || item[1] || '';
+            return `<div class="scqa-row"><span class="scqa-tag">${esc(tag)}</span><p>${esc(txt)}</p></div>`;
+        }).join('');
+
+        const scorecard = kpis.length ? `<table class="tbl">
+            <thead><tr><th style="width:26%">Performans Göstergesi (KPI)</th><th style="width:18%">Dönem Gerçekleşen</th><th style="width:30%">Kurumsal Hedef / Referans</th><th style="width:26%">Değerlendirme</th></tr></thead>
+            <tbody>${kpis.map(k => {
+                const t = toneOf(k);
+                return `<tr><td><b>${esc(k.label || k.l || '')}</b></td><td class="num"><b>${esc(k.value || k.v || '—')}</b></td><td>${esc(k.target || k.sub || k.s || 'Kurumsal Standart')}</td><td><span class="badge ${t}">${esc(toneText(t))}</span></td></tr>`;
+            }).join('')}</tbody></table>` : '';
+
+        const matrix = (summaryHeaders.length && summaryRows.length) ? `<table class="tbl">
+            <thead><tr>${summaryHeaders.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead>
+            <tbody>${summaryRows.map(r => `<tr>${r.map((c, ci) => `<td class="${ci === 0 ? '' : 'num'}">${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>` : '';
+
+        const detail = (headers.length && rows.length) ? `<table class="tbl tbl-detail">
+            <thead><tr>${headers.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead>
+            <tbody>${rows.map(r => `<tr>${r.map((c, ci) => `<td class="${ci <= 3 ? '' : 'num'}">${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>` : '';
+
+        const exhibitHtml = exhibits.map(ex => `<figure class="fig">${ATF.renderExhibitSvg(Object.assign({ width: 520, height: 240 }, ex))}</figure>`).join('');
+
+        const noteList = (notes.length ? notes : [
+            'Veriler Albayrak Finans PDKS PostgreSQL 18 veritabanından gerçekleşen puantaj kayıtlarından üretilmiştir.',
+            'Gecikme = İlk Giriş − (Personelin atanmış vardiya başlangıcı + tolerans). Onaylı saatlik izinler gecikmeden otomatik mahsup edilir.',
+            'Net Süre Bakiyesi = Toplam Onaylı Ek Mesai (dk) − Toplam Gecikme (dk). Şube geofence sınırı Haversine ≤ 30 metredir.'
+        ]).map(n => `<li>${esc(n)}</li>`).join('');
+
+        return `<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8"><title>${esc(m.fileName || m.title || 'Albayrak PDKS Raporu')}</title>
+<style>
+  @page { size: A4 portrait; margin: 12mm 12mm 14mm; }
+  * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  html, body { margin: 0; padding: 0; background: #fff; }
+  body { color: #0F172A; font-family: "Segoe UI", Calibri, Arial, sans-serif; font-size: 9pt; line-height: 1.42; }
+  @media screen { body { width: 210mm; margin: 0 auto; padding: 12mm; } }
+  h1, h2, h3, p, ol, ul { margin: 0; }
+  /* ---- Masthead ---- */
+  .mast { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; padding-bottom: 7px; border-bottom: 2px solid #0F172A; }
+  .mast-l { display: flex; gap: 10px; align-items: flex-start; min-width: 0; }
+  .logo { width: 42px; height: 36px; flex: 0 0 42px; }
+  .logo svg { width: 100%; height: 100%; display: block; }
+  .kicker { font-size: 7pt; font-weight: 800; letter-spacing: .09em; color: #C2181D; text-transform: uppercase; }
+  .mast h1 { font-size: 13pt; font-weight: 800; line-height: 1.22; margin-top: 2px; letter-spacing: -.01em; }
+  .mast .sub { font-size: 8pt; color: #475569; margin-top: 2px; }
+  .docbox { border-collapse: collapse; font-size: 7.2pt; width: 200px; flex: 0 0 200px; border: 1px solid #CBD5E1; }
+  .docbox th { text-align: left; padding: 2.4px 5px; background: #F1F5F9; color: #475569; font-weight: 800; letter-spacing: .04em; border-bottom: 1px solid #E2E8F0; border-right: 1px solid #E2E8F0; }
+  .docbox td { padding: 2.4px 5px; font-weight: 700; border-bottom: 1px solid #E2E8F0; }
+  /* ---- Action banner ---- */
+  .action { margin-top: 8px; padding: 8px 10px; border: 1px solid #E2E8F0; border-left: 3px solid #C2181D; break-inside: avoid; }
+  .action .lab { font-size: 6.8pt; font-weight: 800; letter-spacing: .08em; color: #C2181D; text-transform: uppercase; }
+  .action h2 { font-size: 10.2pt; font-weight: 800; line-height: 1.34; margin: 2px 0 5px; }
+  .scqa { padding-top: 5px; border-top: 1px solid #E2E8F0; }
+  .scqa-row { display: flex; gap: 6px; align-items: baseline; font-size: 7.6pt; padding: 1.5px 0; break-inside: avoid; }
+  .scqa-tag { flex: 0 0 132px; font-size: 6.4pt; font-weight: 800; letter-spacing: .04em; color: #0F172A; background: #EEF2F7; border: 1px solid #CBD5E1; padding: 1px 4px; border-radius: 2px; text-transform: uppercase; text-align: center; }
+  .scqa-row p { flex: 1 1 auto; min-width: 0; color: #1E293B; }
+  /* ---- Sections ---- */
+  .sec { margin-top: 11px; }
+  .sec-head { display: flex; align-items: baseline; gap: 7px; padding-bottom: 3px; margin-bottom: 5px; border-bottom: 1.2px solid #0F172A; break-after: avoid; }
+  .sec-no { font-size: 6.6pt; font-weight: 800; letter-spacing: .07em; color: #C2181D; text-transform: uppercase; }
+  .sec-head h3 { font-size: 8.6pt; font-weight: 800; letter-spacing: .02em; text-transform: uppercase; }
+  /* ---- Tables ---- */
+  .tbl { width: 100%; border-collapse: collapse; font-size: 7.8pt; font-variant-numeric: tabular-nums; }
+  .tbl thead { display: table-header-group; }
+  .tbl tr { break-inside: avoid; }
+  .tbl th { background: #EEF2F7; color: #0F172A; font-size: 6.8pt; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; text-align: left; padding: 3.4px 5px; border: 1px solid #CBD5E1; vertical-align: bottom; }
+  .tbl td { padding: 3px 5px; border: 1px solid #E2E8F0; color: #1E293B; }
+  .tbl tbody tr:nth-child(even) td { background: #F8FAFC; }
+  .tbl .num { text-align: right; white-space: nowrap; }
+  .badge { display: inline-block; font-size: 6.6pt; font-weight: 800; padding: 0.5px 4px; border-radius: 2px; border: 1px solid; }
+  .badge.ok { background: #EAF8F2; color: #0B7A53; border-color: #B7E3D1; }
+  .badge.warn { background: #FEF5E7; color: #9A5A08; border-color: #F3D6A8; }
+  .badge.bad { background: #FDECEC; color: #B0161B; border-color: #F4BFBF; }
+  /* ---- Exhibits ---- */
+  .figs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; break-inside: avoid; }
+  .fig { border: 1px solid #CBD5E1; padding: 5px 6px; margin: 0; }
+  .fig svg { width: 100%; height: auto; display: block; }
+  /* ---- Footer ---- */
+  .foot { margin-top: 12px; padding-top: 6px; border-top: 1.2px solid #0F172A; break-inside: avoid; }
+  .foot .notes { font-size: 7.2pt; color: #475569; }
+  .foot .notes b { color: #0F172A; letter-spacing: .03em; }
+  .foot ol { padding-left: 14px; margin-top: 2px; }
+  .sign { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 16px; text-align: center; }
+  .sign > div { border-top: 1px solid #64748B; padding-top: 3px; }
+  .sign span { display: block; font-size: 6.4pt; font-weight: 800; color: #64748B; letter-spacing: .05em; }
+  .sign b { display: block; font-size: 8pt; margin-top: 1px; }
+  .sign small { display: block; font-size: 6.6pt; color: #94A3B8; margin-top: 9px; }
+  .pbreak { break-before: page; }
+  /* Yalnızca ekranda görünen önizleme araç çubuğu; çıktıya girmez */
+  .bar { position: sticky; top: 0; z-index: 9; display: flex; align-items: center; gap: 10px; padding: 8px 12px; margin: 0 0 10px; background: #0F172A; color: #fff; font-size: 9pt; border-radius: 4px; }
+  .bar b { font-size: 9pt; letter-spacing: .02em; }
+  .bar .sp { flex: 1 1 auto; }
+  .bar button { font: inherit; font-weight: 700; cursor: pointer; padding: 5px 12px; border-radius: 4px; border: 1px solid transparent; background: #C2181D; color: #fff; }
+  .bar button.ghost { background: transparent; border-color: #475569; color: #E2E8F0; }
+  @media print { .bar { display: none !important; } }
+</style></head><body>
+  <div class="bar"><b>A4 Yönetim Raporu Önizlemesi</b><span class="sp"></span><button onclick="window.print()">Yazdır / PDF Kaydet</button><button class="ghost" onclick="window.close()">Kapat</button></div>
+  <header class="mast">
+    <div class="mast-l">
+      <div class="logo">${ATF.LOGO}</div>
+      <div>
+        <div class="kicker">Albayrak Tasarruf Finansman A.Ş. · Kurumsal Yönetim Raporu</div>
+        <h1>${esc(m.title)}</h1>
+        <p class="sub">${esc(m.subtitle || '')}</p>
+      </div>
+    </div>
+    <table class="docbox">
+      <tr><th>Belge No</th><td>${esc(reportNo)}</td></tr>
+      <tr><th>Gizlilik</th><td>HİZMETE ÖZEL</td></tr>
+      <tr><th>Dönem</th><td>${esc(m.period || 'Aktif Dönem')}</td></tr>
+      <tr><th>Kapsam</th><td>${esc(m.scope || 'Tüm Şubeler')}</td></tr>
+      <tr><th>Üretim</th><td>${esc(nowStr)}</td></tr>
+    </table>
+  </header>
+
+  ${m.actionTitle ? `<section class="action">
+    <div class="lab">Yönetici Sonuç Bildirimi (Executive Action Title)</div>
+    <h2>${esc(m.actionTitle)}</h2>
+    ${scqaHtml ? `<div class="scqa">${scqaHtml}</div>` : ''}
+  </section>` : ''}
+
+  ${scorecard ? `<section class="sec">
+    <div class="sec-head"><span class="sec-no">Bölüm 01</span><h3>Temel Performans Göstergeleri ve Hedef Karşılaştırması</h3></div>
+    ${scorecard}
+  </section>` : ''}
+
+  ${exhibitHtml ? `<section class="sec">
+    <div class="sec-head"><span class="sec-no">Bölüm 02</span><h3>Kantitatif Yönetim Sergileri (Exhibits)</h3></div>
+    <div class="figs">${exhibitHtml}</div>
+  </section>` : ''}
+
+  ${matrix ? `<section class="sec">
+    <div class="sec-head"><span class="sec-no">Bölüm 03</span><h3>${esc(m.summaryTitle || 'Birim ve Departman Performans Matrisi')}</h3></div>
+    ${matrix}
+  </section>` : ''}
+
+  ${detail ? `<section class="sec pbreak">
+    <div class="sec-head"><span class="sec-no">Bölüm 04</span><h3>Detaylı Puantaj ve Denetim Cetveli · ${rows.length} Kayıt</h3></div>
+    ${detail}
+  </section>` : ''}
+
+  <footer class="foot">
+    <div class="notes"><b>Metodoloji, Veri Kaynağı ve Denetim Notları:</b><ol>${noteList}</ol></div>
+    <div class="sign">
+      <div><span>Hazırlayan Birim / Yetkili</span><b>${esc(m.preparedBy || 'İnsan Kaynakları Analitik Birimi')}</b><small>İmza / Tarih</small></div>
+      <div><span>Kontrol Eden</span><b>PDKS &amp; Operasyon Kontrol</b><small>İmza / Tarih</small></div>
+      <div><span>Onaylayan Makam</span><b>${esc(m.approvedBy || 'İnsan Kaynakları Müdürlüğü')}</b><small>Mühür / İmza</small></div>
+    </div>
+  </footer>
+</body></html>`;
+    };
+
+    ATF.printExecutiveReport = function (model) {
+        const m = model || {};
+        if (!m.title) { window.print(); return; }
+        if (ATF.__printing) return;
+        ATF.__printing = true;
+
+        const html = ATF.buildExecutivePrintHtml(m);
+        const release = () => { ATF.__printing = false; };
+
+        // 1) Tercih edilen yol: kendi penceresinde A4 önizleme + yazdırma (uygulama CSS'i devrede değil)
+        let win = null;
+        try { win = window.open('', 'atfExecutiveReportPrint', 'width=1000,height=1200'); } catch (e) { win = null; }
+
+        if (win && win.document) {
+            try {
+                win.document.open();
+                win.document.write(html);
+                win.document.close();
+                try {
+                    win.addEventListener('afterprint', () => setTimeout(release, 400));
+                } catch (e) { }
+                setTimeout(() => {
+                    try { win.focus(); win.print(); } catch (e) { }
+                    setTimeout(release, 2000);
+                }, 320);
+                return;
+            } catch (e) {
+                try { win.close(); } catch (e2) { }
+            }
+        }
+
+        // 2) Açılır pencere engellendiyse: gizli çerçeve ile yazdır
+        let frame = document.getElementById('atfPrintFrame');
+        if (!frame) {
+            frame = document.createElement('iframe');
+            frame.id = 'atfPrintFrame';
+            frame.setAttribute('aria-hidden', 'true');
+            frame.setAttribute('title', 'A4 rapor çıktısı');
+            document.body.appendChild(frame);
+        }
+        frame.setAttribute('style', 'position:fixed;left:-20000px;top:0;width:210mm;height:297mm;border:0;opacity:0;pointer-events:none');
+
+        try {
+            const doc = frame.contentWindow.document;
+            doc.open();
+            doc.write(html);
+            doc.close();
+            try { frame.contentWindow.addEventListener('afterprint', release); } catch (e) { }
+            setTimeout(() => {
+                try { frame.contentWindow.focus(); frame.contentWindow.print(); } catch (e) { window.print(); }
+                setTimeout(release, 1500);
+            }, 220);
+        } catch (e) {
+            release();
+            window.print();
+        }
+    };
+
     ATF.excelReport = async function (opts) {
         const o = opts || {};
         const fileName = (o.fileName || 'albayrak-pdks-rapor').replace(/\.(csv|xls|xlsx)$/i, '') + '.xlsx';
         const title = o.title || 'ALBAYRAK FİNANS KURUMSAL PDKS RAPORU';
         const subtitle = o.subtitle || 'İnsan Kaynakları ve Konum Doğrulama Analitiği';
+        const actionTitle = o.actionTitle || '';
+        const scqa = o.scqa || [];
+        const exhibits = (o.exhibits || []).slice(0, 2);
         const orientation = o.orientation || 'portrait'; // Varsayılan: A4 Dikey (Portrait)
         const meta = o.meta || [];
         const kpis = o.kpis || [];
@@ -1060,6 +1701,17 @@
         const reportNo = o.reportNo || `PDKS-${nowDate.getFullYear()}-${String(nowDate.getMonth() + 1).padStart(2, '0')}${String(nowDate.getDate()).padStart(2, '0')}-${String(Math.floor(Math.random() * 9000) + 1000)}`;
         const logoBytes = await loadLogoBytes();
         const hasLogo = !!(logoBytes && logoBytes.length);
+
+        // Varsa McKinsey Exhibit grafiklerini 300 DPI PNG baytlarına çevir
+        const exhibitPngs = [];
+        for (let ei = 0; ei < exhibits.length; ei++) {
+            const exSpec = Object.assign({ width: 620, height: 255 }, exhibits[ei]);
+            const svgStr = ATF.renderExhibitSvg(exSpec);
+            const pngBytes = await ATF.svgToPngBytes(svgStr, exSpec.width, exSpec.height, 2.5);
+            if (pngBytes && pngBytes.length) {
+                exhibitPngs.push({ spec: exSpec, bytes: pngBytes });
+            }
+        }
 
         const detectStatusStyleIdx = (val, rowIdx) => {
             const s = String(val || '').trim().toLocaleLowerCase('tr-TR');
@@ -1188,7 +1840,7 @@
             });
         };
 
-        /* Sheet 1 Üzerinde Tam Genişlikli Dikey Tablo Üretici */
+        /* Sheet 1 Üzerinde Tam Genişlikli Dikey Tablo Üretici (Gerçek Sayısal Hücre + Canlı Toplam/Ortalama Formülleri) */
         const renderTableSection1 = (secTitle, tHeaders, tRows) => {
             if (!tHeaders || !tHeaders.length || !tRows || !tRows.length) return;
             addSectionHeader1(secTitle);
@@ -1207,6 +1859,9 @@
                 merges1.push(`${colRef(hLen - 1)}${r1}:${colRef(colCount1 - 1)}${r1}`);
             }
 
+            const firstDataRow = r1 + 1;
+            const colNumericKinds = new Array(hLen).fill(null);
+
             tRows.forEach((sr, sri) => {
                 r1++;
                 let srCells = '';
@@ -1214,7 +1869,8 @@
                 sr.forEach((val, ci) => {
                     let st = (sri % 2 === 1) ? 7 : 6;
                     const strVal = String(val == null ? '' : val);
-                    if (ci === sr.length - 1) {
+                    const parsed = (ci > 0) ? parseCorporateNumericCell(val, tHeaders[ci]) : null;
+                    if (ci === sr.length - 1 && !parsed) {
                         st = detectStatusStyleIdx(val, sri);
                     } else if (strVal.startsWith('+')) {
                         st = 8;
@@ -1222,7 +1878,13 @@
                         st = 10;
                     }
                     lastStyle = st;
-                    srCells += `<c r="${colRef(ci)}${r1}" s="${st}" t="s"><v>${getSstIdx(val)}</v></c>`;
+                    if (parsed) {
+                        colNumericKinds[ci] = colNumericKinds[ci] || parsed.kind;
+                        const numStyle = parsed.kind === 'pct' ? 28 : parsed.kind === 'signed' ? 29 : 27;
+                        srCells += `<c r="${colRef(ci)}${r1}" s="${numStyle}"><v>${parsed.num}</v></c>`;
+                    } else {
+                        srCells += `<c r="${colRef(ci)}${r1}" s="${st}" t="s"><v>${getSstIdx(val)}</v></c>`;
+                    }
                 });
                 for (let c = sr.length; c < colCount1; c++) {
                     srCells += `<c r="${colRef(c)}${r1}" s="${lastStyle}"/>`;
@@ -1232,79 +1894,153 @@
                     merges1.push(`${colRef(sr.length - 1)}${r1}:${colRef(colCount1 - 1)}${r1}`);
                 }
             });
+
+            const lastDataRow = r1;
+            if (tRows.length >= 2 && colNumericKinds.some(Boolean)) {
+                r1++;
+                let totCells = '';
+                for (let ci = 0; ci < hLen; ci++) {
+                    const ref = `${colRef(ci)}${r1}`;
+                    const kind = colNumericKinds[ci];
+                    if (ci === 0) {
+                        totCells += `<c r="${ref}" s="30" t="s"><v>${getSstIdx('KURUM TOPLAMI / ORTALAMA')}</v></c>`;
+                    } else if (kind) {
+                        const rangeRef = `${colRef(ci)}${firstDataRow}:${colRef(ci)}${lastDataRow}`;
+                        const fn = kind === 'pct' ? 'AVERAGE' : 'SUM';
+                        const fStyle = kind === 'pct' ? 31 : 30;
+                        totCells += `<c r="${ref}" s="${fStyle}"><f>${fn}(${rangeRef})</f></c>`;
+                    } else {
+                        totCells += `<c r="${ref}" s="30" t="s"><v>${getSstIdx('—')}</v></c>`;
+                    }
+                }
+                for (let c = hLen; c < colCount1; c++) {
+                    totCells += `<c r="${colRef(c)}${r1}" s="30"/>`;
+                }
+                sheet1Rows.push(`<row r="${r1}" ht="21" customHeight="1">${totCells}</row>`);
+                if (hLen < colCount1) {
+                    merges1.push(`${colRef(hLen - 1)}${r1}:${colRef(colCount1 - 1)}${r1}`);
+                }
+            }
         };
 
-        // ============ 1. KURUMSAL ANTET (logo + unvan + rapor künyesi) ============
-        addBlank1(8);                                                                        // 1. boşluk
-        addSideBanner1('ALBAYRAK TASARRUF FİNANSMAN A.Ş.', 18, 24, 1);                       // 2. unvan (logo hizası)
-        addSideBanner1('Personel Devam Kontrol Sistemi (PDKS) · İnsan Kaynakları Müdürlüğü', 19, 16, 1); // 3. birim
-        addSideBanner1(`Rapor No: ${reportNo}    ·    Üretim Tarihi: ${nowStr}`, 19, 14, 1);  // 4. künye
-        addBlank1(6);                                                                        // 5. boşluk
-        addMergedBanner1('', 20, 4);                                                          // 6. kırmızı ayraç
-        addBlank1(10);                                                                        // 7. boşluk
-        addMergedBanner1(title, 21, 26);                                                      // 8. rapor başlığı (bant)
-        addMergedBanner1(subtitle, 22, 17);                                                   // 9. alt başlık (bant)
+        // ============ 1. KURUMSAL ANTET (logo + unvan + rapor künyesi + belge kontrol) ============
+        addBlank1(8);
+        addSideBanner1('ALBAYRAK TASARRUF FİNANSMAN A.Ş.', 18, 24, 1);
+        addSideBanner1('Personel Devam Kontrol Sistemi (PDKS) · Kurumsal Yönetim ve Denetim Raporu', 19, 16, 1);
+        addSideBanner1(`Belge No: ${reportNo}    ·    Üretim: ${nowStr}    ·    Gizlilik: HİZMETE ÖZEL / KURUM İÇİ`, 19, 14, 1);
+        addBlank1(6);
+        addMergedBanner1('', 20, 4);
+        addBlank1(8);
+        addMergedBanner1(title, 21, 26);
+        addMergedBanner1(subtitle, 22, 18);
 
         if (meta.length) {
             const metaJoined = meta.map(m => `${m[0]}: ${m[1]}`).join('    ·    ');
-            addMergedBanner1(metaJoined, 3, 18);                                              // 10. filtre künyesi
+            addMergedBanner1(metaJoined, 3, 18);
         }
 
-        // ============ 2. PERSONEL / KURUM DİKEY BİLGİ KARTLARI (kvSections - Varsa İlk Sırada) ============
+        // ============ 1B. MCKINSEY ACTION TITLE & SCQA YÖNETİCİ SENTEZİ ============
+        if (actionTitle || scqa.length) {
+            addSectionHeader1('Yönetici Sonuç Bildirimi ve Stratejik Bulgular (SCQA Sentezi)');
+            if (actionTitle) {
+                addMergedBanner1('ANA SONUÇ: ' + actionTitle, 17, 24);
+            }
+            scqa.forEach(item => {
+                const tag = item.tag || item[0] || 'BULGU';
+                const txt = item.text || item[1] || '';
+                r1++;
+                let cells = '';
+                for (let c = 0; c < colCount1; c++) {
+                    const ref = colRef(c) + r1;
+                    if (c === 0) cells += `<c r="${ref}" s="11" t="s"><v>${getSstIdx(tag)}</v></c>`;
+                    else if (c === 1) cells += `<c r="${ref}" s="6" t="s"><v>${getSstIdx(txt)}</v></c>`;
+                    else cells += `<c r="${ref}" s="6"/>`;
+                }
+                sheet1Rows.push(`<row r="${r1}" ht="21" customHeight="1">${cells}</row>`);
+                merges1.push(`B${r1}:${colRef(colCount1 - 1)}${r1}`);
+            });
+        }
+
+        // ============ 2. PERSONEL / KURUM DİKEY BİLGİ KARTLARI (kvSections - Varsa) ============
         if (kvSections.length) {
             kvSections.forEach(sec => renderKvSection1(sec));
         }
 
-        // ============ 3. YÖNETİCİ ÖZETİ GÖSTERGELERİ (DİKEY KPI KARTLARI) ============
+        // ============ 3. TEMEL PERFORMANS KARŞILAŞTIRMA MATRİSİ (SCORECARD TABLOSU) ============
         if (kpis.length) {
-            addSectionHeader1('Temel Performans ve Puantaj Göstergeleri');
-
-            const kpiItems = kpis.slice(0, 6);
-            // Dikey (portrait) düzende 2'li veya 3'lü geniş kartlar halinde alt alta dizilir
-            const perRow = (kpiItems.length === 4 || kpiItems.length === 6 || kpiItems.length === 2)
-                ? 2
-                : Math.min(3, kpiItems.length);
-            const kpiCardCols = Math.max(1, Math.floor(colCount1 / perRow));
-
-            const addKpiStrip = (chunk, styleOf, textOf, heightPt, emptyStyle) => {
-                r1++;
-                let cells = '';
-                chunk.forEach((k, idx) => {
-                    const c1 = idx * kpiCardCols;
-                    const c2 = (idx === chunk.length - 1) ? (colCount1 - 1) : (c1 + kpiCardCols - 1);
-                    const ref1 = colRef(c1) + r1;
-                    const ref2 = colRef(c2) + r1;
-                    const st = styleOf(k);
-                    cells += `<c r="${ref1}" s="${st}" t="s"><v>${getSstIdx(textOf(k))}</v></c>`;
-                    for (let cc = c1 + 1; cc <= c2; cc++) {
-                        cells += `<c r="${colRef(cc)}${r1}" s="${st}"/>`;
-                    }
-                    if (c2 > c1) merges1.push(`${ref1}:${ref2}`);
-                });
-                sheet1Rows.push(`<row r="${r1}" ht="${heightPt}" customHeight="1">${cells}</row>`);
-            };
-
-            for (let i = 0; i < kpiItems.length; i += perRow) {
-                const chunk = kpiItems.slice(i, i + perRow);
-                if (i > 0) addBlank1(6);
-                // Etiket
-                addKpiStrip(chunk, () => 11, k => String(k.label || '').toLocaleUpperCase('tr-TR'), 16, 11);
-                // Değer
-                addKpiStrip(
-                    chunk,
-                    k => {
-                        const v = String(k.value || '0');
-                        if (v.includes('+') || v.includes('%')) return 12;
-                        if (v.includes('-') || v.includes('−')) return 15;
-                        return k.tone === 'warn' ? 14 : 13;
-                    },
-                    k => String(k.value || '0'),
-                    22,
-                    13
-                );
-                // Alt açıklama
-                addKpiStrip(chunk, () => 16, k => (k.sub ? String(k.sub) : '—'), 15, 16);
+            addSectionHeader1('Temel Performans Göstergeleri ve Hedef Karşılaştırma Tablosu (KPI Scorecard)');
+            r1++;
+            let kHdr = '';
+            const scHeaders = ['Performans Göstergesi (KPI)', 'Dönem Gerçekleşen', 'Kurumsal Hedef / Referans', 'Değerlendirme Durumu'];
+            for (let c = 0; c < colCount1; c++) {
+                const ref = colRef(c) + r1;
+                if (c === 0) kHdr += `<c r="${ref}" s="5" t="s"><v>${getSstIdx(scHeaders[0])}</v></c>`;
+                else if (c === 2) kHdr += `<c r="${ref}" s="5" t="s"><v>${getSstIdx(scHeaders[1])}</v></c>`;
+                else if (c === 4) kHdr += `<c r="${ref}" s="5" t="s"><v>${getSstIdx(scHeaders[2])}</v></c>`;
+                else if (c === 6) kHdr += `<c r="${ref}" s="5" t="s"><v>${getSstIdx(scHeaders[3])}</v></c>`;
+                else kHdr += `<c r="${ref}" s="5"/>`;
             }
+            sheet1Rows.push(`<row r="${r1}" ht="22" customHeight="1">${kHdr}</row>`);
+            merges1.push(`A${r1}:B${r1}`, `C${r1}:D${r1}`, `E${r1}:F${r1}`, `G${r1}:${colRef(colCount1 - 1)}${r1}`);
+
+            kpis.forEach((k, idx) => {
+                r1++;
+                const rowSt = (idx % 2 === 1) ? 7 : 6;
+                const vStr = String(k.value || k.v || '0');
+                const parsedKpi = parseCorporateNumericCell(vStr, k.label || k.l);
+                const statusTxt = k.status || (k.color === '#C8191E' || k.tone === 'bad'
+                    ? 'Aksiyon Gerekli / Kritik'
+                    : (k.color === '#B4690E' || k.tone === 'warn' ? 'İzlenmeli' : 'Hedefle Uyumlu'));
+                const statusSt = detectStatusStyleIdx(statusTxt, idx);
+                let cells = '';
+                for (let c = 0; c < colCount1; c++) {
+                    const ref = colRef(c) + r1;
+                    if (c === 0) {
+                        cells += `<c r="${ref}" s="${rowSt}" t="s"><v>${getSstIdx(k.label || k.l || '')}</v></c>`;
+                    } else if (c === 2) {
+                        if (parsedKpi) {
+                            const nSt = parsedKpi.kind === 'pct' ? 28 : parsedKpi.kind === 'signed' ? 29 : 27;
+                            cells += `<c r="${ref}" s="${nSt}"><v>${parsedKpi.num}</v></c>`;
+                        } else {
+                            cells += `<c r="${ref}" s="13" t="s"><v>${getSstIdx(vStr)}</v></c>`;
+                        }
+                    } else if (c === 4) {
+                        cells += `<c r="${ref}" s="${rowSt}" t="s"><v>${getSstIdx(k.target || k.sub || k.s || 'Kurumsal Standart')}</v></c>`;
+                    } else if (c === 6) {
+                        cells += `<c r="${ref}" s="${statusSt}" t="s"><v>${getSstIdx(statusTxt)}</v></c>`;
+                    } else if (c === 7 && colCount1 >= 8) {
+                        cells += `<c r="${ref}" s="${statusSt}"/>`;
+                    } else {
+                        cells += `<c r="${ref}" s="${rowSt}"/>`;
+                    }
+                }
+                sheet1Rows.push(`<row r="${r1}" ht="20" customHeight="1">${cells}</row>`);
+                merges1.push(`A${r1}:B${r1}`, `C${r1}:D${r1}`, `E${r1}:F${r1}`, `G${r1}:${colRef(colCount1 - 1)}${r1}`);
+            });
+        }
+
+        // ============ 3B. GÖMÜLÜ 300 DPI MCKINSEY SERGİLERİ (EXHIBIT 1 & EXHIBIT 2) ============
+        const exhibitAnchors = [];
+        if (exhibitPngs.length) {
+            addSectionHeader1('Kantitatif Yönetim Sergileri ve Görsel Analiz (Exhibits)');
+            exhibitPngs.forEach((ep, idx) => {
+                const startRow0 = r1; // 0-indexed row for drawing anchor
+                exhibitAnchors.push({
+                    col: 0,
+                    row: startRow0,
+                    colOff: 45000,
+                    rowOff: 25000,
+                    widthPx: 610,
+                    heightPx: 248,
+                    name: ep.spec.figNo || ('Sergi ' + (idx + 1)),
+                    descr: ep.spec.title || 'Kurumsal PDKS Grafiği',
+                    bytes: ep.bytes
+                });
+                // Grafik yüksekliği (~250px) kadar satır boşluğu aç (11 satır x 18pt ≈ 264px)
+                for (let s = 0; s < 11; s++) {
+                    addBlank1(18);
+                }
+            });
         }
 
         // ============ 4. ÖZET MATRİSİ & EK DİKEY TABLOLAR ============
@@ -1384,10 +2120,10 @@
   <pageMargins left="0.25" right="0.25" top="0.4" bottom="0.6" header="0.2" footer="0.2"/>
   <pageSetup paperSize="9" scale="100" orientation="${orientation}" fitToWidth="1" fitToHeight="0" horizontalDpi="600" verticalDpi="600"/>
   <headerFooter><oddFooter>&amp;L Albayrak Tasarruf Finansman A.Ş. · PDKS&amp;C Rapor No: ${xmlEsc(reportNo)}&amp;R Sayfa &amp;P / &amp;N</oddFooter></headerFooter>
-  ${logoBytes ? '<drawing r:id="rId1"/>' : ''}
+  ${(hasLogo || exhibitAnchors.length) ? '<drawing r:id="rId1"/>' : ''}
 </worksheet>`;
 
-        /* ================= SHEET 2: DETAYLI KAYIT TABLOSU (EK-1) ================= */
+        /* ================= SHEET 2: DETAYLI KAYIT TABLOSU (EK-1 · GERÇEK SAYISAL + SUBTOTAL) ================= */
         const sheet2Rows = [];
         const sheet2Merges = [];
         const colCount2 = headers.length || 1;
@@ -1414,27 +2150,56 @@
             sheet2Rows.push(`<row r="2" ht="26" customHeight="1">${hCells}</row>`);
         }
 
+        const col2NumericKinds = new Array(colCount2).fill(null);
+
         rows.forEach((r, ri) => {
             const rNum = ri + 3;
             let rCells = '';
             r.forEach((val, ci) => {
                 let st = (ri % 2 === 1) ? 7 : 6;
-                const strVal = String(val || '');
-                if (ci === r.length - 1 || ci >= r.length - 2) {
+                const strVal = String(val == null ? '' : val);
+                const parsed = (ci > 0 && ci < r.length - 1) ? parseCorporateNumericCell(val, headers[ci]) : null;
+                if (ci === r.length - 1 || (ci >= r.length - 2 && !parsed)) {
                     st = detectStatusStyleIdx(val, ri);
                 } else if (strVal.startsWith('+')) {
                     st = 8;
                 } else if (strVal.startsWith('-') || strVal.startsWith('−')) {
                     st = 10;
                 }
-                rCells += `<c r="${colRef(ci)}${rNum}" s="${st}" t="s"><v>${getSstIdx(val)}</v></c>`;
+                if (parsed) {
+                    col2NumericKinds[ci] = col2NumericKinds[ci] || parsed.kind;
+                    const numStyle = parsed.kind === 'pct' ? 28 : parsed.kind === 'signed' ? 29 : 27;
+                    rCells += `<c r="${colRef(ci)}${rNum}" s="${numStyle}"><v>${parsed.num}</v></c>`;
+                } else {
+                    rCells += `<c r="${colRef(ci)}${rNum}" s="${st}" t="s"><v>${getSstIdx(val)}</v></c>`;
+                }
             });
             sheet2Rows.push(`<row r="${rNum}" ht="20" customHeight="1">${rCells}</row>`);
         });
 
+        // Filtreye duyarlı SUBTOTAL satırı (en az 2 veri satırı varsa)
+        if (rows.length >= 2 && col2NumericKinds.some(Boolean)) {
+            const totRowNum = rows.length + 3;
+            const lastDataRow2 = rows.length + 2;
+            let totCells2 = '';
+            for (let ci = 0; ci < colCount2; ci++) {
+                const ref = `${colRef(ci)}${totRowNum}`;
+                const kind = col2NumericKinds[ci];
+                if (ci === 0) {
+                    totCells2 += `<c r="${ref}" s="30" t="s"><v>${getSstIdx('TOPLAM / FİLTRE ÖZETİ')}</v></c>`;
+                } else if (kind) {
+                    const subFn = kind === 'pct' ? 101 : 109; // 101=AVERAGE, 109=SUM (filtreye duyarlı)
+                    const fStyle = kind === 'pct' ? 31 : 30;
+                    totCells2 += `<c r="${ref}" s="${fStyle}"><f>SUBTOTAL(${subFn},${colRef(ci)}3:${colRef(ci)}${lastDataRow2})</f></c>`;
+                } else {
+                    totCells2 += `<c r="${ref}" s="30" t="s"><v>${getSstIdx('—')}</v></c>`;
+                }
+            }
+            sheet2Rows.push(`<row r="${totRowNum}" ht="22" customHeight="1">${totCells2}</row>`);
+        }
+
         let cols2Xml = '<cols>';
         for (let c = 1; c <= colCount2; c++) {
-            // Her sütunun başlık ve içerik uzunluğunu ölçerek +5 karakter pay bırakır (kesilmeyi %100 önler)
             let maxLen = String(headers[c - 1] || '').length;
             for (let ri = 0; ri < rows.length; ri++) {
                 const vLen = String((rows[ri] && rows[ri][c - 1]) != null ? rows[ri][c - 1] : '').length;
@@ -1472,9 +2237,51 @@
   <headerFooter><oddFooter>&amp;L Albayrak Tasarruf Finansman A.Ş. · PDKS — EK-1&amp;C Rapor No: ${xmlEsc(reportNo)}&amp;R Sayfa &amp;P / &amp;N</oddFooter></headerFooter>
 </worksheet>`;
 
+        /* ================= SHEET 3: METODOLOJİ, DENETİM VE BELGE KONTROLÜ ================= */
+        const govRows = [
+            ['Belge Numarası', reportNo, 'Sürüm & Gizlilik', 'v10.0 · HİZMETE ÖZEL / KURUM İÇİ'],
+            ['Rapor Başlığı', title, 'Üretim Zamanı', nowStr],
+            ['Hazırlayan Birim', preparedBy || 'İnsan Kaynakları Yönetimi', 'Onaylayan Makam', approvedBy],
+            ['Veri Kaynağı', 'PostgreSQL 18 Canlı Veritabanı (Prisma ORM)', 'Kayıt Sayısı', `${rows.length} detay satırı · ${summaryRows.length} özet satırı`],
+            ['Vardiya & Tolerans Kuralı', 'Standart 08:30 (+5 dk), Erken 08:00 (+5 dk), GM 09:00 (+10 dk)', 'Saatlik İzin Mahsubu', 'Onaylı saatlik izin süresi o günkü gecikmeden otomatik düşülür'],
+            ['Net Süre Bakiyesi Formülü', 'Net Bakiye (dk) = Toplam Ek Mesai (dk) − Toplam Gecikme (dk)', '30m Geofence & Anti-Spoof', 'Haversine ≤ 30,0 m şube sınırı ve Android Mock GPS blokajı']
+        ];
+        const sheet3Rows = [];
+        const sheet3Merges = [];
+        let r3 = 1;
+        sheet3Rows.push(`<row r="${r3}" ht="25" customHeight="1"><c r="A1" s="21" t="s"><v>${getSstIdx('METODOLOJİ, VERİ SÖZLÜĞÜ VE KURUMSAL DENETİM KÜNYESİ')}</v></c><c r="B1" s="21"/><c r="C1" s="21"/><c r="D1" s="21"/></row>`);
+        sheet3Merges.push('A1:D1');
+        r3++;
+        sheet3Rows.push(`<row r="${r3}" ht="22" customHeight="1"><c r="A2" s="5" t="s"><v>${getSstIdx('Denetim Parametresi')}</v></c><c r="B2" s="5" t="s"><v>${getSstIdx('Değer / Kural Tanımı')}</v></c><c r="C2" s="5" t="s"><v>${getSstIdx('Denetim Parametresi')}</v></c><c r="D2" s="5" t="s"><v>${getSstIdx('Değer / Kural Tanımı')}</v></c></row>`);
+        govRows.forEach((gr, gi) => {
+            r3++;
+            const st = gi % 2 === 1 ? 7 : 6;
+            sheet3Rows.push(`<row r="${r3}" ht="21" customHeight="1"><c r="A${r3}" s="11" t="s"><v>${getSstIdx(gr[0])}</v></c><c r="B${r3}" s="${st}" t="s"><v>${getSstIdx(gr[1])}</v></c><c r="C${r3}" s="11" t="s"><v>${getSstIdx(gr[2])}</v></c><c r="D${r3}" s="${st}" t="s"><v>${getSstIdx(gr[3])}</v></c></row>`);
+        });
+        const sheet3Xml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>
+  <sheetViews><sheetView tabSelected="0" workbookViewId="0" showGridLines="0"/></sheetViews>
+  <cols>
+    <col min="1" max="1" width="26" customWidth="1"/>
+    <col min="2" max="2" width="46" customWidth="1"/>
+    <col min="3" max="3" width="26" customWidth="1"/>
+    <col min="4" max="4" width="46" customWidth="1"/>
+  </cols>
+  <sheetData>${sheet3Rows.join('')}</sheetData>
+  <mergeCells count="${sheet3Merges.length}">${sheet3Merges.map(m => `<mergeCell ref="${m}"/>`).join('')}</mergeCells>
+  <printOptions horizontalCentered="1"/>
+  <pageMargins left="0.25" right="0.25" top="0.4" bottom="0.6" header="0.2" footer="0.2"/>
+  <pageSetup paperSize="9" scale="100" orientation="portrait" fitToWidth="1" fitToHeight="0" horizontalDpi="600" verticalDpi="600"/>
+  <headerFooter><oddFooter>&amp;L Albayrak Tasarruf Finansman A.Ş. · PDKS — Metodoloji&amp;C Rapor No: ${xmlEsc(reportNo)}&amp;R Sayfa &amp;P / &amp;N</oddFooter></headerFooter>
+</worksheet>`;
+
         /* ================= PAYLAŞILAN STILLER & PAKET ================= */
         const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <numFmts count="1">
+    <numFmt numFmtId="164" formatCode="+#,##0;\-#,##0;0"/>
+  </numFmts>
   <fonts count="17">
     <font><sz val="10"/><color rgb="FF141517"/><name val="Calibri"/></font>
     <font><b/><sz val="13"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>
@@ -1544,7 +2351,7 @@
   <cellStyleXfs count="1">
     <xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>
   </cellStyleXfs>
-  <cellXfs count="27">
+  <cellXfs count="32">
     <!-- 0: Normal -->
     <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
     <!-- 1: Başlık bandı (eski) -->
@@ -1599,6 +2406,16 @@
     <xf numFmtId="0" fontId="16" fillId="0" borderId="5" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" horizontal="center"/></xf>
     <!-- 26: Dipnot -->
     <xf numFmtId="0" fontId="14" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment vertical="center" indent="1"/></xf>
+    <!-- 27: Sayısal hücre (#,##0 sağa hizalı) -->
+    <xf numFmtId="3" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+    <!-- 28: Yüzde hücresi (0.0% sağa hizalı) -->
+    <xf numFmtId="10" fontId="6" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+    <!-- 29: İşaretli sayı hücresi (+#,##0;-#,##0;0) -->
+    <xf numFmtId="164" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+    <!-- 30: Toplam / Formül satırı (#,##0 koyu zemin) -->
+    <xf numFmtId="3" fontId="5" fillId="3" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+    <!-- 31: Toplam / Ortalama yüzde formül satırı (0.0% koyu zemin) -->
+    <xf numFmtId="10" fontId="5" fillId="3" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
   </cellXfs>
   <cellStyles count="1">
     <cellStyle name="Normal" xfId="0" builtinId="0"/>
@@ -1610,6 +2427,31 @@
   ${sharedStrings.map(s => `<si><t xml:space="preserve">${xmlEsc(s)}</t></si>`).join('')}
 </sst>`;
 
+        const drawingItems = [];
+        if (hasLogo) {
+            drawingItems.push({
+                rId: 'rId1',
+                mediaFile: 'image1.png',
+                col: 0,
+                row: 1,
+                colOff: 95250,
+                rowOff: 19050,
+                widthPx: 88,
+                heightPx: Math.round(88 * LOGO_ASPECT),
+                name: 'Albayrak Finans Logosu',
+                descr: 'Albayrak Tasarruf Finansman A.Ş. kurumsal logosu',
+                bytes: logoBytes
+            });
+        }
+        exhibitAnchors.forEach(ea => {
+            const idx = drawingItems.length + 1;
+            drawingItems.push(Object.assign({}, ea, {
+                rId: 'rId' + idx,
+                mediaFile: 'image' + idx + '.png'
+            }));
+        });
+        const hasDrawing = drawingItems.length > 0;
+
         const contentTypesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
@@ -1617,9 +2459,10 @@
   <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
   <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
   <Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/worksheets/sheet3.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
   <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
   <Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>
-  ${hasLogo ? '<Default Extension="png" ContentType="image/png"/>\n  <Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>' : ''}
+  ${hasDrawing ? '<Default Extension="png" ContentType="image/png"/>\n  <Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>' : ''}
 </Types>`;
 
         const rootRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -1630,12 +2473,14 @@
         const workbookXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <sheets>
-    <sheet name="Rapor Ozeti" sheetId="1" r:id="rId1"/>
-    <sheet name="Puantaj Detay" sheetId="2" r:id="rId4"/>
+    <sheet name="Yonetici Ozeti" sheetId="1" r:id="rId1"/>
+    <sheet name="Puantaj Cetveli" sheetId="2" r:id="rId4"/>
+    <sheet name="Metodoloji ve Denetim" sheetId="3" r:id="rId5"/>
   </sheets>
   <definedNames>
-    <definedName name="_xlnm.Print_Titles" localSheetId="1">'Puantaj Detay'!$1:$2</definedName>
+    <definedName name="_xlnm.Print_Titles" localSheetId="1">'Puantaj Cetveli'!$1:$2</definedName>
   </definedNames>
+  <calcPr calcId="191029" fullCalcOnLoad="1"/>
 </workbook>`;
 
         const workbookRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -1644,6 +2489,7 @@
   <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
   <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>
   <Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>
+  <Relationship Id="rId5" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet3.xml"/>
 </Relationships>`;
 
         const zipEntries = [
@@ -1654,17 +2500,20 @@
             { name: 'xl/styles.xml', content: stylesXml },
             { name: 'xl/sharedStrings.xml', content: sstXml },
             { name: 'xl/worksheets/sheet1.xml', content: sheet1Xml },
-            { name: 'xl/worksheets/sheet2.xml', content: sheet2Xml }
+            { name: 'xl/worksheets/sheet2.xml', content: sheet2Xml },
+            { name: 'xl/worksheets/sheet3.xml', content: sheet3Xml }
         ];
 
-        // Kurumsal logo gömme (Excel çizim + medya parçaları)
-        if (hasLogo) {
+        // Kurumsal logo + 300 DPI McKinsey Exhibit grafiklerini gömme
+        if (hasDrawing) {
             zipEntries.push(
                 { name: 'xl/worksheets/_rels/sheet1.xml.rels', content: sheet1RelsXml },
-                { name: 'xl/drawings/drawing1.xml', content: logoDrawingXml(88) },
-                { name: 'xl/drawings/_rels/drawing1.xml.rels', content: drawingRelsXml },
-                { name: 'xl/media/image1.png', content: logoBytes }
+                { name: 'xl/drawings/drawing1.xml', content: buildDrawingXml(drawingItems) },
+                { name: 'xl/drawings/_rels/drawing1.xml.rels', content: buildDrawingRelsXml(drawingItems) }
             );
+            drawingItems.forEach(di => {
+                zipEntries.push({ name: 'xl/media/' + di.mediaFile, content: di.bytes });
+            });
         }
 
         const blob = createZipBlob(zipEntries);

@@ -69,6 +69,10 @@ interface AttendanceDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAttendanceRecords(records: List<AttendanceRecordEntity>)
 
+    // Geç giriş gerekçesi (personel giriş sonrası beyan eder)
+    @Query("UPDATE attendance_records SET lateReasonCode = :code, lateReasonNote = :note WHERE id = :id")
+    suspend fun updateLateReason(id: Long, code: String, note: String)
+
     // Security Alerts
     @Query("SELECT * FROM security_alerts ORDER BY timestamp DESC")
     fun getAllSecurityAlerts(): Flow<List<SecurityAlertEntity>>

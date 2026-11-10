@@ -191,7 +191,13 @@
     function empAnalytics(empId, opts) {
         const e = EMPLOYEES.find(x => x.id === empId) || EMPLOYEES[0];
         const selDays = resolveDays(opts);
-        const cacheKey = `${e.id}_${selDays[0].iso}_${selDays[selDays.length - 1].iso}_${e.status}_${e.lateMin}`;
+        const sh = shiftOf(e);
+        const lateTh = sh.lateThreshold;
+        // Gece vardiyası (bitiş < başlangıç) gece yarısını aşar: çıkış dakikaları +1440 taşınır
+        const overnight = sh.endMin <= sh.startMin;
+        const endAbs = overnight ? sh.endMin + 1440 : sh.endMin;
+        const hhmmDay = m => hhmm(((Math.round(m) % 1440) + 1440) % 1440);
+        const cacheKey = `${e.id}_${selDays[0].iso}_${selDays[selDays.length - 1].iso}_${e.status}_${e.lateMin}_${e.lateExcusedMin || 0}_${sh.id || 0}_${sh.startMin}_${sh.graceMin}_${sh.endMin}`;
         if (analyticsCache.has(cacheKey)) return analyticsCache.get(cacheKey);
 
         const logs = [];
@@ -215,21 +221,25 @@
         selDays.forEach((day, idx) => {
             const isToday = day.iso === DAYS[DAYS.length - 1].iso;
             const r = A.rng(e.id * 997 + day.idx * 31);
-            let st = 'PRESENT', inM = 8 * 60 + 25, outM = 17 * 60 + 35, lMin = 0, oMin = 0, dist = +(3.2 + r() * 18).toFixed(1);
+            let st = 'PRESENT', inM = lateTh - 5, outM = sh.endMin + 5, lMin = 0, oMin = 0, dist = +(3.2 + r() * 18).toFixed(1);
 
             if (isToday) {
                 st = e.status;
                 if (st === 'PRESENT' || st === 'LATE') {
-                    inM = e.inMin || (8 * 60 + 26);
-                    lMin = e.lateMin || 0;
+                    inM = e.inMin || (lateTh - 4);
+                    // Vardiya şablonu değiştirildiğinde analiz anında yansır; onaylı saatlik izin
+                    // mahsubu sunucuda yapıldığı için sunucu değerinden büyük sonuç üretilmez.
+                    const lateExcused = e.lateExcusedMin || 0;
+                    const candLate = Math.max(0, inM - lateTh - lateExcused);
+                    lMin = e.lateMin ? Math.min(candLate, Math.max(0, e.lateMin - lateExcused)) : 0;
                     // Bugünün ek mesaisi veya beklenen çıkış saati
                     const otChance = r() + (day.dow === e.proneOtDow ? 0.35 : 0) + (e.workHabitBias > 0.55 ? 0.28 : 0);
                     if (otChance > 0.68) {
                         oMin = 20 + Math.floor(r() * 85) + (e.workHabitBias > 0.7 ? 25 : 0);
-                        outM = 17 * 60 + 30 + oMin;
+                        outM = endAbs + oMin;
                     } else {
                         oMin = e.overtimeMin || 0;
-                        outM = 17 * 60 + 32 + Math.floor(r() * 24) + oMin;
+                        outM = endAbs + 2 + Math.floor(r() * 24) + oMin;
                     }
                     dist = e.dist != null ? e.dist : dist;
                 }
@@ -243,20 +253,20 @@
                 } else if (roll < 0.036 + lateThreshold) {
                     st = 'LATE';
                     lMin = 6 + Math.floor(r() * 38) + (day.dow === e.proneLateDow ? 11 : 0) + (e.workHabitBias < 0.2 ? 14 : 0);
-                    inM = 8 * 60 + 35 + lMin;
+                    inM = lateTh + lMin;
                 } else {
                     st = 'PRESENT';
-                    inM = 8 * 60 + 6 + Math.floor(r() * 48);
+                    inM = lateTh - 24 + Math.floor(r() * 24);
                 }
 
                 if (st === 'PRESENT' || st === 'LATE') {
                     const otRoll = r() + (day.dow === e.proneOtDow ? 0.32 : 0) + (e.workHabitBias > 0.5 ? 0.25 : -0.1);
                     if (otRoll > 0.62) {
                         oMin = 18 + Math.floor(r() * 78) + (day.dow === e.proneOtDow ? 22 : 0) + (e.workHabitBias > 0.75 ? 30 : 0);
-                        outM = 17 * 60 + 30 + oMin;
+                        outM = endAbs + oMin;
                     } else {
                         oMin = 0;
-                        outM = 17 * 60 + 30 + Math.floor(r() * 25);
+                        outM = endAbs + Math.floor(r() * 25);
                     }
                 }
             }
@@ -276,7 +286,7 @@
             } else {
                 activeDays++;
                 if (st === 'PRESENT') presentDays++; else lateDaysCount++;
-                const wMin = Math.max(240, outM - inM - 60); // 1 saat öğle arası
+                const wMin = Math.max(240, outM - inM - sh.breakMin); // vardiya şablonundaki mola süresi
                 const netM = oMin - lMin;
 
                 totalLateMin += lMin;
@@ -315,7 +325,7 @@
                     dowShort: day.dowShort,
                     status: st,
                     checkIn: hhmm(inM),
-                    checkOut: hhmm(outM),
+                    checkOut: hhmmDay(outM),
                     lateMin: lMin,
                     overtimeMin: oMin,
                     netMin: netM,
@@ -350,8 +360,8 @@
                 avgOtMin: b.otCount ? Math.round(b.otMin / b.otCount) : 0,
                 avgOvertimeMin: b.otCount ? Math.round(b.otMin / b.otCount) : 0,
                 netMin: b.otMin - b.lateMin,
-                avgIn: b.days ? hhmm(Math.round(b.inSum / cnt)) : '08:25',
-                avgOut: b.days ? hhmm(Math.round(b.outSum / cnt)) : '17:35',
+                avgIn: b.days ? hhmm(Math.round(b.inSum / cnt)) : hhmm(lateTh - 5),
+                avgOut: b.days ? hhmmDay(b.outSum / cnt) : hhmm(sh.endMin + 5),
                 avgWorkH: b.days ? +(b.workMin / cnt / 60).toFixed(1) : 8.5
             };
         });
@@ -387,10 +397,10 @@
             avgWorkH: activeDays ? +(totalWorkMin / activeDays / 60).toFixed(1) : 8.5,
             totalWorkH: +(totalWorkMin / 60).toFixed(1),
             avgCheckIn: activeDays ? hhmm(Math.round(inMinSum / activeDays)) : '08:26',
-            avgCheckOut: activeDays ? hhmm(Math.round(outMinSum / activeDays)) : '17:42',
+            avgCheckOut: activeDays ? hhmmDay(outMinSum / activeDays) : '17:42',
             earliestCheckIn: earliestIn < 9999 ? hhmm(earliestIn) : '08:05',
             latestCheckIn: latestIn > 0 ? hhmm(latestIn) : '08:55',
-            latestCheckOut: latestOut > 0 ? hhmm(latestOut) : '18:30',
+            latestCheckOut: latestOut > 0 ? hhmmDay(latestOut) : '18:30',
             avgDist: activeDays ? +(distSum / activeDays).toFixed(1) : 5.4,
             maxDist: maxDist > 0 ? maxDist : 14.2,
             geofenceRate: activeDays ? +(geofenceOk / activeDays * 100).toFixed(1) : 100,
@@ -419,7 +429,9 @@
         const selDays = resolveDays(opts);
         const firstId = src.length ? src[0].id : 0;
         const lastId = src.length ? src[src.length - 1].id : 0;
-        const lbKey = `${src.length}_${firstId}_${lastId}_${selDays[0].iso}_${selDays[selDays.length - 1].iso}_${EMPLOYEES.length}`;
+        const shiftSig = SHIFTS.map(s => `${s.id}.${s.startMin}.${s.graceMin}.${s.endMin}.${s.breakMin}`).join('|');
+        const assignSig = src.reduce((a, e) => a + ((e.shiftId || 0) * ((e.id % 97) + 1)), 0);
+        const lbKey = `${src.length}_${firstId}_${lastId}_${selDays[0].iso}_${selDays[selDays.length - 1].iso}_${EMPLOYEES.length}_${shiftSig}_${assignSig}`;
         if (leaderboardCache.has(lbKey)) return leaderboardCache.get(lbKey);
 
         const list = src.map(e => empAnalytics(e.id, opts));
@@ -440,6 +452,7 @@
     /* ---- İzin / mazeret talepleri ---- */
     const LEAVE_TYPES = ['Saatlik izin', 'Yıllık izin', 'Mazeret izni', 'Saha görevi', 'Sağlık raporu'];
     const LEAVES = [];
+    const LATE_REASONS = [];
     (function () {
         const r = A.rng(77), st = ['pending', 'pending', 'pending', 'pending', 'pending', 'pending', 'approved', 'approved', 'approved', 'approved', 'approved', 'approved', 'approved', 'approved', 'rejected', 'rejected', 'rejected', 'rejected'];
         const reasons = ['Ailevi nedenlerle', 'Hastane randevusu', 'Müşteri ziyareti (saha)', 'Tapu işlemleri', 'Çocuğun okul toplantısı', 'Dinlenme izni', 'Doktor raporu ekte', 'Eğitim programı'];
@@ -627,6 +640,26 @@
     const ACCESS_LOGS = [];
     const SYNC = { ok: false, inFlight: false, lastSync: null, error: null, sse: 'idle', events: [], accessLogTotal: 0 };
 
+    /* Personelin atanmış vardiya şablonu (yoksa 08:30 – 17:30 standart) */
+    function shiftOf(e) {
+        const id = e && e.shiftId != null ? +e.shiftId : null;
+        const s = id != null ? SHIFTS.find(x => +x.id === id) : null;
+        const startMin = s && s.startMin != null ? +s.startMin : (e && e.shiftStartMin != null ? +e.shiftStartMin : 510);
+        const endMin = s && s.endMin != null ? +s.endMin : (e && e.shiftEndMin != null ? +e.shiftEndMin : 1050);
+        const graceMin = s && s.graceMin != null ? +s.graceMin : 5;
+        const breakMin = s && s.breakMin != null ? +s.breakMin : 60;
+        return {
+            id,
+            code: (s && s.code) || '',
+            name: (s && s.name) || (e && e.shiftName) || 'Standart Vardiya',
+            startMin,
+            endMin,
+            graceMin,
+            breakMin,
+            lateThreshold: startMin + graceMin
+        };
+    }
+
     const trDate = iso => {
         if (!iso) return '';
         const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -658,6 +691,7 @@
             checkIn: item.checkIn || (item.inMin != null ? hhmm(item.inMin) : null),
             checkOut: item.checkOut || (item.outMin != null ? hhmm(item.outMin) : null),
             lateMin: item.lateMin || 0,
+            lateExcusedMin: item.lateExcusedMin || 0,
             overtimeMin: item.overtimeMin || 0,
             dist: item.dist != null ? item.dist : null,
             device: item.device || 'Kurumsal Mobil Cihaz',
@@ -745,6 +779,28 @@
                 durationMin: l.durationMin,
                 sicil: l.sicil,
                 name: l.name
+            }));
+        }
+
+        if (Array.isArray(d.lateReasons)) {
+            LATE_REASONS.length = 0;
+            d.lateReasons.forEach(r => LATE_REASONS.push({
+                id: r.id,
+                empId: r.empId,
+                sicil: r.sicil,
+                name: r.name,
+                dept: r.dept,
+                branch: r.branch,
+                workDate: r.workDate,
+                workDateTr: trDate(r.workDate),
+                checkIn: r.checkIn || '—',
+                lateMin: r.lateMin || 0,
+                reasonCode: r.reasonCode || '',
+                reasonNote: r.reasonNote || '',
+                status: r.status || 'PENDING',
+                excusedMin: r.excusedMin || 0,
+                reviewedBy: r.reviewedBy || '',
+                reviewedAt: r.reviewedAt || ''
             }));
         }
 
@@ -1064,7 +1120,7 @@
 
     g.ATF.DATA = {
         BRANCHES, DEPTS, TITLES, EMPLOYEES, DAYS, LEAVES, LEAVE_TYPES, ALERTS, ALERT_TYPES,
-        TICKETS, TICKET_TYPES, DEVICES, AUDIT, SHIFTS, ACCESS_LOGS, SYNC, hhmm, fmtDurMin, resolveDays,
+        TICKETS, TICKET_TYPES, DEVICES, AUDIT, SHIFTS, ACCESS_LOGS, LATE_REASONS, SYNC, hhmm, fmtDurMin, resolveDays, shiftOf,
         empAnalytics, computeLeaderboards, addEmployee, updateEmployee, deleteEmployee,
         syncEmployeesFromBackend, syncAllFromPostgres, startRealtimeStream, clearAnalyticsCache
     };

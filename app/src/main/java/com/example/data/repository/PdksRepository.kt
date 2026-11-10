@@ -84,7 +84,7 @@ class PdksRepository(
 
     /**
      * İşe Giriş / Çıkış İşlemini Gerçekleştirir.
-     * 5 metre kuralı ve otomatik İK/BT bildirim sistemi burada işletilir.
+     * 30 metre kuralı, sahte konum/geliştirici seçenekleri koruması ve otomatik İK/BT bildirim sistemi burada işletilir.
      */
     suspend fun processAttendance(
         employee: EmployeeEntity,
@@ -94,6 +94,7 @@ class PdksRepository(
         userLng: Double,
         isMock: Boolean,
         isSimulated: Boolean,
+        hasRealFix: Boolean = true,
         note: String = ""
     ): AttendanceResult {
         val distance = LocationHelper.calculateDistanceMeters(
@@ -117,8 +118,18 @@ class PdksRepository(
         val formattedTime = timeFormat.format(Date(now))
         val formattedDate = dateFormat.format(Date(now))
 
+        // Gerçek GPS modunda konum sabitlenmeden yoklama kabul edilmez.
+        if (!isSimulated && !hasRealFix) {
+            return AttendanceResult.Error(
+                "Gerçek GPS konumu henüz sabitlenmedi. Açık alanda konumun alınmasını bekleyip tekrar deneyin."
+            )
+        }
+
         // SAHTE KONUM (MOCK GPS) & GELİŞTİRİCİ SEÇENEKLERİ KESİN ENGELİ — mesafe kontrolünden ÖNCE çalışır.
-        val mockSecurity = LocationHelper.inspectDeviceMockSecurity(context)
+        // Paket taraması ağır olabildiğinden IO dispatcher'ında yapılır.
+        val mockSecurity = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            LocationHelper.inspectDeviceMockSecurity(context)
+        }
         val shouldBlockMockOrDev = isMock ||
                 mockSecurity.isMockLocationDetected ||
                 mockSecurity.isAllowMockSettingEnabled ||
@@ -267,7 +278,8 @@ class PdksRepository(
             overtimeMinutes = overtimeMinutes
         )
 
-        dao.insertAttendanceRecord(record)
+        val insertedId = dao.insertAttendanceRecord(record)
+        val savedRecord = record.copy(id = insertedId)
 
         // OTOMATİK BİLDİRİM SİSTEMİ: İK ve Personel Bildirimi
         val notifTitle = "Mesai ${record.recordType}: ${employee.fullName}"
@@ -299,8 +311,13 @@ class PdksRepository(
         )
 
         return AttendanceResult.Success(
-            record = record,
+            record = savedRecord,
             message = "Tebrikler! ${record.recordType} işlemi başarıyla kaydedildi.\nŞube Mesafesi: ${"%.1f".format(distance)} metre (İzin verilen: ${allowedRadius}m)\nKayıt Saati: $formattedTime\n\nOtomatik Bildirim: İK ve BT birimlerine başarıyla iletildi."
         )
+    }
+
+    /* Personelin geç giriş gerekçesini kayda işler (şablon kodu + serbest açıklama) */
+    suspend fun updateLateReason(recordId: Long, code: String, note: String) {
+        dao.updateLateReason(recordId, code, note)
     }
 }

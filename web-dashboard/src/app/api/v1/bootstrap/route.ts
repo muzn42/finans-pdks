@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { toIstanbulDate, toIstanbulDateTime, toIstanbulTime } from "@/lib/timezone";
+import { toIstanbulDate, toIstanbulDateTime, toIstanbulTime, hhmmFromMin } from "@/lib/timezone";
 import { sseHub } from "@/lib/sse";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
+    const todayIso = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Istanbul" }).format(new Date());
     const [
       branches,
       shifts,
@@ -16,7 +17,9 @@ export async function GET() {
       alerts,
       accounts,
       audits,
-      accessLogTotal
+      accessLogTotal,
+      lateReasons,
+      todayExcuses
     ] = await Promise.all([
       prisma.branch.findMany({ orderBy: { id: "asc" } }),
       prisma.shift.findMany({ orderBy: { id: "asc" } }),
@@ -54,8 +57,24 @@ export async function GET() {
       }),
       prisma.userAccount.findMany({ orderBy: { id: "asc" } }),
       prisma.auditLog.findMany({ orderBy: { createdAtUtc: "desc" }, take: 50 }),
-      prisma.accessLog.count()
+      prisma.accessLog.count(),
+      prisma.dailyAttendance.findMany({
+        where: { lateReasonCode: { not: null } },
+        include: {
+          employee: { select: { id: true, sicil: true, name: true, dept: true, branchCode: true } }
+        },
+        orderBy: [{ workDate: "desc" }, { id: "desc" }],
+        take: 150
+      }),
+      prisma.dailyAttendance.findMany({
+        where: { workDate: todayIso, lateExcusedMin: { gt: 0 } },
+        select: { employeeId: true, lateExcusedMin: true }
+      })
     ]);
+
+    const todayExcuseMap = new Map<number, number>(
+      todayExcuses.map((r) => [r.employeeId, r.lateExcusedMin])
+    );
 
     return NextResponse.json({
       status: "success",
@@ -103,6 +122,8 @@ export async function GET() {
         checkIn: e.checkIn,
         checkOut: e.checkOut,
         lateMin: e.lateMin,
+        // Bugünün gerekçeli düşümü, günlük puantaj kaydından okunur (dünkü düşüm sızmasın)
+        lateExcusedMin: todayExcuseMap.get(e.id) ?? 0,
         overtimeMin: e.overtimeMin,
         dist: e.distMeters,
         device: e.deviceModel,
@@ -134,6 +155,23 @@ export async function GET() {
         status: l.status,
         reviewerName: l.reviewerName,
         createdAtIstanbul: toIstanbulDateTime(l.createdAtUtc)
+      })),
+      lateReasons: lateReasons.map((d) => ({
+        id: d.id,
+        empId: d.employeeId,
+        sicil: d.employee.sicil,
+        name: d.employee.name,
+        dept: d.employee.dept,
+        branch: d.employee.branchCode,
+        workDate: d.workDate,
+        checkIn: hhmmFromMin(d.inMin),
+        lateMin: d.lateMin,
+        reasonCode: d.lateReasonCode,
+        reasonNote: d.lateReasonNote,
+        status: d.lateExcuseStatus,
+        excusedMin: d.lateExcusedMin,
+        reviewedBy: d.lateReviewedBy,
+        reviewedAt: d.lateReviewedAtUtc ? toIstanbulDateTime(d.lateReviewedAtUtc) : null
       })),
       accessLogs: accessLogs.map((a) => ({
         id: a.id,

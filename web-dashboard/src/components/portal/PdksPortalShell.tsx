@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect } from "react";
 import { AlbayrakLogo } from "@/components/brand/AlbayrakLogo";
@@ -16,10 +16,10 @@ import { ThreeStudioEnhancer } from "@/components/three/ThreeStudioEnhancer";
  */
 
 const PDKS_SCRIPTS = [
-  "/core-xlsx.js?v=9.26",
-  "/legacy/data.js?v=9.26",
-  "/legacy/app.js?v=9.26",
-  "/legacy/landing.js?v=9.26"
+  "/core-xlsx.js?v=9.34",
+  "/legacy/data.js?v=9.34",
+  "/legacy/app.js?v=9.34",
+  "/legacy/landing.js?v=9.34"
 ] as const;
 
 /** Her script tamamlandığında ince kırmızı boot çizgisinin ulaşacağı ilerleme. */

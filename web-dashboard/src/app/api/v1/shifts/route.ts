@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { ShiftCreateSchema } from "@/lib/validators";
+import { ShiftCreateSchema, ShiftAssignSchema } from "@/lib/validators";
 import { minFromHhmm } from "@/lib/pdks-engine";
 import { sseHub } from "@/lib/sse";
 
@@ -64,19 +64,38 @@ export async function POST(req: NextRequest) {
       }
     });
 
+    // Yeni şablon oluşturulurken istenirse doğrudan atama da yapılabilir
+    let assigned = 0;
+    const assignParsed = ShiftAssignSchema.safeParse((body as { assignment?: unknown }).assignment);
+    if (assignParsed.success) {
+      const a = assignParsed.data;
+      const where =
+        a.scope === "all"
+          ? {}
+          : a.scope === "branches"
+          ? { branchCode: { in: a.branchCodes } }
+          : { id: { in: a.employeeIds } };
+      const res = await prisma.employee.updateMany({
+        where: where as never,
+        data: { shiftId: created.id }
+      });
+      assigned = res.count;
+    }
+
     sseHub.broadcast({
       type: "SHIFT_UPDATE",
       title: "Yeni Vardiya Şablonu",
-      message: `${created.name} (${d.startClock} – ${d.endClock}) tanımlandı.`,
+      message: `${created.name} (${d.startClock} – ${d.endClock}) tanımlandı${assigned ? ` · ${assigned} personel atandı` : ""}.`,
       severity: "ok",
-      data: { shift: created }
+      data: { shift: created, assigned }
     });
 
     return NextResponse.json(
       {
         status: "success",
-        message: `${created.name} vardiyası oluşturuldu.`,
-        shift: created
+        message: `${created.name} vardiyası oluşturuldu${assigned ? ` ve ${assigned} personele atandı` : ""}.`,
+        shift: created,
+        assigned
       },
       { status: 201 }
     );

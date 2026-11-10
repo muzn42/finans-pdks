@@ -63,6 +63,7 @@ import com.example.ui.theme.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -1914,7 +1915,7 @@ fun computeEmployeeDeepAnalytics(
         if (f == t) "$f (1 iş günü)" else "$f – $t (${selectedWorkdays.size} iş günü)"
     } else {
         when (periodDays) {
-            1 -> "Bugün (${selectedWorkdays.lastOrNull()?.first ?: "20.10.2026"})"
+            1 -> "Bugün (${selectedWorkdays.lastOrNull()?.first ?: SimpleDateFormat("dd.MM.yyyy", Locale("tr", "TR")).format(Date())})"
             else -> "Son ${selectedWorkdays.size} İş Günü"
         }
     }
@@ -1965,6 +1966,43 @@ fun MinimalPeriodAndDateFilterBar(
     var showDateModal by remember { mutableStateOf(false) }
     val hasCustom = customFromDate.isNotBlank() || customToDate.isNotBlank()
     val periodOptions = listOf(1 to "Bugün", 7 to "7 Gün", 30 to "30 Gün", 60 to "60 Gün")
+
+    // Hızlı tarih şablonları her zaman içinde bulunulan aya göre üretilir
+    val dateTemplates = remember {
+        val monthNames = arrayOf(
+            "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
+            "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"
+        )
+        val fmt = { d: Int, m: Int, y: Int -> String.format(Locale("tr", "TR"), "%02d.%02d.%04d", d, m + 1, y) }
+        val now = Calendar.getInstance()
+        val y = now.get(Calendar.YEAR)
+        val m = now.get(Calendar.MONTH)
+        val today = now.get(Calendar.DAY_OF_MONTH)
+
+        val prev = Calendar.getInstance().apply {
+            set(Calendar.YEAR, y)
+            set(Calendar.MONTH, m)
+            set(Calendar.DAY_OF_MONTH, 1)
+            add(Calendar.MONTH, -1)
+        }
+        val prevY = prev.get(Calendar.YEAR)
+        val prevM = prev.get(Calendar.MONTH)
+        val prevLastDay = prev.getActualMaximum(Calendar.DAY_OF_MONTH)
+
+        val twoWeeksAgo = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -13) }
+
+        listOf(
+            Triple("${monthNames[m]} $y", fmt(1, m, y), fmt(today, m, y)),
+            Triple("${monthNames[prevM]} $prevY", fmt(1, prevM, prevY), fmt(prevLastDay, prevM, prevY)),
+            Triple(
+                "Son 2 Hafta",
+                fmt(twoWeeksAgo.get(Calendar.DAY_OF_MONTH), twoWeeksAgo.get(Calendar.MONTH), twoWeeksAgo.get(Calendar.YEAR)),
+                fmt(today, m, y)
+            )
+        )
+    }
+    val defaultFromDate = dateTemplates[0].second
+    val defaultToDate = dateTemplates[0].third
 
     Surface(
         shape = RoundedCornerShape(12.dp),
@@ -2055,7 +2093,7 @@ fun MinimalPeriodAndDateFilterBar(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Seçili Tarih Aralığı: ${customFromDate.ifBlank { "01.08.2026" }} – ${customToDate.ifBlank { "20.10.2026" }}",
+                        text = "Seçili Tarih Aralığı: ${customFromDate.ifBlank { defaultFromDate }} – ${customToDate.ifBlank { defaultToDate }}",
                         color = AlbayrakRed,
                         fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace,
@@ -2075,8 +2113,8 @@ fun MinimalPeriodAndDateFilterBar(
     }
 
     if (showDateModal) {
-        var fromInput by remember { mutableStateOf(customFromDate.ifBlank { "01.10.2026" }) }
-        var toInput by remember { mutableStateOf(customToDate.ifBlank { "20.10.2026" }) }
+        var fromInput by remember { mutableStateOf(customFromDate.ifBlank { defaultFromDate }) }
+        var toInput by remember { mutableStateOf(customToDate.ifBlank { defaultToDate }) }
 
         AlertDialog(
             onDismissRequest = { showDateModal = false },
@@ -2123,11 +2161,7 @@ fun MinimalPeriodAndDateFilterBar(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        listOf(
-                             Triple("Ekim 2026", "01.10.2026", "20.10.2026"),
-                            Triple("Eylül 2026", "01.09.2026", "30.09.2026"),
-                            Triple("Son 2 Hafta", "06.10.2026", "20.10.2026")
-                        ).forEach { (lbl, f, t) ->
+                        dateTemplates.forEach { (lbl, f, t) ->
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
