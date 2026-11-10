@@ -32,17 +32,20 @@ fun PersonalReportScreen(viewModel: MainViewModel) {
 
     val activeEmp = remember(selectedEmployee, employees) {
         selectedEmployee ?: employees.firstOrNull() ?: EmployeeEntity(
-            id = 1L,
-            employeeCode = "FN-1048",
-            password = "",
-            branchId = 1L,
-            fullName = "Ahmet Yılmaz",
-            department = "Tasarruf Finansman Satış & Portföy",
-            title = "Kıdemli Tasarruf Danışmanı",
+            id = 501L,
+            employeeCode = "FN-1001",
+            password = "123",
+            branchId = 46L,
+            fullName = "Caner Öztürk",
+            department = "Şube Operasyon",
+            title = "Takım Lideri",
             role = "PERSONNEL",
-            email = "ahmet.yilmaz@albayrakfinans.com.tr",
+            email = "caner.ozturk@albayrakfinans.com.tr",
             phone = "+90 532 100 2030",
-            deviceId = "SM-S928B-883A"
+            deviceId = "iPhone 13",
+            shiftStartMin = 480,
+            shiftEndMin = 1020,
+            shiftGraceMin = 5
         )
     }
 

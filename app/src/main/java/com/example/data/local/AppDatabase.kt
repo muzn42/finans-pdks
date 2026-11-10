@@ -20,7 +20,7 @@ import java.util.Locale
         SecurityAlertEntity::class,
         NotificationEntity::class
     ],
-    version = 13,
+    version = 14,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

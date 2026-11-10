@@ -1797,43 +1797,84 @@ fun computeEmployeeDeepAnalytics(
     val preferredOtDow = ((empSeed / 3 + 2) % 5) + 1 // 1..5
     val punctualityBias = (empSeed % 10) // 0..9
 
+    val shiftStart = emp.shiftStartMin.takeIf { it > 0 } ?: 510
+    val shiftEnd = emp.shiftEndMin.takeIf { it > 0 } ?: 1050
+    val shiftGrace = emp.shiftGraceMin.coerceAtLeast(0)
+
+    // Bu personele ait gerçek yoklama kayıtlarını güne göre grupla (dd.MM.yyyy)
+    val empRecordsByDate = allRecords
+        .filter { it.employeeId == emp.id || it.employeeName.equals(emp.fullName, ignoreCase = true) }
+        .groupBy { it.formattedDate }
+
     val dailyLogs = selectedWorkdays.mapIndexed { idx, (ddMmYyyy, iso, dow) ->
-        val dayHash = kotlin.math.abs((empSeed * 31 + idx * 97 + dow * 53) % 1000)
-        val lateChance = (if (punctualityBias >= 7) 42 else if (punctualityBias >= 4) 22 else 9) +
-                (if (dow == preferredLateDow) 28 else 0) +
-                (if (dow == 1) 8 else 0)
-        val isLate = (dayHash % 100) < lateChance
-        val lateMin = if (isLate) {
-            val baseLate = 4 + (dayHash % 24)
-            if (dow == preferredLateDow) baseLate + 9 + (dayHash % 14) else baseLate
-        } else 0
-        val inMin = if (isLate) 510 + lateMin else 494 + (dayHash % 16)
+        val dayRecords = empRecordsByDate[ddMmYyyy].orEmpty()
+        val realIn = dayRecords.filter { it.recordType == "GİRİŞ" }.minByOrNull { it.timestamp }
+        val realOut = dayRecords.filter { it.recordType == "ÇIKIŞ" }.maxByOrNull { it.timestamp }
 
-        val otChance = (if (punctualityBias <= 5) 48 else 26) +
-                (if (dow == preferredOtDow) 32 else 0)
-        val hasOt = ((dayHash / 7) % 100) < otChance
-        val otMin = if (hasOt) {
-            val baseOt = 18 + (dayHash % 55)
-            if (dow == preferredOtDow) baseOt + 24 + (dayHash % 25) else baseOt
-        } else 0
-        val outMin = 1050 + otMin - (if (!hasOt) (dayHash % 8) else 0)
-        val workH = (((outMin - inMin - 60).coerceAtLeast(360)) / 60f)
-        val dist = 3.2f + ((dayHash % 180) / 10f)
+        if (realIn != null || realOut != null) {
+            val inStr = realIn?.formattedTime ?: minToHHMM(shiftStart - 5)
+            val outStr = realOut?.formattedTime ?: minToHHMM(shiftEnd + 5)
+            val inParts = inStr.split(":")
+            val outParts = outStr.split(":")
+            val inM = (inParts.getOrNull(0)?.toIntOrNull() ?: 8) * 60 + (inParts.getOrNull(1)?.toIntOrNull() ?: 30)
+            val outM = (outParts.getOrNull(0)?.toIntOrNull() ?: 17) * 60 + (outParts.getOrNull(1)?.toIntOrNull() ?: 30)
+            val lateM = realIn?.lateMinutes ?: (if (inM > shiftStart + shiftGrace) inM - (shiftStart + shiftGrace) else 0)
+            val otM = realOut?.overtimeMinutes ?: (if (outM > shiftEnd) outM - shiftEnd else 0)
+            val workH = (((outM - inM - 60).coerceAtLeast(360)) / 60f)
+            val dist = (realIn?.distanceMeters ?: realOut?.distanceMeters ?: 4.2).toFloat()
 
-        DeepDailyLog(
-            dateStr = ddMmYyyy,
-            isoDate = iso,
-            dowName = dowNames[dow - 1],
-            dowShort = dowShorts[dow - 1],
-            checkIn = minToHHMM(inMin),
-            checkOut = minToHHMM(outMin),
-            workHours = (workH * 10f).roundToInt() / 10f,
-            lateMin = lateMin,
-            overtimeMin = otMin,
-            netMin = otMin - lateMin,
-            distanceMeters = dist,
-            isWithinGeofence = dist <= 30f
-        )
+            DeepDailyLog(
+                dateStr = ddMmYyyy,
+                isoDate = iso,
+                dowName = dowNames[dow - 1],
+                dowShort = dowShorts[dow - 1],
+                checkIn = inStr,
+                checkOut = outStr,
+                workHours = (workH * 10f).roundToInt() / 10f,
+                lateMin = lateM,
+                overtimeMin = otM,
+                netMin = otM - lateM,
+                distanceMeters = dist,
+                isWithinGeofence = dist <= 30f
+            )
+        } else {
+            val dayHash = kotlin.math.abs((empSeed * 31 + idx * 97 + dow * 53) % 1000)
+            val lateChance = (if (punctualityBias >= 7) 42 else if (punctualityBias >= 4) 22 else 9) +
+                    (if (dow == preferredLateDow) 28 else 0) +
+                    (if (dow == 1) 8 else 0)
+            val isLate = (dayHash % 100) < lateChance
+            val lateMin = if (isLate) {
+                val baseLate = 4 + (dayHash % 24)
+                if (dow == preferredLateDow) baseLate + 9 + (dayHash % 14) else baseLate
+            } else 0
+            val inMin = if (isLate) shiftStart + shiftGrace + lateMin else (shiftStart - 16) + (dayHash % 16)
+
+            val otChance = (if (punctualityBias <= 5) 48 else 26) +
+                    (if (dow == preferredOtDow) 32 else 0)
+            val hasOt = ((dayHash / 7) % 100) < otChance
+            val otMin = if (hasOt) {
+                val baseOt = 18 + (dayHash % 55)
+                if (dow == preferredOtDow) baseOt + 24 + (dayHash % 25) else baseOt
+            } else 0
+            val outMin = shiftEnd + otMin - (if (!hasOt) (dayHash % 8) else 0)
+            val workH = (((outMin - inMin - 60).coerceAtLeast(360)) / 60f)
+            val dist = 3.2f + ((dayHash % 180) / 10f)
+
+            DeepDailyLog(
+                dateStr = ddMmYyyy,
+                isoDate = iso,
+                dowName = dowNames[dow - 1],
+                dowShort = dowShorts[dow - 1],
+                checkIn = minToHHMM(inMin),
+                checkOut = minToHHMM(outMin),
+                workHours = (workH * 10f).roundToInt() / 10f,
+                lateMin = lateMin,
+                overtimeMin = otMin,
+                netMin = otMin - lateMin,
+                distanceMeters = dist,
+                isWithinGeofence = dist <= 30f
+            )
+        }
     }
 
     val weekdayStats = (1..5).map { dow ->

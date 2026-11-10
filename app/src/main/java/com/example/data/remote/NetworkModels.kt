@@ -47,6 +47,8 @@ data class AttendanceRecordDto(
     @Json(name = "note") val note: String = "",
     @Json(name = "lateMinutes") val lateMinutes: Int = 0,
     @Json(name = "overtimeMinutes") val overtimeMinutes: Int = 0,
+    @Json(name = "lateReasonCode") val lateReasonCode: String? = null,
+    @Json(name = "lateReasonNote") val lateReasonNote: String? = null,
     @Json(name = "formattedTime") val formattedTime: String? = null,
     @Json(name = "formattedDate") val formattedDate: String? = null,
     @Json(name = "ipAddress") val ipAddress: String? = null

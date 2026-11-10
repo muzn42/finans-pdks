@@ -8,6 +8,11 @@ import {
   LeaveRequestCreateSchema
 } from "../src/lib/validators";
 import { toIstanbulDateTime } from "../src/lib/timezone";
+import {
+  ingestMobileAttendanceRecord,
+  resolveMobileEmployee
+} from "../src/lib/mobile-compat";
+import { sseHub } from "../src/lib/sse";
 
 async function runTests() {
   console.log("=== ALBAYRAK FİNANS PDKS FULL-STACK DOĞRULAMA TESTLERİ (PostgreSQL 18 + Prisma + Zod + JWT) ===");
@@ -88,7 +93,7 @@ async function runTests() {
   const validAccess = AccessLogCreateSchema.safeParse({
     employeeId: 1,
     eventType: "LUNCH_OUT",
-    source: "QR_TURNSTILE",
+    source: "MOBILE_GEOFENCE",
     distanceMeters: 4.5
   });
   assert.equal(validAccess.success, true);
@@ -142,7 +147,49 @@ async function runTests() {
   assert.equal(deep.periodDays, 30);
   assert.equal(deep.weekdayStats.length, 5);
   console.log(
-    `[PASS 6/6] Derin Personel Karnesi (${sampleEmp.sicil} · ${sampleEmp.name}): Net Bakiye ${deep.netBalanceMin} dk, Uyum %${deep.geofenceComplianceRate}.`
+    `[PASS 6/7] Derin Personel Karnesi (${sampleEmp.sicil} · ${sampleEmp.name}): Net Bakiye ${deep.netBalanceMin} dk, Uyum %${deep.geofenceComplianceRate}.`
+  );
+
+  // 7. Mobil Uyum Katmanı (resolveMobileEmployee + ingestMobileAttendanceRecord + SSE) Testi
+  const caner = await resolveMobileEmployee({ employeeCode: "FN-1001" });
+  assert.ok(caner, "Mobil sicil FN-1001 (Caner Öztürk) çözümlenmeli");
+  assert.equal(caner?.sicil, "FN-1001");
+
+  let receivedSseType: string | null = null;
+  const unsub = sseHub.subscribe((evt) => {
+    receivedSseType = evt.type;
+  });
+
+  const mobileIngest = await ingestMobileAttendanceRecord(
+    {
+      employeeId: caner.id,
+      employeeName: caner.name,
+      branchId: 46,
+      branchCode: caner.branchCode,
+      recordType: "GİRİŞ",
+      timestamp: Date.now(),
+      distanceMeters: 3.4,
+      accuracyMeters: 3.4521,
+      isWithin5Meters: true,
+      isMockLocation: false,
+      deviceModel: "Android Mobil Test Cihazı",
+      note: "Mobil uyum katmanı doğrulama testi"
+    },
+    { broadcastSse: true }
+  );
+  unsub();
+
+  assert.ok(
+    mobileIngest.status === "created" || mobileIngest.status === "duplicate",
+    `Mobil giriş kaydı işlenmeli, durum: ${mobileIngest.status}`
+  );
+  if (mobileIngest.status === "created") {
+    assert.equal(receivedSseType, "ACCESS_LOG", "Mobil giriş SSE yayını tetiklemeli");
+    // Test kaydını temizle ki seed sayısı sabit kalsın
+    await prisma.accessLog.delete({ where: { id: mobileIngest.accessLog.id } });
+  }
+  console.log(
+    `[PASS 7/7] Mobil Uyum Katmanı (PostgreSQL + SSE Canlı Yayın): ${caner.sicil} · ${caner.name} doğrulandı.`
   );
 
   console.log("=== TÜM TESTLER (%100) BAŞARIYLA GEÇTİ ===");

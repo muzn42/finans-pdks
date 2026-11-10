@@ -29,7 +29,7 @@ interface AttendanceDao {
     suspend fun deleteBranchById(id: Long)
 
     // Employees
-    @Query("SELECT * FROM employees ORDER BY fullName ASC")
+    @Query("SELECT * FROM employees ORDER BY id ASC")
     fun getAllEmployees(): Flow<List<EmployeeEntity>>
 
     @Query("SELECT * FROM employees WHERE id = :id LIMIT 1")
@@ -68,6 +68,9 @@ interface AttendanceDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAttendanceRecords(records: List<AttendanceRecordEntity>)
+
+    @Query("SELECT * FROM attendance_records WHERE id = :id LIMIT 1")
+    suspend fun getRecordById(id: Long): AttendanceRecordEntity?
 
     // Geç giriş gerekçesi (personel giriş sonrası beyan eder)
     @Query("UPDATE attendance_records SET lateReasonCode = :code, lateReasonNote = :note WHERE id = :id")

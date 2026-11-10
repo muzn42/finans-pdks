@@ -3,9 +3,9 @@
   "version": "10.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 8000",
+    "dev": "next dev -H 0.0.0.0 -p 8000",
     "build": "next build",
-    "start": "next start -p 8000",
+    "start": "next start -H 0.0.0.0 -p 8000",
     "lint": "tsc --noEmit",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",

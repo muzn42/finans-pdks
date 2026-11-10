@@ -60,6 +60,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
+import com.example.data.remote.ApiClient
 import com.example.ui.MainViewModel
 import com.example.ui.components.MinimalBasicButton
 import com.example.ui.components.MinimalButtonVariant
@@ -81,41 +82,43 @@ fun LoginScreen(viewModel: MainViewModel) {
     val employees by viewModel.employees.collectAsState()
     val branches by viewModel.branches.collectAsState()
     val loginError by viewModel.loginError.collectAsState()
+    val serverBaseUrl by viewModel.serverBaseUrl.collectAsState()
 
     var selectedProfileIdx by remember { mutableIntStateOf(0) }
-    var username by remember { mutableStateOf("FN-1048") }
-    var password by remember { mutableStateOf("123456") }
+    var username by remember { mutableStateOf("FN-1001") }
+    var password by remember { mutableStateOf("123") }
     var passwordVisible by remember { mutableStateOf(false) }
     var showForgotPassDialog by remember { mutableStateOf(false) }
+    var showServerConfigDialog by remember { mutableStateOf(false) }
 
-    // Yalnızca Personel Hızlı Seçim Profilleri (İK ve BT girişi mobilden kaldırıldı)
+    // Yalnızca Personel Hızlı Seçim Profilleri (PostgreSQL 18 kadrosuyla birebir eşleşir: FN-1001, FN-1002, FN-1003)
     val profiles = remember(employees, branches) {
         val branchMap = branches.associateBy { it.id }
-        val p1 = employees.getOrNull(0)
-        val p2 = employees.getOrNull(1)
-        val p3 = employees.getOrNull(2)
+        val p1 = employees.find { it.employeeCode == "FN-1001" } ?: employees.getOrNull(0)
+        val p2 = employees.find { it.employeeCode == "FN-1002" } ?: employees.getOrNull(1)
+        val p3 = employees.find { it.employeeCode == "FN-1003" } ?: employees.getOrNull(2)
 
         listOf(
             QuickPersonnelProfile(
-                shortLabel = p1?.employeeCode ?: "FN-1048",
-                code = p1?.employeeCode ?: "FN-1048",
-                fullName = p1?.fullName ?: "Ahmet Yılmaz",
-                titleDept = "${p1?.title ?: "Kıdemli Tasarruf Danışmanı"} · ${p1?.department ?: "Tasarruf Finansman Satış"}",
-                branchLabel = branchMap[p1?.branchId]?.name ?: "Genel Müdürlük (Ataşehir)"
+                shortLabel = p1?.employeeCode ?: "FN-1001",
+                code = p1?.employeeCode ?: "FN-1001",
+                fullName = p1?.fullName ?: "Caner Öztürk",
+                titleDept = "${p1?.title ?: "Takım Lideri"} · ${p1?.department ?: "Şube Operasyon"}",
+                branchLabel = branchMap[p1?.branchId]?.name ?: "Osmaniye / Merkez Şube"
             ),
             QuickPersonnelProfile(
-                shortLabel = p2?.employeeCode ?: "FN-2091",
-                code = p2?.employeeCode ?: "FN-2091",
-                fullName = p2?.fullName ?: "Zeynep Kaya",
-                titleDept = "${p2?.title ?: "Tasarruf Sözleşme Uzmanı"} · ${p2?.department ?: "Şube Operasyon"}",
-                branchLabel = branchMap[p2?.branchId]?.name ?: "Genel Müdürlük (Ataşehir)"
+                shortLabel = p2?.employeeCode ?: "FN-1002",
+                code = p2?.employeeCode ?: "FN-1002",
+                fullName = p2?.fullName ?: "Deniz Yılmaz",
+                titleDept = "${p2?.title ?: "Şube Müdür Yrd."} · ${p2?.department ?: "Mali İşler"}",
+                branchLabel = branchMap[p2?.branchId]?.name ?: "Ankara / Sincan Şube"
             ),
             QuickPersonnelProfile(
-                shortLabel = p3?.employeeCode ?: "FN-3114",
-                code = p3?.employeeCode ?: "FN-3114",
-                fullName = p3?.fullName ?: "Caner Özdemir",
-                titleDept = "${p3?.title ?: "Teslimat & Finansman Yöneticisi"} · ${p3?.department ?: "Tahsis & Teslimat"}",
-                branchLabel = branchMap[p3?.branchId]?.name ?: "Adana / Seyhan Şube"
+                shortLabel = p3?.employeeCode ?: "FN-1003",
+                code = p3?.employeeCode ?: "FN-1003",
+                fullName = p3?.fullName ?: "Melis Yılmaz",
+                titleDept = "${p3?.title ?: "Operasyon Uzmanı"} · ${p3?.department ?: "Kurumsal Finansman"}",
+                branchLabel = branchMap[p3?.branchId]?.name ?: "Gaziantep / Şehitkamil Şube"
             )
         )
     }
@@ -349,7 +352,7 @@ fun LoginScreen(viewModel: MainViewModel) {
                                 selectedProfileIdx = idx
                                 viewModel.clearLoginError()
                                 username = profiles[idx].code
-                                password = "123456"
+                                password = "123"
                             }
                         )
 
@@ -375,7 +378,7 @@ fun LoginScreen(viewModel: MainViewModel) {
                                     .border(1.dp, LineHairline, RoundedCornerShape(12.dp))
                                     .clickable {
                                         username = prof.code
-                                        password = "123456"
+                                        password = "123"
                                     }
                                     .padding(horizontal = 12.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically,
@@ -461,7 +464,7 @@ fun LoginScreen(viewModel: MainViewModel) {
                                 username = it
                                 viewModel.clearLoginError()
                             },
-                            placeholder = "FN-1048 veya ad.soyad@albayrakfinans.com.tr",
+                            placeholder = "FN-1001 veya caner.ozturk@albayrakfinans.com.tr",
                             leadingIcon = Icons.Default.Badge,
                             keyboardOptions = KeyboardOptions(
                                 keyboardType = KeyboardType.Text,
@@ -606,6 +609,55 @@ fun LoginScreen(viewModel: MainViewModel) {
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(10.dp))
                                 .background(SubtleSurface)
+                                .border(1.dp, LineHairline, RoundedCornerShape(10.dp))
+                                .clickable { showServerConfigDialog = true }
+                                .padding(horizontal = 11.dp, vertical = 9.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Storage,
+                                    contentDescription = null,
+                                    tint = StatusOk,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Column {
+                                    Text(
+                                        text = "PostgreSQL & Web Panel Sunucusu",
+                                        color = InkPrimary,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = serverBaseUrl,
+                                        color = InkMuted,
+                                        fontSize = 10.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                            Text(
+                                text = "Adresi Değiştir",
+                                color = AlbayrakRed,
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(SubtleSurface)
                                 .padding(horizontal = 11.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -670,6 +722,142 @@ fun LoginScreen(viewModel: MainViewModel) {
             }
         )
     }
+
+    if (showServerConfigDialog) {
+        ServerConnectionConfigDialog(
+            currentUrl = serverBaseUrl,
+            onDismiss = { showServerConfigDialog = false },
+            onSaveUrl = { newUrl ->
+                viewModel.updateServerBaseUrl(newUrl)
+                showServerConfigDialog = false
+                Toast.makeText(
+                    context,
+                    "Sunucu adresi güncellendi: ${ApiClient.baseUrl}",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        )
+    }
+}
+
+@Composable
+fun ServerConnectionConfigDialog(
+    currentUrl: String,
+    onDismiss: () -> Unit,
+    onSaveUrl: (String) -> Unit
+) {
+    var customUrl by remember(currentUrl) { mutableStateOf(currentUrl) }
+
+    val presets = listOf(
+        Triple(
+            "USB ile Bağlı Gerçek Telefon (En Kolayı)",
+            ApiClient.URL_USB_ADB,
+            "Bilgisayarda 'adb reverse tcp:8000 tcp:8000' çalıştırıldığında telefon doğrudan 127.0.0.1:8000 üzerinden bağlanır."
+        ),
+        Triple(
+            "Android Emülatör",
+            ApiClient.URL_EMULATOR,
+            "Android Studio emülatörünün ana bilgisayardaki 8000 portunu görme adresi."
+        ),
+        Triple(
+            "Aynı Wi-Fi'daki Telefon (Yerel IP)",
+            ApiClient.URL_WIFI_LAN,
+            "Bilgisayarın yerel Wi-Fi IP adresi (next dev -H 0.0.0.0 -p 8000 ve 8000 firewall izni ile)."
+        )
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = CardSurface,
+        shape = RoundedCornerShape(16.dp),
+        title = {
+            Column {
+                Text(
+                    text = "Sunucu & PostgreSQL Bağlantı Ayarı",
+                    color = InkPrimary,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "Giriş/çıkış kayıtları anında PostgreSQL'e ve Web canlı akışına (SSE) düşer.",
+                    color = InkMuted,
+                    fontSize = 11.5.sp
+                )
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                presets.forEach { (title, url, desc) ->
+                    val isSelected = customUrl.trim().trimEnd('/') == url.trimEnd('/')
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (isSelected) AlbayrakRedLight else BgCanvas)
+                            .border(
+                                1.dp,
+                                if (isSelected) AlbayrakRed else LineHairline,
+                                RoundedCornerShape(10.dp)
+                            )
+                            .clickable { customUrl = url }
+                            .padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = title,
+                                color = InkPrimary,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = url,
+                                color = AlbayrakRed,
+                                fontSize = 10.5.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Text(
+                            text = desc,
+                            color = InkSecondary,
+                            fontSize = 10.5.sp,
+                            lineHeight = 14.sp
+                        )
+                    }
+                }
+
+                OutlinedTextField(
+                    value = customUrl,
+                    onValueChange = { customUrl = it },
+                    label = { Text("Özel IP veya Tunnel (ngrok / Cloudflare)", fontSize = 11.5.sp) },
+                    placeholder = { Text("http://192.168.1.x:8000/ veya https://...", fontSize = 12.sp) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp)
+                )
+            }
+        },
+        confirmButton = {
+            MinimalBasicButton(
+                text = "Kaydet ve Eşitle",
+                onClick = { onSaveUrl(customUrl) },
+                variant = MinimalButtonVariant.DARK
+            )
+        },
+        dismissButton = {
+            MinimalBasicButton(
+                text = "Vazgeç",
+                onClick = onDismiss,
+                variant = MinimalButtonVariant.OUTLINE
+            )
+        }
+    )
 }
 
 @Composable

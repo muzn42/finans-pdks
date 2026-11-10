@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { parseBssidList } from "@/lib/validators";
 import { toIstanbulDate, toIstanbulDateTime, toIstanbulTime, hhmmFromMin } from "@/lib/timezone";
 import { sseHub } from "@/lib/sse";
-import { computeBranchWifiDiscovery } from "../branches/wifi-discovery/route";
+import { computeBranchWifiDiscovery } from "@/lib/wifi-discovery";
 
 export const dynamic = "force-dynamic";
 

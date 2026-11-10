@@ -382,7 +382,8 @@ class PdksRepository(
     }
 
     /* Personelin geç giriş gerekçesini kayda işler (şablon kodu + serbest açıklama) */
-    suspend fun updateLateReason(recordId: Long, code: String, note: String) {
+    suspend fun updateLateReason(recordId: Long, code: String, note: String): AttendanceRecordEntity? {
         dao.updateLateReason(recordId, code, note)
+        return dao.getRecordById(recordId)
     }
 }

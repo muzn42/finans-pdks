@@ -83,9 +83,13 @@ fun PersonnelScreen(viewModel: MainViewModel) {
     val userLocation by viewModel.userLocation.collectAsState()
     val records by viewModel.records.collectAsState()
     val actionResult by viewModel.actionResult.collectAsState()
+    val serverBaseUrl by viewModel.serverBaseUrl.collectAsState()
+    val lastSyncTime by viewModel.lastSyncTime.collectAsState()
+    val syncMessage by viewModel.syncMessage.collectAsState()
 
     var showExcuseModal by remember { mutableStateOf(false) }
     var showBranchSelectorModal by remember { mutableStateOf(false) }
+    var showServerConfigModal by remember { mutableStateOf(false) }
     var noteInput by remember { mutableStateOf("") }
 
     // Geç giriş gerekçesi: aynı kayıt için "Daha Sonra" denildiyse tekrar açılmaz
@@ -619,29 +623,88 @@ fun PersonnelScreen(viewModel: MainViewModel) {
             )
         }
 
-        // 3. Hızlı İşlemler (Mazeret & Sunucu Eşitleme)
+        // 3. Hızlı İşlemler (Mazeret & Sunucu Eşitleme + PostgreSQL Sunucu Adresi)
         item(key = "quick_actions") {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                MinimalBasicButton(
-                    text = "Mazeret / Not Bildir",
-                    onClick = { showExcuseModal = true },
-                    variant = MinimalButtonVariant.OUTLINE,
-                    icon = Icons.Default.EditNote,
-                    modifier = Modifier.weight(1f)
-                )
-                MinimalBasicButton(
-                    text = "Sunucu ile Eşitle",
-                    onClick = {
-                        viewModel.syncWithServerDatabase()
-                        Toast.makeText(context, "Kayıtlar merkezi sunucu ile eşitleniyor...", Toast.LENGTH_SHORT).show()
-                    },
-                    variant = MinimalButtonVariant.OUTLINE,
-                    icon = Icons.Default.Sync,
-                    modifier = Modifier.weight(1f)
-                )
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    MinimalBasicButton(
+                        text = "Mazeret / Not Bildir",
+                        onClick = { showExcuseModal = true },
+                        variant = MinimalButtonVariant.OUTLINE,
+                        icon = Icons.Default.EditNote,
+                        modifier = Modifier.weight(1f)
+                    )
+                    MinimalBasicButton(
+                        text = "Sunucu ile Eşitle",
+                        onClick = {
+                            viewModel.syncWithServerDatabase()
+                            Toast.makeText(context, "Kayıtlar merkezi PostgreSQL sunucusu ile eşitleniyor...", Toast.LENGTH_SHORT).show()
+                        },
+                        variant = MinimalButtonVariant.OUTLINE,
+                        icon = Icons.Default.Sync,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(11.dp),
+                    color = CardSurface,
+                    border = BorderStroke(1.dp, LineHairline),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showServerConfigModal = true }
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 9.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(7.dp)
+                                        .clip(CircleShape)
+                                        .background(StatusOk)
+                                )
+                                Text(
+                                    text = "PostgreSQL Sunucu: $serverBaseUrl",
+                                    color = InkPrimary,
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            Text(
+                                text = "Adresi Değiştir",
+                                color = AlbayrakRed,
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Text(
+                            text = syncMessage ?: "$lastSyncTime · Giriş/çıkış yapıldığında Web Paneline anlık (SSE) düşer.",
+                            color = InkMuted,
+                            fontSize = 10.5.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
             }
         }
 
@@ -920,6 +983,18 @@ fun PersonnelScreen(viewModel: MainViewModel) {
                     onClick = { showBranchSelectorModal = false },
                     variant = MinimalButtonVariant.OUTLINE
                 )
+            }
+        )
+    }
+
+    if (showServerConfigModal) {
+        ServerConnectionConfigDialog(
+            currentUrl = serverBaseUrl,
+            onDismiss = { showServerConfigModal = false },
+            onSaveUrl = { newUrl ->
+                viewModel.updateServerBaseUrl(newUrl)
+                showServerConfigModal = false
+                Toast.makeText(context, "Sunucu adresi güncellendi: $newUrl", Toast.LENGTH_SHORT).show()
             }
         )
     }

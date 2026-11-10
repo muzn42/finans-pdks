@@ -31,14 +31,15 @@ const BranchCreateSchema = z.object({
   wifiEnforcementMode: z.enum(["LEARNING", "STRICT"]).optional().default("LEARNING")
 });
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const rows = await prisma.branch.findMany({ orderBy: { id: "asc" } });
-    return NextResponse.json({
-      status: "success",
-      count: rows.length,
-      branches: rows.map((b) => ({
-        id: b.id,
+    const rows = await prisma.branch.findMany({ orderBy: { code: "asc" } });
+    const mapped = rows.map((b, idx) => {
+      const m = String(b.code).match(/(\d+)$/);
+      const numId = m ? Math.max(1, Number(m[1])) : idx + 1;
+      return {
+        id: numId,
+        dbId: b.id,
         code: b.code,
         branch_code: b.code,
         branchCode: b.code,
@@ -46,7 +47,7 @@ export async function GET() {
         city: b.city,
         district: b.district,
         address: b.address,
-        phone: b.phone,
+        phone: b.phone || "444 88 61",
         googleMapUrl: b.googleMapUrl,
         lat: b.lat,
         lng: b.lng,
@@ -61,9 +62,23 @@ export async function GET() {
         wifiBssid: b.wifiBssid || "",
         backupWifiBssids: b.backupWifiBssids || "",
         backupBssidsList: parseBssidList(b.backupWifiBssids),
-        wifiEnforcementMode: b.wifiEnforcementMode || "LEARNING"
-      }))
+        wifiEnforcementMode: b.wifiEnforcementMode || "LEARNING",
+        is_default: b.code === "ŞB-001" || numId === 1,
+        isDefault: b.code === "ŞB-001" || numId === 1
+      };
     });
+
+    const { searchParams } = new URL(req.url);
+    if (searchParams.get("wrap") === "1" || searchParams.get("format") === "object") {
+      return NextResponse.json({
+        status: "success",
+        count: mapped.length,
+        branches: mapped
+      });
+    }
+
+    // Android Retrofit PdksApiService.getBranches() doğrudan JSON dizi (List<BranchDto>) bekler.
+    return NextResponse.json(mapped);
   } catch (err) {
     return NextResponse.json(
       { status: "error", message: "Şube listesi alınamadı.", detail: String(err) },
