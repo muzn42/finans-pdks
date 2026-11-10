@@ -14,6 +14,7 @@ import com.example.data.local.SecurityAlertEntity
 import com.example.data.local.UserRole
 import com.example.data.remote.ApiClient
 import com.example.data.remote.AttendanceRecordDto
+import com.example.data.remote.NearbyWifiDto
 import com.example.data.remote.SecurityAlertDto
 import com.example.data.remote.SyncBatchRequestDto
 import com.example.data.repository.AttendanceResult
@@ -301,7 +302,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _userLocation.value = UserLocationData(
             latitude = lat,
             longitude = lng,
-            accuracyMeters = 0.5f,
+            accuracyMeters = 3.4521f,
             isMock = false,
             isSimulated = true,
             hasRealFix = true
@@ -315,7 +316,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _userLocation.value = _userLocation.value.copy(
             isSimulated = false,
             isMock = sec.isMockLocationDetected || sec.isAllowMockSettingEnabled,
-            hasRealFix = false
+            hasRealFix = false,
+            nearbyWifis = LocationHelper.loadPassiveNearbyWifiList(appContext)
         )
         viewModelScope.launch {
             try {
@@ -344,9 +346,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 type = "GİRİŞ",
                 userLat = loc.latitude,
                 userLng = loc.longitude,
+                accuracyMeters = loc.accuracyMeters,
                 isMock = loc.isMock,
                 isSimulated = loc.isSimulated,
                 hasRealFix = loc.hasRealFix,
+                nearbyWifis = loc.nearbyWifis,
                 note = note
             )
             _actionResult.value = result
@@ -365,9 +369,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 type = "ÇIKIŞ",
                 userLat = loc.latitude,
                 userLng = loc.longitude,
+                accuracyMeters = loc.accuracyMeters,
                 isMock = loc.isMock,
                 isSimulated = loc.isSimulated,
                 hasRealFix = loc.hasRealFix,
+                nearbyWifis = loc.nearbyWifis,
                 note = note
             )
             _actionResult.value = result
@@ -651,6 +657,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 longitude = dto.longitude,
                                 radiusMeters = dto.radiusMeters,
                                 wifiSsid = dto.wifiSsid ?: "ALBAYRAK_WIFI",
+                                wifiBssid = dto.wifiBssid ?: "",
+                                backupWifiBssids = dto.backupWifiBssids ?: "",
+                                wifiEnforcementMode = dto.wifiEnforcementMode ?: "LEARNING",
                                 phone = dto.phone ?: "444 88 61",
                                 isDefault = dto.isDefault ?: (dto.id == 1L)
                             )
@@ -663,6 +672,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 val localRecords = records.value.map { r ->
+                    val parsedNearby = runCatching {
+                        val arr = org.json.JSONArray(r.nearbyWifisJson)
+                        buildList {
+                            for (i in 0 until arr.length()) {
+                                val obj = arr.optJSONObject(i) ?: continue
+                                val bssid = obj.optString("bssid")
+                                if (bssid.isNotBlank()) {
+                                    add(
+                                        NearbyWifiDto(
+                                            bssid = bssid,
+                                            ssid = obj.optString("ssid", ""),
+                                            rssi = obj.optInt("rssi", -60),
+                                            frequency = if (obj.has("frequency")) obj.optInt("frequency") else null
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    }.getOrDefault(emptyList())
+
                     AttendanceRecordDto(
                         id = r.id,
                         employeeId = r.employeeId,
@@ -674,8 +703,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         userLatitude = r.userLatitude,
                         userLongitude = r.userLongitude,
                         distanceMeters = r.distanceMeters,
+                        accuracyMeters = r.accuracyMeters,
                         isWithin5Meters = r.isWithin5Meters,
                         isMockLocation = r.isMockLocation,
+                        nearbyWifis = parsedNearby,
                         deviceModel = r.deviceModel,
                         note = r.note
                     )
@@ -815,6 +846,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         longitude: Double,
         radiusMeters: Double = 30.0,
         wifiSsid: String = "FINANS_CORP_SECURE",
+        wifiBssid: String = "",
+        backupWifiBssids: String = "",
+        wifiEnforcementMode: String = "LEARNING",
         phone: String = "0212 555 0100"
     ) {
         viewModelScope.launch {
@@ -828,12 +862,39 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 longitude = longitude,
                 radiusMeters = radiusMeters,
                 wifiSsid = wifiSsid.trim(),
+                wifiBssid = wifiBssid.trim().lowercase(),
+                backupWifiBssids = backupWifiBssids.trim().lowercase(),
+                wifiEnforcementMode = wifiEnforcementMode.trim().uppercase().ifBlank { "LEARNING" },
                 phone = phone.trim()
             )
             if (id == 0L) {
                 repository.addBranch(branch)
             } else {
                 repository.updateBranch(branch)
+            }
+        }
+    }
+
+    fun assignCommonBssidToBranch(
+        branch: BranchEntity,
+        bssid: String,
+        role: String = "PRIMARY" // "PRIMARY" veya "BACKUP"
+    ) {
+        val cleanMac = bssid.trim().lowercase()
+        if (cleanMac.isBlank()) return
+        viewModelScope.launch {
+            val updated = if (role == "BACKUP") {
+                val existing = branch.backupWifiBssids
+                    .split(",")
+                    .map { it.trim().lowercase() }
+                    .filter { it.isNotBlank() && it != cleanMac }
+                branch.copy(backupWifiBssids = (existing + cleanMac).joinToString(", "))
+            } else {
+                branch.copy(wifiBssid = cleanMac)
+            }
+            repository.updateBranch(updated)
+            if (_selectedBranch.value?.id == branch.id) {
+                _selectedBranch.value = updated
             }
         }
     }

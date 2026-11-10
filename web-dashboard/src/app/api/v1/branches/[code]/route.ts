@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { normalizeBssid, parseBssidList } from "@/lib/validators";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +25,9 @@ const BranchUpdateSchema = z
     lng: z.coerce.number().min(-180).max(180).optional(),
     radius: z.coerce.number().min(10).max(200).optional(),
     wifi: z.string().trim().min(3).max(64).optional(),
+    wifiBssid: z.string().trim().max(32).optional(),
+    backupWifiBssids: z.union([z.string(), z.array(z.string())]).optional(),
+    wifiEnforcementMode: z.enum(["LEARNING", "STRICT"]).optional(),
     weight: z.coerce.number().min(0).max(1).optional()
   })
   .refine((o) => Object.keys(o).length > 0, {
@@ -43,6 +47,9 @@ function serializeBranch(b: {
   lng: number;
   radiusMeters: number;
   wifiSsid: string;
+  wifiBssid?: string;
+  backupWifiBssids?: string;
+  wifiEnforcementMode?: string;
   weight: number;
 }) {
   return {
@@ -58,6 +65,10 @@ function serializeBranch(b: {
     lng: b.lng,
     radius: b.radiusMeters,
     wifi: b.wifiSsid,
+    wifiBssid: b.wifiBssid || "",
+    backupWifiBssids: b.backupWifiBssids || "",
+    backupBssidsList: parseBssidList(b.backupWifiBssids),
+    wifiEnforcementMode: b.wifiEnforcementMode || "LEARNING",
     weight: b.weight
   };
 }
@@ -128,6 +139,33 @@ async function handleUpdate(
     const lat = d.lat != null ? d.lat : existing.lat;
     const lng = d.lng != null ? d.lng : existing.lng;
 
+    let nextPrimaryBssid: string | undefined;
+    if (d.wifiBssid !== undefined) {
+      if (d.wifiBssid === "") {
+        nextPrimaryBssid = "";
+      } else {
+        const norm = normalizeBssid(d.wifiBssid);
+        if (!norm) {
+          return NextResponse.json(
+            {
+              status: "error",
+              message: "Ana modem MAC (BSSID) adresi geçersiz (örn. a4:2b:8c:1d:e5:9f)."
+            },
+            { status: 400 }
+          );
+        }
+        nextPrimaryBssid = norm;
+      }
+    }
+
+    let nextBackupBssids: string | undefined;
+    if (d.backupWifiBssids !== undefined) {
+      const effectivePrimary = nextPrimaryBssid !== undefined ? nextPrimaryBssid : existing.wifiBssid;
+      nextBackupBssids = parseBssidList(d.backupWifiBssids)
+        .filter((x) => x !== effectivePrimary)
+        .join(", ");
+    }
+
     const updated = await prisma.branch.update({
       where: { code: branchCode },
       data: {
@@ -147,6 +185,9 @@ async function handleUpdate(
         ...(d.lng != null ? { lng: d.lng } : {}),
         ...(d.radius != null ? { radiusMeters: d.radius } : {}),
         ...(d.wifi != null ? { wifiSsid: d.wifi } : {}),
+        ...(nextPrimaryBssid !== undefined ? { wifiBssid: nextPrimaryBssid } : {}),
+        ...(nextBackupBssids !== undefined ? { backupWifiBssids: nextBackupBssids } : {}),
+        ...(d.wifiEnforcementMode != null ? { wifiEnforcementMode: d.wifiEnforcementMode } : {}),
         ...(d.weight != null ? { weight: d.weight } : {})
       }
     });

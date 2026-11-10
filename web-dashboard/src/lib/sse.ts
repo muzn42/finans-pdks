@@ -14,7 +14,8 @@ export interface SseEventPayload {
     | "SECURITY_ALERT"
     | "EMPLOYEE_CRUD"
     | "SHIFT_UPDATE"
-    | "LATE_REASON_UPDATE";
+    | "LATE_REASON_UPDATE"
+    | "BRANCH_WIFI_ASSIGNED";
   title: string;
   message: string;
   severity?: "info" | "ok" | "warn" | "bad";

@@ -91,11 +91,21 @@
             },
             leave: { f: 'pending', type: 'ALL', lateSort: 'pending' }, alert: { sev: 'ALL', type: 'ALL', show: 'open' },
             tk: { f: 'open', type: 'ALL', q: '' }, dev: { q: '', status: 'ALL', ver: 'ALL' }, audit: { cat: 'ALL' },
-            policies: { geofence30m: true, mockGpsBlock: true, singleDevice: true, autoTimeout: true },
-            simBranch: 'ŞB-001', simDist: 14, brQ: '', branchRank: { q: '', limit: 10 },
+            policies: {
+                geofence30m: true,
+                mockGpsBlock: true,
+                freshLocationZeroAge: true,
+                accuracyFracFilter: true,
+                passiveWifiScanLog: true,
+                strictWifiBssidCheck: false,
+                singleDevice: true,
+                autoTimeout: true
+            },
+            simBranch: 'ŞB-001', simDist: 14, brQ: '', wifiDiscQ: '', wifiDiscFilter: 'UNASSIGNED', branchRank: { q: '', limit: 10 },
             reportId: null,
             shifts: {
-                empId: null, event: 'CHECK_IN', source: 'MOBILE_GEOFENCE', clock: '08:28', dist: 8, mock: false,
+                empId: null, event: 'CHECK_IN', source: 'MOBILE_GEOFENCE', clock: '08:28', dist: 8,
+                accuracy: '3.4521', mock: false, wifiScanMode: 'MATCH_PRIMARY', customBssid: 'a4:2b:8c:1d:e5:9f',
                 lvType: 'Saatlik izin', lvDate: '', lvStart: '08:30', lvEnd: '10:00', lvDays: 1,
                 lvNote: 'Resmi kurum ve noter işlemi için sabah saatlik izin talebi.',
                 shCode: '', shName: '', shStart: '08:30', shEnd: '17:30', shGrace: 5, shBreak: 60,
@@ -1945,9 +1955,10 @@
                     ${cardHead('Aktif güvenlik politikaları', 'Mobil uygulama ve web uç nokta kuralları')}
                     <div>
                         <div class="policy-row"><div><b style="font-size:13px;display:block">30m Şube Geofence Zorunluluğu</b><small class="muted">30 metre dışındaki giriş-çıkışları engelle</small></div><button type="button" class="sw ${pol.geofence30m ? 'on' : ''}" data-act="pol-toggle" data-k="geofence30m" aria-label="30m Geofence"></button></div>
-                        <div class="policy-row"><div><b style="font-size:13px;display:block">Sahte GPS (Mock Location) Engeli</b><small class="muted">Geliştirici sahte konum tespitinde oturumu kilitle</small></div><button type="button" class="sw ${pol.mockGpsBlock ? 'on' : ''}" data-act="pol-toggle" data-k="mockGpsBlock" aria-label="Sahte GPS Engeli"></button></div>
+                        <div class="policy-row"><div><b style="font-size:13px;display:block">Taze Konum + location.mocked Engeli (maximumAge: 0)</b><small class="muted">Önbellek konumunu kapat; Geliştirici Seçenekleri aç-kapa hilesini yakala</small></div><button type="button" class="sw ${pol.freshLocationZeroAge !== false ? 'on' : ''}" data-act="pol-toggle" data-k="freshLocationZeroAge" aria-label="Taze Konum"></button></div>
+                        <div class="policy-row"><div><b style="font-size:13px;display:block">GPS Sapma (Accuracy Küsurat) Filtresi</b><small class="muted">Sabit 1.00000 / 5.00000 m gönderen ucuz Fake GPS uygulamalarını engelle</small></div><button type="button" class="sw ${pol.accuracyFracFilter !== false ? 'on' : ''}" data-act="pol-toggle" data-k="accuracyFracFilter" aria-label="Accuracy Filtresi"></button></div>
+                        <div class="policy-row"><div><b style="font-size:13px;display:block">Bağlantısız Pasif Wi-Fi BSSID Öğrenme Modu (loadWifiList)</b><small class="muted">Ağa bağlanmadan etraftaki modem MAC + RSSI listesini logla ve ortak modemi keşfet</small></div><button type="button" class="sw ${pol.passiveWifiScanLog !== false ? 'on' : ''}" data-act="pol-toggle" data-k="passiveWifiScanLog" aria-label="Pasif Wi-Fi Tarama"></button></div>
                         <div class="policy-row"><div><b style="font-size:13px;display:block">Tekil Cihaz Eşleme Kilidi</b><small class="muted">Her personel yalnızca 1 onaylı cihazdan giriş yapabilir</small></div><button type="button" class="sw ${pol.singleDevice ? 'on' : ''}" data-act="pol-toggle" data-k="singleDevice" aria-label="Tekil Cihaz"></button></div>
-                        <div class="policy-row"><div><b style="font-size:13px;display:block">15 Dk Otomatik Oturum Zaman Aşımı</b><small class="muted">Hareketsiz kalan yönetici ve mobil oturumları kapat</small></div><button type="button" class="sw ${pol.autoTimeout ? 'on' : ''}" data-act="pol-toggle" data-k="autoTimeout" aria-label="Otomatik Zaman Aşımı"></button></div>
                     </div>
                 </section>
             </div>
@@ -2016,46 +2027,158 @@
     };
 
     IT.branches = {
-        title: 'Şubeler, açık adresler & 30m harita doğrulama', sub: () => 'Türkiye genelindeki ' + D.BRANCHES.length + ' şubenin açık adresleri, harita konumu, Wi-Fi SSID ve canlı 30m geofence simülatörü', tools: {}, icon: 'building',
+        title: 'Şubeler, 30m Geofence & Bağlantısız Wi-Fi BSSID Öğrenme Merkezi', sub: () => 'Türkiye genelindeki ' + D.BRANCHES.length + ' şubenin 30m geofence, pasif Wi-Fi BSSID tarama (ağa bağlanmadan) ve ortak modem keşif merkezi', tools: {}, icon: 'building',
         render() {
             const simB = D.BRANCHES.find(b => b.code === S.ui.simBranch) || D.BRANCHES[0];
             const inside = S.ui.simDist <= simB.radius;
             const q = (S.ui.brQ || '').toLocaleLowerCase('tr-TR').trim();
-            const filteredBranches = D.BRANCHES.filter(b => !q || (b.name + ' ' + b.city + ' ' + (b.district || '') + ' ' + (b.address || '') + ' ' + b.code).toLocaleLowerCase('tr-TR').includes(q));
+            const filteredBranches = D.BRANCHES.filter(b => !q || (b.name + ' ' + b.city + ' ' + (b.district || '') + ' ' + (b.address || '') + ' ' + b.code + ' ' + (b.wifiBssid || '') + ' ' + (b.backupWifiBssids || '')).toLocaleLowerCase('tr-TR').includes(q));
             const bbox = `${(simB.lng - 0.0045).toFixed(5)}%2C${(simB.lat - 0.0032).toFixed(5)}%2C${(simB.lng + 0.0045).toFixed(5)}%2C${(simB.lat + 0.0032).toFixed(5)}`;
             const osmEmbedUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${simB.lat.toFixed(5)}%2C${simB.lng.toFixed(5)}`;
             const gmapsUrl = (simB.googleMapUrl && simB.googleMapUrl.startsWith('https://')) ? simB.googleMapUrl : `https://www.google.com/maps/search/?api=1&query=${simB.lat},${simB.lng}`;
             const pinOffsetPx = Math.min(72, Math.round((S.ui.simDist / 80) * 72));
-            return `<div class="grid g-main">
+
+            const allDisc = D.WIFI_DISCOVERY || [];
+            const discQ = (S.ui.wifiDiscQ || '').toLocaleLowerCase('tr-TR').trim();
+            const discFilter = S.ui.wifiDiscFilter || 'UNASSIGNED';
+            const filteredDisc = allDisc.filter(c => {
+                if (discFilter === 'UNASSIGNED' && c.assignmentStatus !== 'UNASSIGNED') return false;
+                if (discFilter === 'ASSIGNED' && c.assignmentStatus === 'UNASSIGNED') return false;
+                if (discFilter === 'BRANCH' && c.branchCode !== simB.code) return false;
+                if (discQ && !(c.branchName + ' ' + c.branchCode + ' ' + c.city + ' ' + c.bssid + ' ' + c.ssid).toLocaleLowerCase('tr-TR').includes(discQ)) return false;
+                return true;
+            });
+            const unassignedCnt = allDisc.filter(c => c.assignmentStatus === 'UNASSIGNED').length;
+            const assignedBranchesCnt = D.BRANCHES.filter(b => b.wifiBssid).length;
+            const strictBranchesCnt = D.BRANCHES.filter(b => b.wifiEnforcementMode === 'STRICT').length;
+            const simBranchCandidates = allDisc.filter(c => c.branchCode === simB.code);
+
+            return `<div class="grid g-4">
+                ${kpi({ label: 'BSSID Tanımlı Şube', val: assignedBranchesCnt, unit: '/ ' + D.BRANCHES.length, icon: 'wifi', tone: assignedBranchesCnt ? 'ok' : 'info', foot: (D.BRANCHES.length - assignedBranchesCnt) + ' şube öğrenme modunda logluyor' })}
+                ${kpi({ label: 'Ortak Görülen Aday Modem', val: unassignedCnt, unit: 'BSSID', icon: 'activity', tone: 'warn', foot: 'Aynı şubedeki personellerin ortak gördüğü MAC adresleri' })}
+                ${kpi({ label: 'Zorunlu BSSID Koruması', val: strictBranchesCnt, unit: 'şube', icon: 'shield', tone: 'ok', foot: 'Evden Fake GPS ile giriş %100 engellenir' })}
+                ${kpi({ label: 'Pasif Tarama (loadWifiList)', val: 100, unit: '%', icon: 'phone', tone: 'info', foot: 'Wi-Fi ağına bağlanmadan · Android 9+ throttling dostu' })}
+            </div>
+
+            <section class="card flush mt">
+                ${cardHead(
+                    'Öğrenme Modu · Aynı Şubedeki Personellerin Ortak Gördüğü Wi-Fi Modemler (Tek Tıkla BSSID Atama Kısayolu)',
+                    'Telefonların şirket Wi-Fi ağına bağlanmasına gerek yoktur! Personel giriş yaptıkça telefonun arka planda pasif taradığı (loadWifiList) nearby_wifis listesinden aynı şubede ortak görülen MAC (BSSID) adresleri otomatik tespit edilir. Tek tıkla Ana Şube Modemi veya Yan Dükkan (Yedek) Doğrulayıcı olarak atayabilirsiniz.',
+                    `<div style="display:flex;gap:8px;flex-wrap:wrap">
+                        <button type="button" class="btn btn-primary btn-sm" data-act="wifi-assign-all-top">${ic('check')} Tüm Şubelerde %100 Ortak Modemleri Tek Tıkla Ata</button>
+                    </div>`
+                )}
+                <div class="toolbar">
+                    ${searchEl('wifi-disc-q', S.ui.wifiDiscQ || '', 'Şube adı, BSSID (a4:2b:...) veya modem adı ara...')}
+                    ${chips([
+                        { v: 'UNASSIGNED', l: 'Atama Bekleyen Ortak Modemler', n: unassignedCnt },
+                        { v: 'BRANCH', l: simB.code + ' (' + simB.city + ') Modemleri', n: simBranchCandidates.length },
+                        { v: 'ASSIGNED', l: 'Atanmış BSSID\'ler', n: allDisc.length - unassignedCnt },
+                        { v: 'ALL', l: 'Tümü', n: allDisc.length }
+                    ], discFilter, 'wifi-disc-filter')}
+                </div>
+                <div class="table-wrap" style="max-height:370px;overflow-y:auto">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Şube</th>
+                                <th>Ortak Görülen Modem MAC (BSSID) & Adı</th>
+                                <th>Ortak Görülme Oranı (Personel)</th>
+                                <th>Sinyal (RSSI)</th>
+                                <th>Durum / Öneri</th>
+                                <th>Tek Tıkla Şubeye Atama Kısayolu</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${filteredDisc.slice(0, 45).map((c, idx) => {
+                                const sampleNames = (c.employeeSample || []).slice(0, 3).map(e => e.name).join(', ');
+                                const extraCnt = Math.max(0, (c.uniqueEmployeeCount || 0) - 3);
+                                const statusBadge = c.assignmentStatus === 'PRIMARY'
+                                    ? pill('Ana Şube Modemi (Aktif)', 'ok')
+                                    : c.assignmentStatus === 'BACKUP'
+                                    ? pill('Yedek / Yan Dükkan Modemi', 'info')
+                                    : c.recommendedRole === 'PRIMARY'
+                                    ? pill('%' + c.commonalityPct + ' Ortak · Ana Modem Adayı', 'warn')
+                                    : pill('Yan Dükkan / İkincil Aday', 'mute');
+                                return `<tr style="--r:${idx}">
+                                    <td>
+                                        <b>${esc(c.branchName)}</b>
+                                        <small class="muted" style="display:block">${esc(c.city)} · <span class="mono">${esc(c.branchCode)}</span></small>
+                                    </td>
+                                    <td>
+                                        <span class="mono" style="font-weight:700;font-size:12.5px;color:var(--ink)">${esc(c.bssid)}</span>
+                                        <small class="muted" style="display:block">${ic('wifi')} ${esc(c.ssid || 'Gizli Kurumsal Ağ')} · ${c.scanHitCount || c.uniqueEmployeeCount} tarama kaydı</small>
+                                    </td>
+                                    <td>
+                                        <div style="display:flex;align-items:center;gap:8px">
+                                            <b class="mono" style="color:${c.commonalityPct >= 90 ? 'var(--ok)' : 'var(--ink)'}">${c.uniqueEmployeeCount} / ${c.totalBranchCheckInEmployees} personel (%${c.commonalityPct})</b>
+                                        </div>
+                                        <small class="muted" style="display:block;font-size:11px">${esc(sampleNames)}${extraCnt > 0 ? ' +' + extraCnt + ' kişi ortak gördü' : ''}</small>
+                                    </td>
+                                    <td class="mono">
+                                        <b>${c.avgRssi} dBm</b>
+                                        <small class="muted" style="display:block">zirve ${c.maxRssi} dBm</small>
+                                    </td>
+                                    <td>${statusBadge}</td>
+                                    <td>
+                                        <div class="row-actions" style="flex-wrap:wrap">
+                                            ${c.assignmentStatus !== 'PRIMARY' ? `<button type="button" class="btn btn-primary btn-sm" data-act="wifi-assign" data-branch="${esc(c.branchCode)}" data-bssid="${esc(c.bssid)}" data-ssid="${esc(c.ssid || '')}" data-role="PRIMARY" title="Bu BSSID'yi şubenin ana modemi olarak ata">${ic('check')} Ana Modem Ata</button>` : ''}
+                                            ${c.assignmentStatus !== 'BACKUP' ? `<button type="button" class="btn btn-soft btn-sm" data-act="wifi-assign" data-branch="${esc(c.branchCode)}" data-bssid="${esc(c.bssid)}" data-ssid="${esc(c.ssid || '')}" data-role="BACKUP" title="Şube modemi bozulursa yan dükkan/yedek doğrulayıcı olarak ekle">${ic('plus')} Yedek (Yan Dükkan) Ekle</button>` : ''}
+                                            ${c.assignmentStatus !== 'UNASSIGNED' ? `<button type="button" class="btn btn-ghost btn-sm" data-act="wifi-assign" data-branch="${esc(c.branchCode)}" data-bssid="${esc(c.bssid)}" data-role="REMOVE" title="Atamayı kaldır">${ic('x')}</button>` : ''}
+                                        </div>
+                                    </td>
+                                </tr>`;
+                            }).join('') || `<tr><td colspan="6">${empty('Aday modem bulunamadı', 'Filtreyi değiştirerek tüm şubelerdeki ortak BSSID kayıtlarını görüntüleyebilirsiniz.')}</td></tr>`}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <div class="grid g-main mt">
                 <section class="card flush">
                     <div class="toolbar">
-                        ${searchEl('br-q', S.ui.brQ || '', 'Şube adı, il, ilçe veya açık adres ara...')}
-                        <div><b>${filteredBranches.length} / ${D.BRANCHES.length} şube</b> <span class="muted">· 30 m geofence</span></div>
+                        ${searchEl('br-q', S.ui.brQ || '', 'Şube adı, il, ilçe, BSSID veya açık adres ara...')}
+                        <div><b>${filteredBranches.length} / ${D.BRANCHES.length} şube</b> <span class="muted">· 30 m + pasif BSSID</span></div>
                         <span class="grow"></span>
                         <button class="btn btn-soft btn-sm" data-act="br-sync-web">${ic('download')}Web'den Şubeleri Güncelle</button>
                         <button class="btn btn-primary btn-sm" data-act="br-add">${ic('plus')}Şube ekle</button>
                     </div>
-                    <div class="table-wrap" style="max-height:680px;overflow-y:auto"><table class="br-table"><thead><tr><th>Şube & şehir</th><th>Açık adres & telefon</th><th>Konum & kurumsal Wi-Fi</th><th>Personel</th><th>İşlem</th></tr></thead><tbody>${filteredBranches.map((b, i) => {
+                    <div class="table-wrap" style="max-height:680px;overflow-y:auto"><table class="br-table"><thead><tr><th>Şube & şehir</th><th>Açık adres & telefon</th><th>Konum, Wi-Fi BSSID & Mod</th><th>Personel</th><th>İşlem</th></tr></thead><tbody>${filteredBranches.map((b, i) => {
                         const isSelected = b.code === simB.code;
+                        const backups = b.backupWifiBssids ? b.backupWifiBssids.split(',').map(x => x.trim()).filter(Boolean) : [];
+                        const isStrict = b.wifiEnforcementMode === 'STRICT';
                         return `<tr style="--r:${i};${isSelected ? 'background:var(--red-soft)' : ''}">
                             <td class="br-name"><b>${esc(b.name)}</b><small>${esc(b.city)}${b.district ? ' / ' + esc(b.district) : ''} · <span class="mono">${esc(b.code)}</span></small></td>
                             <td><div class="br-addr">${esc(b.address || (b.name + ' · ' + b.city))}</div><small class="mono muted">${esc(b.phone || '0850 222 0 252')}</small></td>
-                            <td><span class="mono br-nowrap">${b.lat.toFixed(4)}, ${b.lng.toFixed(4)}</span><div style="margin-top:4px">${pill(b.radius + ' m sınır', 'ok')}</div><small class="mono muted br-wifi">${esc(b.wifi)}</small></td>
+                            <td>
+                                <span class="mono br-nowrap">${b.lat.toFixed(4)}, ${b.lng.toFixed(4)}</span>
+                                <div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap">
+                                    ${pill(b.radius + ' m sınır', 'ok')}
+                                    <button type="button" class="chip ${isStrict ? 'is-active' : ''}" style="height:22px;padding:0 8px;font-size:10.5px" data-act="br-toggle-mode" data-code="${esc(b.code)}" data-mode="${isStrict ? 'LEARNING' : 'STRICT'}" title="Tıklayarak Öğrenme Modu / Zorunlu BSSID Modu arasında geçiş yapın">
+                                        ${isStrict ? '🔒 Zorunlu BSSID' : '📡 Öğrenme Modu'}
+                                    </button>
+                                </div>
+                                <small class="mono muted br-wifi">SSID: ${esc(b.wifi)}</small>
+                                ${b.wifiBssid
+                                    ? `<small class="mono" style="display:block;color:var(--ok);font-weight:700;font-size:11px">Ana BSSID: ${esc(b.wifiBssid)}</small>`
+                                    : `<small class="muted" style="display:block;font-size:11px">Ana BSSID: Henüz atanmadı (Öğreniliyor)</small>`}
+                                ${backups.length ? `<small class="mono muted" style="display:block;font-size:10.5px">Yedek (${backups.length}): ${esc(backups.join(', '))}</small>` : ''}
+                            </td>
                             <td class="mono br-nowrap"><b>${D.EMPLOYEES.filter(e => e.branch === b.code).length}</b> kişi</td>
                             <td><div class="row-actions br-actions">
                                 <button type="button" class="btn ${isSelected ? 'btn-primary' : 'btn-soft'} btn-sm btn-icon" data-act="br-map" data-code="${esc(b.code)}" title="Haritada gör" aria-label="${esc(b.name)} haritada gör">${ic('pin')}</button>
-                                <button type="button" class="btn btn-soft btn-sm btn-icon" data-act="br-edit" data-code="${esc(b.code)}" title="Düzenle" aria-label="${esc(b.name)} düzenle">${ic('tool')}</button>
+                                <button type="button" class="btn btn-soft btn-sm btn-icon" data-act="br-edit" data-code="${esc(b.code)}" title="Düzenle & BSSID ata" aria-label="${esc(b.name)} düzenle">${ic('tool')}</button>
                                 <button type="button" class="btn btn-bad btn-sm btn-icon" data-act="br-delete" data-code="${esc(b.code)}" title="Sil" aria-label="${esc(b.name)} sil">${ic('x')}</button>
                             </div></td>
                         </tr>`;
                     }).join('') || `<tr><td colspan="5">${empty('Şube bulunamadı', 'Arama kriterinize uygun şube kaydı bulunmuyor.')}</td></tr>`}</tbody></table></div>
                 </section>
                 <section class="card">
-                    ${cardHead('Şube Haritası & 30m Geofence Canlı Simülatörü', simB.name + ' (' + simB.city + ') açık adresi, harita konumu ve mesafe testi')}
+                    ${cardHead('Şube Haritası & 30m Geofence + BSSID Simülatörü', simB.name + ' (' + simB.city + ') açık adresi, harita konumu ve radyo sinyali doğrulaması')}
                     <div style="display:grid;gap:14px">
                         <div>
                             <small class="muted" style="font-weight:600;display:block;margin-bottom:6px">Haritada İncelenen & Test Edilen Şube (${D.BRANCHES.length} Şube)</small>
-                            ${selectEl('sim-branch', D.BRANCHES.map(b => ({ v: b.code, l: b.name, sub: b.city + ' · ' + b.radius + 'm' })), S.ui.simBranch, 'Şube seçin')}
+                            ${selectEl('sim-branch', D.BRANCHES.map(b => ({ v: b.code, l: b.name, sub: b.city + ' · ' + (b.wifiBssid ? 'BSSID: ' + b.wifiBssid : 'Öğrenme Modu') })), S.ui.simBranch, 'Şube seçin')}
                         </div>
                         <div style="padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--surface-2);display:grid;gap:6px">
                             <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
@@ -2100,9 +2223,21 @@
                             </div>
                         </div>
                         <div class="kv">
-                            <div><small>Hedef Koordinat</small><b class="mono">${simB.lat.toFixed(4)}, ${simB.lng.toFixed(4)}</b></div>
-                            <div><small>Şube Wi-Fi ağı</small><b class="mono">${esc(simB.wifi)}</b></div>
+                            <div><small>Ana Modem BSSID</small><b class="mono">${esc(simB.wifiBssid || 'Öğrenme Modunda')}</b></div>
+                            <div><small>Yedek (Yan Dükkan) BSSID</small><b class="mono">${esc(simB.backupWifiBssids || 'Tanımlı değil')}</b></div>
                         </div>
+                        ${simBranchCandidates.length ? `<div style="padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:var(--surface-2)">
+                            <small class="muted" style="display:block;font-weight:700;margin-bottom:6px">${esc(simB.name)} İçin Personellerde Ortak Görülen Modemler</small>
+                            <div style="display:grid;gap:6px">
+                                ${simBranchCandidates.slice(0, 3).map(c => `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px">
+                                    <div><span class="mono" style="font-weight:700">${esc(c.bssid)}</span> <span class="muted">(${esc(c.ssid)} · %${c.commonalityPct} ortak · ${c.avgRssi} dBm)</span></div>
+                                    <div style="display:flex;gap:4px">
+                                        ${c.assignmentStatus !== 'PRIMARY' ? `<button type="button" class="btn btn-primary btn-sm" style="height:24px;padding:0 8px;font-size:11px" data-act="wifi-assign" data-branch="${esc(c.branchCode)}" data-bssid="${esc(c.bssid)}" data-ssid="${esc(c.ssid || '')}" data-role="PRIMARY">Ana Yap</button>` : pill('Ana Modem', 'ok')}
+                                        ${c.assignmentStatus !== 'BACKUP' && c.assignmentStatus !== 'PRIMARY' ? `<button type="button" class="btn btn-soft btn-sm" style="height:24px;padding:0 8px;font-size:11px" data-act="wifi-assign" data-branch="${esc(c.branchCode)}" data-bssid="${esc(c.bssid)}" data-ssid="${esc(c.ssid || '')}" data-role="BACKUP">Yedek Yap</button>` : ''}
+                                    </div>
+                                </div>`).join('')}
+                            </div>
+                        </div>` : ''}
                     </div>
                 </section>
             </div>`;
@@ -2423,24 +2558,36 @@
 
                 <div class="grid g-main mt">
                     <section class="card">
-                        ${cardHead('Canlı konum doğrulama ve 30 m geofence geçiş testi', 'Kayıt doğrudan PostgreSQL access_logs tablosuna yazılır ve SSE ile yayınlanır')}
+                        ${cardHead('Canlı konum, GPS sapma (accuracy) ve pasif Wi-Fi BSSID geçiş testi', 'Taze konum (maximumAge: 0) + küsuratlı GPS sapma kontrolü + bağlantısız Wi-Fi BSSID tarama (loadWifiList)')}
                         <div class="shift-form">
                             <label class="field"><span>Personel</span><div class="input"><select id="shEmp">${empOptions(selEmp)}</select></div></label>
                             <div class="shift-form-row">
                                 <label class="field"><span>Geçiş hareketi</span><div class="input"><select id="shEvent">
                                     ${Object.keys(EVENT_LABEL).map(k => `<option value="${k}"${u.event === k ? ' selected' : ''}>${EVENT_LABEL[k]} (${k})</option>`).join('')}
                                 </select></div></label>
-                <label class="field"><span>Okuma kaynağı</span><div class="input"><select id="shSource">
-                    <option value="MOBILE_GEOFENCE"${u.source === 'MOBILE_GEOFENCE' ? ' selected' : ''}>Mobil konum (30 m geofence)</option>
-                    <option value="WEB_MANUAL"${u.source === 'WEB_MANUAL' ? ' selected' : ''}>İK manuel kayıt</option>
-                </select></div></label>
+                                <label class="field"><span>Okuma kaynağı</span><div class="input"><select id="shSource">
+                                    <option value="MOBILE_GEOFENCE"${u.source === 'MOBILE_GEOFENCE' ? ' selected' : ''}>Mobil konum + pasif Wi-Fi BSSID</option>
+                                    <option value="WEB_MANUAL"${u.source === 'WEB_MANUAL' ? ' selected' : ''}>İK manuel kayıt</option>
+                                </select></div></label>
                             </div>
                             <div class="shift-form-row">
                                 <label class="field"><span>İşlem saati (GMT+3)</span><div class="input"><input id="shClock" type="time" value="${esc(u.clock)}"></div></label>
                                 <label class="field"><span>Şube mesafesi: <b id="shDistOut">${u.dist} m</b> (sınır 30 m)</span><input id="shDist" type="range" min="1" max="95" step="0.5" value="${u.dist}"></label>
                             </div>
-                            <label class="shift-check"><input id="shMock" type="checkbox"${u.mock ? ' checked' : ''}> <span><b>Sahte GPS (mock location)</b> simülasyonu · anında blokaj + güvenlik alarmı</span></label>
-                            <button type="button" class="btn btn-primary btn-block" data-act="shifts-sim">${ic('activity')} Geçişi Gönder (SSE yayınla)</button>
+                            <div class="shift-form-row">
+                                <label class="field"><span>GPS Sapma (Accuracy m) · <small class="muted">Gerçek: 3.4521 / Sahte: 1.0</small></span>
+                                    <div class="input"><input id="shAccuracy" value="${esc(u.accuracy || '3.4521')}" placeholder="3.4521 (Sabit 1.0 veya 5.0 engellenir)"></div>
+                                </label>
+                                <label class="field"><span>Pasif Wi-Fi BSSID Tarama (loadWifiList)</span>
+                                    <div class="input"><select id="shWifiMode">
+                                        <option value="MATCH_PRIMARY"${u.wifiScanMode === 'MATCH_PRIMARY' ? ' selected' : ''}>Şube modemi etrafta görülsün (BSSID + RSSI)</option>
+                                        <option value="MATCH_BACKUP"${u.wifiScanMode === 'MATCH_BACKUP' ? ' selected' : ''}>Yan dükkan / yedek modem görülsün</option>
+                                        <option value="HOME_NO_MATCH"${u.wifiScanMode === 'HOME_NO_MATCH' ? ' selected' : ''}>Evden Fake GPS (Şube BSSID etrafta yok)</option>
+                                    </select></div>
+                                </label>
+                            </div>
+                            <label class="shift-check"><input id="shMock" type="checkbox"${u.mock ? ' checked' : ''}> <span><b>location.mocked === true (Sahte GPS / Geliştirici Seçenekleri)</b> simülasyonu · anında blokaj</span></label>
+                            <button type="button" class="btn btn-primary btn-block" data-act="shifts-sim">${ic('activity')} Geçişi Gönder (Taze GPS + BSSID Paketi)</button>
                         </div>
                     </section>
 
@@ -2461,14 +2608,23 @@
                         ${cardHead('Gün içi ham geçiş kayıtları (access_logs)', 'İlk giriş checkIn, son çıkış checkOut olarak işlenir · ' + (sync.accessLogTotal || logs.length) + ' kayıt (son 120 yüklü)', '')}
                         <div class="table-wrap">
                             <table>
-                                <thead><tr><th>Personel</th><th>Hareket</th><th>Kaynak</th><th>Mesafe</th><th>TR saati (GMT+3)</th></tr></thead>
-                                <tbody>${logs.slice(0, 40).map(log => `<tr>
+                                <thead><tr><th>Personel</th><th>Hareket</th><th>Kaynak & BSSID</th><th>Mesafe & Sapma</th><th>TR saati (GMT+3)</th></tr></thead>
+                                <tbody>${logs.slice(0, 40).map(log => {
+                                    const wStat = log.wifiStatus === 'VERIFIED_PRIMARY'
+                                        ? pill('BSSID Doğrulandı', 'ok')
+                                        : log.wifiStatus === 'VERIFIED_BACKUP'
+                                        ? pill('Yedek BSSID', 'info')
+                                        : log.nearbyWifis && log.nearbyWifis.length
+                                        ? pill(log.nearbyWifis.length + ' modem loglandı', 'mute')
+                                        : '';
+                                    return `<tr>
                                     <td><b>${esc(log.name)}</b><div class="muted" style="font-size:11px">${esc(log.sicil)} · ${esc(log.dept)} · ${esc(log.branch)}</div></td>
                                     <td>${pill(EVENT_LABEL[log.eventType] || log.eventType, log.eventType === 'CHECK_IN' ? 'ok' : log.eventType === 'CHECK_OUT' ? 'info' : 'mute')}</td>
-                                    <td class="mono" style="font-size:11.5px">${esc(sourceLabel(log.source))}</td>
-                                    <td class="mono">${(+log.distanceMeters || 0).toFixed(1)} m ${log.isMockGps ? pill('Mock GPS', 'bad') : ''}</td>
+                                    <td class="mono" style="font-size:11.5px">${esc(sourceLabel(log.source))} ${wStat}${log.matchedBssid ? `<div class="muted" style="font-size:10.5px">${esc(log.matchedBssid)}</div>` : ''}</td>
+                                    <td class="mono">${(+log.distanceMeters || 0).toFixed(1)} m ${log.accuracyMeters ? `<small class="muted">(±${(+log.accuracyMeters).toFixed(4)}m)</small>` : ''} ${log.isMockGps ? pill('Mock GPS', 'bad') : ''}</td>
                                     <td class="mono">${esc(log.dateIstanbul)} ${esc(log.timeIstanbul)}</td>
-                                </tr>`).join('') || `<tr><td colspan="5">${empty('Geçiş kaydı yok', 'Simülatörden bir geçiş gönderin.')}</td></tr>`}</tbody>
+                                </tr>`;
+                                }).join('') || `<tr><td colspan="5">${empty('Geçiş kaydı yok', 'Simülatörden bir geçiş gönderin.')}</td></tr>`}</tbody>
                             </table>
                         </div>
                     </section>
@@ -2856,6 +3012,7 @@
     /* Şube ekle/düzenle modalı için ortak form (POST / PUT aynı alanları kullanır) */
     function branchFormHtml(b) {
         const v = k => (b && b[k] != null ? b[k] : '');
+        const mode = (b && b.wifiEnforcementMode) || 'LEARNING';
         return `<form class="form-grid" id="brForm" novalidate>
             <label class="field"><span>Şube kodu</span><div class="input"><input id="brCode" maxlength="12" value="${esc(v('code'))}" placeholder="ŞB-055"${b ? ' readonly' : ''}></div></label>
             <label class="field"><span>Şube adı</span><div class="input"><input id="brName" maxlength="120" value="${esc(v('name'))}" placeholder="Örn. Antalya Muratpaşa Şubesi"></div></label>
@@ -2866,8 +3023,16 @@
             <label class="field"><span>Açık adres</span><div class="input"><input id="brAddress" maxlength="260" value="${esc(v('address'))}" placeholder="Mahalle, cadde, no, ilçe / il"></div></label>
             <div class="grid g-2">
                 <label class="field"><span>Telefon</span><div class="input"><input id="brPhone" maxlength="32" value="${esc(v('phone'))}" placeholder="444 88 61"></div></label>
-                <label class="field"><span>Kurumsal Wi-Fi ağı</span><div class="input"><input id="brWifi" maxlength="64" value="${esc(v('wifi'))}" placeholder="ALBAYRAK_55_WIFI"></div></label>
+                <label class="field"><span>Kurumsal Wi-Fi etiketi (SSID)</span><div class="input"><input id="brWifi" maxlength="64" value="${esc(v('wifi'))}" placeholder="ALBAYRAK_55_WIFI"></div></label>
             </div>
+            <div class="grid g-2">
+                <label class="field"><span>Ana Şube Modemi MAC (BSSID)</span><div class="input"><input id="brWifiBssid" maxlength="17" class="mono" value="${esc(v('wifiBssid'))}" placeholder="a4:2b:8c:1d:e5:9f (boşsa öğrenir)"></div></label>
+                <label class="field"><span>Pasif Wi-Fi Doğrulama Modu</span><div class="input"><select id="brWifiMode">
+                    <option value="LEARNING"${mode === 'LEARNING' ? ' selected' : ''}>Öğrenme Modu (Logla · Engelleme)</option>
+                    <option value="STRICT"${mode === 'STRICT' ? ' selected' : ''}>Zorunlu BSSID Modu (Modem yoksa engelle)</option>
+                </select></div></label>
+            </div>
+            <label class="field"><span>Yedek / Yan Dükkan Modem MAC Adresleri (virgülle ayırın)</span><div class="input"><input id="brBackupBssids" maxlength="160" class="mono" value="${esc(v('backupWifiBssids'))}" placeholder="c8:3a:35:91:02:11, d4:6e:0e:44:12:89"></div></label>
             <div class="grid g-2">
                 <label class="field"><span>Enlem</span><div class="input"><input id="brLat" inputmode="decimal" value="${esc(v('lat'))}" placeholder="36.8841"></div></label>
                 <label class="field"><span>Boylam</span><div class="input"><input id="brLng" inputmode="decimal" value="${esc(v('lng'))}" placeholder="30.7056"></div></label>
@@ -2892,6 +3057,9 @@
             lng: parseFloat(v('brLng').replace(',', '.')),
             radius: parseInt(v('brRad'), 10),
             wifi: v('brWifi'),
+            wifiBssid: v('brWifiBssid').toLowerCase(),
+            backupWifiBssids: v('brBackupBssids').toLowerCase(),
+            wifiEnforcementMode: v('brWifiMode') || 'LEARNING',
             googleMapUrl: v('brMap')
         };
     }
@@ -2902,6 +3070,7 @@
         if (!(d.lng >= -180 && d.lng <= 180)) return 'Boylam −180 ile 180 arasında olmalı.';
         if (!(d.radius >= 10 && d.radius <= 200)) return 'Yarıçap 10–200 m arasında olmalı.';
         if (!d.wifi || d.wifi.length < 3) return 'Kurumsal Wi-Fi ağı en az 3 karakter olmalı.';
+        if (d.wifiBssid && !/^([0-9a-f]{2}:){5}[0-9a-f]{2}$/i.test(d.wifiBssid)) return 'Ana modem MAC (BSSID) formatı a4:2b:8c:1d:e5:9f şeklinde olmalı.';
         if (d.code && !/^[A-Z0-9ÇĞİÖŞÜ-]{2,12}$/.test(d.code)) return 'Şube kodu 2–12 karakter olmalı (örn. ŞB-055).';
         if (d.googleMapUrl && !d.googleMapUrl.startsWith('https://')) return 'Harita bağlantısı https:// ile başlamalı.';
         return '';
@@ -3983,7 +4152,9 @@
                 const res = await postJson('/api/v1/branches', {
                     code: d.code, name: d.name, city: d.city, district: d.district,
                     address: d.address, phone: d.phone, googleMapUrl: d.googleMapUrl || undefined,
-                    lat: d.lat, lng: d.lng, radius: d.radius, wifi: d.wifi
+                    lat: d.lat, lng: d.lng, radius: d.radius, wifi: d.wifi,
+                    wifiBssid: d.wifiBssid, backupWifiBssids: d.backupWifiBssids,
+                    wifiEnforcementMode: d.wifiEnforcementMode
                 });
                 closeModal();
                 A.toast(res.message || 'Şube PostgreSQL branches tablosuna kaydedildi.', 'ok');
@@ -4010,7 +4181,9 @@
                 const res = await postJson('/api/v1/branches/' + encodeURIComponent(code), {
                     name: d.name, city: d.city, district: d.district, address: d.address,
                     phone: d.phone, googleMapUrl: d.googleMapUrl || '',
-                    lat: d.lat, lng: d.lng, radius: d.radius, wifi: d.wifi
+                    lat: d.lat, lng: d.lng, radius: d.radius, wifi: d.wifi,
+                    wifiBssid: d.wifiBssid, backupWifiBssids: d.backupWifiBssids,
+                    wifiEnforcementMode: d.wifiEnforcementMode
                 }, 'PATCH');
                 closeModal();
                 A.toast(res.message || 'Şube güncellendi.', 'ok');
@@ -4064,6 +4237,97 @@
             } catch (err) {
                 A.toast(String((err && err.message) || err), 'err');
             } finally {
+                if (el) el.disabled = false;
+            }
+        }),
+        'wifi-disc-filter': el => {
+            S.ui.wifiDiscFilter = el.dataset.v || 'ALL';
+            draw(false);
+        },
+        'wifi-assign': syncGuard(async el => {
+            const branchCode = el.dataset.branch || '';
+            const bssid = (el.dataset.bssid || '').toLowerCase();
+            const ssid = el.dataset.ssid || '';
+            const role = el.dataset.role || 'PRIMARY';
+            if (!branchCode || !bssid) return;
+            if (el) el.disabled = true;
+            try {
+                const res = await postJson('/api/v1/branches/wifi-discovery', {
+                    branchCode,
+                    bssid,
+                    ssid,
+                    role
+                });
+                const bObj = D.BRANCHES.find(b => b.code === branchCode);
+                if (bObj) {
+                    if (role === 'PRIMARY') bObj.wifiBssid = bssid;
+                    else if (role === 'BACKUP') {
+                        const cur = bObj.backupWifiBssids ? bObj.backupWifiBssids.split(',').map(x => x.trim()).filter(Boolean) : [];
+                        if (!cur.includes(bssid)) cur.push(bssid);
+                        bObj.backupWifiBssids = cur.join(', ');
+                    } else if (role === 'REMOVE') {
+                        if (bObj.wifiBssid === bssid) bObj.wifiBssid = '';
+                        const cur = bObj.backupWifiBssids ? bObj.backupWifiBssids.split(',').map(x => x.trim()).filter(x => x && x !== bssid) : [];
+                        bObj.backupWifiBssids = cur.join(', ');
+                    }
+                }
+                const cObj = (D.WIFI_DISCOVERY || []).find(c => c.branchCode === branchCode && c.bssid === bssid);
+                if (cObj) cObj.assignmentStatus = role === 'REMOVE' ? 'UNASSIGNED' : role;
+                audit((role === 'PRIMARY' ? 'Ana Şube Modemi BSSID atandı' : role === 'BACKUP' ? 'Yedek (Yan Dükkan) Modem BSSID eklendi' : 'Modem BSSID kaldırıldı') + ' (' + bssid + ')', branchCode, 'SECURITY');
+                A.toast(res.message || (branchCode + ' şubesine ' + bssid + ' atandı.'), 'ok');
+                await refreshBranches();
+            } catch (err) {
+                A.toast(String((err && err.message) || err), 'err');
+                if (el) el.disabled = false;
+            }
+        }),
+        'wifi-assign-all-top': syncGuard(async el => {
+            const topUnassigned = (D.WIFI_DISCOVERY || []).filter(c => c.assignmentStatus === 'UNASSIGNED' && c.recommendedRole === 'PRIMARY');
+            if (!topUnassigned.length) {
+                A.toast('Tüm şubelerde birincil ortak modemler zaten atanmış durumda.', 'info');
+                return;
+            }
+            if (el) el.disabled = true;
+            try {
+                let assigned = 0;
+                for (const item of topUnassigned) {
+                    await postJson('/api/v1/branches/wifi-discovery', {
+                        branchCode: item.branchCode,
+                        bssid: item.bssid,
+                        ssid: item.ssid,
+                        role: 'PRIMARY'
+                    });
+                    assigned++;
+                }
+                audit(assigned + ' şubeye ortak görülen ana modem BSSID adresleri toplu atandı', 'TÜM ŞUBELER', 'SECURITY');
+                A.toast(assigned + ' şubenin ortak Wi-Fi BSSID adresi tek tıkla tanımlandı!', 'ok');
+                await refreshBranches();
+            } catch (err) {
+                A.toast(String((err && err.message) || err), 'err');
+            } finally {
+                if (el) el.disabled = false;
+            }
+        }),
+        'br-toggle-mode': syncGuard(async el => {
+            const code = el.dataset.code || '';
+            const nextMode = el.dataset.mode || 'LEARNING';
+            const b = D.BRANCHES.find(x => x.code === code);
+            if (!b) return;
+            if (nextMode === 'STRICT' && !b.wifiBssid && !b.backupWifiBssids) {
+                A.toast('Zorunlu BSSID moduna geçmeden önce üstteki listeden tek tıkla en az bir BSSID atayın.', 'err');
+                return;
+            }
+            if (el) el.disabled = true;
+            try {
+                const res = await postJson('/api/v1/branches/' + encodeURIComponent(code), {
+                    wifiEnforcementMode: nextMode
+                }, 'PATCH');
+                b.wifiEnforcementMode = nextMode;
+                audit(code + ' şubesi Wi-Fi doğrulama modu güncellendi (' + nextMode + ')', code, 'SECURITY');
+                A.toast(res.message || (b.name + ' Wi-Fi modu: ' + (nextMode === 'STRICT' ? 'Zorunlu BSSID' : 'Öğrenme Modu')), 'ok');
+                await refreshBranches();
+            } catch (err) {
+                A.toast(String((err && err.message) || err), 'err');
                 if (el) el.disabled = false;
             }
         }),
@@ -4288,16 +4552,47 @@
                 source: val('shSource') || 'MOBILE_GEOFENCE',
                 clock: val('shClock') || '08:28',
                 dist: +val('shDist') || 8,
+                accuracy: val('shAccuracy') || '3.4521',
+                wifiScanMode: val('shWifiMode') || 'MATCH_PRIMARY',
                 mock: !!($('#shMock') && $('#shMock').checked)
             });
             if (!u.empId) { A.toast('Önce bir personel seçin.', 'err'); return; }
             const simEmp = D.EMPLOYEES.find(e => e.id === u.empId);
+            const branchCode = (simEmp && simEmp.branch) || 'ŞB-001';
+            const brObj = D.BRANCHES.find(b => b.code === branchCode);
+            const discForBranch = (D.WIFI_DISCOVERY || []).filter(c => c.branchCode === branchCode);
+            const primaryBssid = (brObj && brObj.wifiBssid) || (discForBranch[0] && discForBranch[0].bssid) || 'a4:2b:8c:1d:e5:9f';
+            const backupBssid = (brObj && brObj.backupWifiBssids && brObj.backupWifiBssids.split(',')[0].trim()) || (discForBranch[1] && discForBranch[1].bssid) || 'c8:3a:35:91:02:11';
+
+            let nearbyWifis = [];
+            if (u.wifiScanMode === 'MATCH_PRIMARY') {
+                nearbyWifis = [
+                    { bssid: primaryBssid, ssid: (brObj && brObj.wifi) || 'ALBAYRAK_SUBE_WIFI', rssi: -49 },
+                    { bssid: backupBssid, ssid: 'TurkTelekom_Fiber_Esnaf', rssi: -68 }
+                ];
+            } else if (u.wifiScanMode === 'MATCH_BACKUP') {
+                nearbyWifis = [
+                    { bssid: backupBssid, ssid: 'TurkTelekom_Fiber_Esnaf', rssi: -64 }
+                ];
+            } else {
+                // Evden Fake GPS senaryosu: sadece evdeki yabancı modem görülür
+                nearbyWifis = [
+                    { bssid: 'f0:9f:c2:11:22:33', ssid: 'Ev_Superonline_Home', rssi: -42 }
+                ];
+            }
+
             if (el) el.disabled = true;
             try {
                 const res = await postJson('/api/v1/access-logs', {
                     employeeId: u.empId, eventType: u.event, source: u.source,
-                    branchCode: (simEmp && simEmp.branch) || 'ŞB-001',
-                    distanceMeters: u.dist, isMockGps: u.mock, clockHhmm: u.clock
+                    branchCode,
+                    distanceMeters: u.dist,
+                    accuracyMeters: parseFloat(String(u.accuracy).replace(',', '.')),
+                    locationAgeMs: 0,
+                    isMockGps: u.mock,
+                    locationMocked: u.mock,
+                    nearbyWifis,
+                    clockHhmm: u.clock
                 });
                 u.feedback = { tone: 'ok', text: res.message || 'Geçiş PostgreSQL access_logs tablosuna kaydedildi.' };
                 A.toast(u.feedback.text, 'ok');
@@ -4628,6 +4923,7 @@
             'sim-branch': () => U.simBranch = v,
             'sim-dist': () => U.simDist = +v,
             'br-q': () => U.brQ = v,
+            'wifi-disc-q': () => U.wifiDiscQ = v,
             'onb-name': () => U.onb.name = v,
             'onb-email': () => U.onb.email = v,
             'onb-dept': () => U.onb.dept = v,
@@ -4658,7 +4954,7 @@
         const el = e.target.closest('[data-act]'); if (el && acts[el.dataset.act]) acts[el.dataset.act](el);
     }
     let bindDebounceTimer = null;
-    const DEBOUNCED_BINDS = { 'emp-q': 1, 'tk-q': 1, 'dv-q': 1, 'br-q': 1 };
+    const DEBOUNCED_BINDS = { 'emp-q': 1, 'tk-q': 1, 'dv-q': 1, 'br-q': 1, 'wifi-disc-q': 1 };
     function onBind(e) {
         const t = e.target, id = t.dataset.bind; if (!id) return;
         const val = t.value;

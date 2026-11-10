@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { normalizeBssid, parseBssidList } from "@/lib/validators";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -24,7 +25,10 @@ const BranchCreateSchema = z.object({
   lat: z.coerce.number().min(-90).max(90),
   lng: z.coerce.number().min(-180).max(180),
   radius: z.coerce.number().min(10).max(200).default(30),
-  wifi: z.string().trim().min(3).max(64)
+  wifi: z.string().trim().min(3).max(64),
+  wifiBssid: z.string().trim().max(32).optional().default(""),
+  backupWifiBssids: z.union([z.string(), z.array(z.string())]).optional().default(""),
+  wifiEnforcementMode: z.enum(["LEARNING", "STRICT"]).optional().default("LEARNING")
 });
 
 export async function GET() {
@@ -53,7 +57,11 @@ export async function GET() {
         radiusMeters: b.radiusMeters,
         wifi: b.wifiSsid,
         wifi_ssid: b.wifiSsid,
-        wifiSsid: b.wifiSsid
+        wifiSsid: b.wifiSsid,
+        wifiBssid: b.wifiBssid || "",
+        backupWifiBssids: b.backupWifiBssids || "",
+        backupBssidsList: parseBssidList(b.backupWifiBssids),
+        wifiEnforcementMode: b.wifiEnforcementMode || "LEARNING"
       }))
     });
   } catch (err) {
@@ -79,6 +87,18 @@ export async function POST(req: NextRequest) {
     }
 
     const d = parsed.data;
+    const primaryBssid = d.wifiBssid ? normalizeBssid(d.wifiBssid) : "";
+    if (d.wifiBssid && !primaryBssid) {
+      return NextResponse.json(
+        {
+          status: "error",
+          message: "Ana modem MAC (BSSID) adresi geçersiz (örn. a4:2b:8c:1d:e5:9f)."
+        },
+        { status: 400 }
+      );
+    }
+    const backupBssids = parseBssidList(d.backupWifiBssids).filter((x) => x !== primaryBssid);
+
     const created = await prisma.branch.upsert({
       where: { code: d.code.toUpperCase() },
       update: {
@@ -93,7 +113,10 @@ export async function POST(req: NextRequest) {
         lat: d.lat,
         lng: d.lng,
         radiusMeters: d.radius,
-        wifiSsid: d.wifi
+        wifiSsid: d.wifi,
+        wifiBssid: primaryBssid,
+        backupWifiBssids: backupBssids.join(", "),
+        wifiEnforcementMode: d.wifiEnforcementMode
       },
       create: {
         code: d.code.toUpperCase(),
@@ -109,6 +132,9 @@ export async function POST(req: NextRequest) {
         lng: d.lng,
         radiusMeters: d.radius,
         wifiSsid: d.wifi,
+        wifiBssid: primaryBssid,
+        backupWifiBssids: backupBssids.join(", "),
+        wifiEnforcementMode: d.wifiEnforcementMode,
         weight: 0.02
       }
     });
@@ -117,8 +143,8 @@ export async function POST(req: NextRequest) {
       data: {
         actorName: "BT Yönetimi",
         actorRole: "IT",
-        action: "Yeni şube & 30m geofence tanımlandı",
-        target: `${created.code} · ${created.name}`,
+        action: "Yeni şube, 30m geofence & BSSID tanımlandı",
+        target: `${created.code} · ${created.name}${primaryBssid ? ` (${primaryBssid})` : ""}`,
         ipAddress: req.headers.get("x-forwarded-for") || "127.0.0.1"
       }
     });
@@ -134,7 +160,10 @@ export async function POST(req: NextRequest) {
           lat: created.lat,
           lng: created.lng,
           radius: created.radiusMeters,
-          wifi: created.wifiSsid
+          wifi: created.wifiSsid,
+          wifiBssid: created.wifiBssid,
+          backupWifiBssids: created.backupWifiBssids,
+          wifiEnforcementMode: created.wifiEnforcementMode
         }
       },
       { status: 201 }

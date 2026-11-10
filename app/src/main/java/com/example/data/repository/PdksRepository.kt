@@ -8,8 +8,11 @@ import com.example.data.local.EmployeeEntity
 import com.example.data.local.NotificationEntity
 import com.example.data.local.SecurityAlertEntity
 import com.example.location.LocationHelper
+import com.example.location.NearbyWifiAP
 import com.example.notification.NotificationHelper
 import kotlinx.coroutines.flow.Flow
+import org.json.JSONArray
+import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -92,9 +95,11 @@ class PdksRepository(
         type: String, // "GİRİŞ" veya "ÇIKIŞ"
         userLat: Double,
         userLng: Double,
+        accuracyMeters: Float = 3.4521f,
         isMock: Boolean,
         isSimulated: Boolean,
         hasRealFix: Boolean = true,
+        nearbyWifis: List<NearbyWifiAP> = emptyList(),
         note: String = ""
     ): AttendanceResult {
         val distance = LocationHelper.calculateDistanceMeters(
@@ -130,7 +135,9 @@ class PdksRepository(
         val mockSecurity = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             LocationHelper.inspectDeviceMockSecurity(context)
         }
+        val suspiciousAccuracy = !isSimulated && LocationHelper.isSuspiciousAccuracy(accuracyMeters)
         val shouldBlockMockOrDev = isMock ||
+                suspiciousAccuracy ||
                 mockSecurity.isMockLocationDetected ||
                 mockSecurity.isAllowMockSettingEnabled ||
                 mockSecurity.detectedMockApps.isNotEmpty() ||
@@ -256,7 +263,63 @@ class PdksRepository(
             }
         }
 
-        val ipMock = if (isSimulated) "10.14.88.24 (Simüle Ağ)" else "10.14.88.19 (Şube Yerel Ağı)"
+        // Bağlantısız Pasif Wi-Fi BSSID Tarama Listesi (loadPassiveNearbyWifiList):
+        // Telefonun şube modemiyle bağlanmasına gerek yoktur; etraftaki modemlerin MAC (BSSID) + RSSI listesini toplar.
+        val scannedWifis = if (nearbyWifis.isNotEmpty()) {
+            nearbyWifis
+        } else {
+            LocationHelper.loadPassiveNearbyWifiList(context)
+        }
+        val nearbyWifisJson = runCatching {
+            val arr = JSONArray()
+            scannedWifis.forEach { ap ->
+                arr.put(
+                    JSONObject().apply {
+                        put("bssid", ap.bssid)
+                        put("ssid", ap.ssid)
+                        put("rssi", ap.rssi)
+                        put("frequency", ap.frequency)
+                    }
+                )
+            }
+            arr.toString()
+        }.getOrDefault("[]")
+
+        // Şubede ZORUNLU (STRICT) BSSID doğrulaması aktifse ve şube BSSID tanımlıysa çapraz kontrol yap
+        val primaryBssid = branch.wifiBssid.trim().lowercase()
+        val backupBssids = branch.backupWifiBssids
+            .split(",", ";", " ")
+            .map { it.trim().lowercase() }
+            .filter { it.length == 17 }
+        if (!isSimulated && branch.wifiEnforcementMode.equals("STRICT", ignoreCase = true) &&
+            (primaryBssid.isNotEmpty() || backupBssids.isNotEmpty())
+        ) {
+            val matched = scannedWifis.any { ap ->
+                val b = ap.bssid.lowercase()
+                b == primaryBssid || backupBssids.contains(b)
+            }
+            if (!matched) {
+                val wifiAlertMsg =
+                    "Şube Wi-Fi (BSSID) Çapraz Kontrol İhlali: ${employee.fullName} GPS olarak ${branch.name} sınırında görünüyor ancak etraftaki Wi-Fi taramasında şube modemi (${primaryBssid.ifEmpty { backupBssids.firstOrNull().orEmpty() }}) bulunamadı!"
+                dao.insertSecurityAlert(
+                    SecurityAlertEntity(
+                        timestamp = now,
+                        employeeId = employee.id,
+                        employeeName = employee.fullName,
+                        branchName = branch.name,
+                        alertType = "WIFI_BSSID_MISMATCH",
+                        message = wifiAlertMsg,
+                        distanceMeters = distance,
+                        severity = "HIGH"
+                    )
+                )
+                return AttendanceResult.Error(
+                    "Şube Wi-Fi Sinyali (BSSID) Doğrulanamadı!\n\nTelefonunuzun herhangi bir ağa bağlanmasına gerek yoktur ancak şube modeminin sinyalini görebilmesi için Wi-Fi özelliğinin açık olması gerekir.\n\nLütfen Wi-Fi'yi açıp şube içinde tekrar deneyin."
+                )
+            }
+        }
+
+        val ipMock = if (isSimulated) "10.14.88.24 (Simüle Ağ)" else "10.14.88.19 (Pasif Wi-Fi BSSID Tarama)"
         val record = AttendanceRecordEntity(
             employeeId = employee.id,
             employeeName = employee.fullName,
@@ -273,9 +336,11 @@ class PdksRepository(
             ipAddress = ipMock,
             deviceModel = employee.deviceId,
             isMockLocation = isMock,
-            note = if (note.isNotBlank()) note else "30 metre kuralına uygun başarılı işlem (${"%.1f".format(distance)}m)",
+            note = if (note.isNotBlank()) note else "30 metre kuralına uygun başarılı işlem (${"%.1f".format(distance)}m · ${scannedWifis.size} Wi-Fi BSSID tarandı)",
             lateMinutes = lateMinutes,
-            overtimeMinutes = overtimeMinutes
+            overtimeMinutes = overtimeMinutes,
+            accuracyMeters = accuracyMeters,
+            nearbyWifisJson = nearbyWifisJson
         )
 
         val insertedId = dao.insertAttendanceRecord(record)

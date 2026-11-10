@@ -202,7 +202,7 @@ fun ItBranchManagementScreen(
                 showDialog = false
                 editingBranch = null
             },
-            onSave = { id, name, code, city, address, lat, lng, radius, wifi, phone ->
+            onSave = { id, name, code, city, address, lat, lng, radius, wifi, bssid, backupBssids, phone ->
                 viewModel.saveOrUpdateBranch(
                     id = id,
                     name = name,
@@ -213,6 +213,8 @@ fun ItBranchManagementScreen(
                     longitude = lng,
                     radiusMeters = radius,
                     wifiSsid = wifi,
+                    wifiBssid = bssid,
+                    backupWifiBssids = backupBssids,
                     phone = phone
                 )
                 showDialog = false
@@ -333,7 +335,12 @@ fun BranchItemCard(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Wifi, contentDescription = null, modifier = Modifier.size(13.dp), tint = Color.Gray)
                 Spacer(modifier = Modifier.width(4.dp))
-                Text(text = "WiFi: ${branch.wifiSsid}", fontSize = 11.sp, color = Color.Gray)
+                Text(
+                    text = "WiFi: ${branch.wifiSsid}" +
+                            if (branch.wifiBssid.isNotBlank()) " • BSSID: ${branch.wifiBssid}" else " • Öğrenme Modu",
+                    fontSize = 11.sp,
+                    color = Color.Gray
+                )
                 Spacer(modifier = Modifier.width(12.dp))
                 Icon(Icons.Default.Phone, contentDescription = null, modifier = Modifier.size(13.dp), tint = Color.Gray)
                 Spacer(modifier = Modifier.width(4.dp))
@@ -347,7 +354,7 @@ fun BranchItemCard(
 fun BranchFormDialog(
     initialBranch: BranchEntity?,
     onDismiss: () -> Unit,
-    onSave: (Long, String, String, String, String, Double, Double, Double, String, String) -> Unit
+    onSave: (Long, String, String, String, String, Double, Double, Double, String, String, String, String) -> Unit
 ) {
     var name by remember { mutableStateOf(initialBranch?.name ?: "") }
     var branchCode by remember { mutableStateOf(initialBranch?.branchCode ?: "") }
@@ -355,8 +362,10 @@ fun BranchFormDialog(
     var address by remember { mutableStateOf(initialBranch?.address ?: "") }
     var latStr by remember { mutableStateOf(initialBranch?.latitude?.toString() ?: "41.111850") }
     var lngStr by remember { mutableStateOf(initialBranch?.longitude?.toString() ?: "29.022350") }
-    var radiusStr by remember { mutableStateOf(initialBranch?.radiusMeters?.toString() ?: "5.0") }
+    var radiusStr by remember { mutableStateOf(initialBranch?.radiusMeters?.toString() ?: "30.0") }
     var wifiSsid by remember { mutableStateOf(initialBranch?.wifiSsid ?: "FINANS_CORP_SECURE") }
+    var wifiBssid by remember { mutableStateOf(initialBranch?.wifiBssid ?: "") }
+    var backupBssids by remember { mutableStateOf(initialBranch?.backupWifiBssids ?: "") }
     var phone by remember { mutableStateOf(initialBranch?.phone ?: "0212 555 0100") }
 
     AlertDialog(
@@ -440,6 +449,22 @@ fun BranchFormDialog(
                 }
 
                 OutlinedTextField(
+                    value = wifiBssid,
+                    onValueChange = { wifiBssid = it },
+                    label = { Text("Ana Şube Modemi MAC (BSSID - Örn: a4:2b:8c:1d:e5:9f)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+
+                OutlinedTextField(
+                    value = backupBssids,
+                    onValueChange = { backupBssids = it },
+                    label = { Text("Yedek / Yan Dükkan Modem MAC Adresleri") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+
+                OutlinedTextField(
                     value = phone,
                     onValueChange = { phone = it },
                     label = { Text("Şube Telefon") },
@@ -453,7 +478,7 @@ fun BranchFormDialog(
                 onClick = {
                     val lat = latStr.toDoubleOrNull() ?: 41.111850
                     val lng = lngStr.toDoubleOrNull() ?: 29.022350
-                    val radius = radiusStr.toDoubleOrNull() ?: 5.0
+                    val radius = radiusStr.toDoubleOrNull() ?: 30.0
 
                     if (name.isNotBlank() && address.isNotBlank() && branchCode.isNotBlank()) {
                         onSave(
@@ -466,6 +491,8 @@ fun BranchFormDialog(
                             lng,
                             radius,
                             wifiSsid,
+                            wifiBssid,
+                            backupBssids,
                             phone
                         )
                     }

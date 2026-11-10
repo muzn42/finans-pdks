@@ -39,8 +39,8 @@ export default function RootLayout({
           href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap"
           rel="stylesheet"
         />
-        <link rel="stylesheet" href="/legacy/styles.css?v=9.34" />
-        <link rel="stylesheet" href="/legacy/landing.css?v=9.34" />
+        <link rel="stylesheet" href="/legacy/styles.css?v=9.35" />
+        <link rel="stylesheet" href="/legacy/landing.css?v=9.35" />
       </head>
       <body>
         <QueryProvider>{children}</QueryProvider>

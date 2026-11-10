@@ -20,6 +20,9 @@ data class BranchEntity(
     val longitude: Double,
     val radiusMeters: Double = 30.0, // Varsayılan 30 metre kuralı
     val wifiSsid: String = "FINANS_CORP_SECURE",
+    val wifiBssid: String = "", // Ana şube modemi MAC adresi (örn. a4:2b:8c:1d:e5:9f)
+    val backupWifiBssids: String = "", // Yan dükkan / yedek modem MAC adresleri
+    val wifiEnforcementMode: String = "LEARNING", // LEARNING (Öğrenme) | STRICT (Zorunlu)
     val phone: String = "0212 555 0100",
     val isDefault: Boolean = false
 )
@@ -70,7 +73,9 @@ data class AttendanceRecordEntity(
     val verificationMethod: String = "ONE_TAP_GEOFENCE", // ONE_TAP_GEOFENCE, NFC, QR
     val securityStatus: String = "VERIFIED", // VERIFIED, FLAGGED, EXCUSED
     val lateReasonCode: String = "", // Geç giriş gerekçe şablonu (örn. TRAFIK)
-    val lateReasonNote: String = "" // "Diğer" seçildiğinde personelin yazdığı açıklama
+    val lateReasonNote: String = "", // "Diğer" seçildiğinde personelin yazdığı açıklama
+    val accuracyMeters: Float = 3.4521f,
+    val nearbyWifisJson: String = "[]" // Pasif taramayla görülen modem MAC (BSSID) + RSSI listesi
 )
 
 @Entity(tableName = "security_alerts")

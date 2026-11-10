@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { parseBssidList } from "@/lib/validators";
 import { toIstanbulDate, toIstanbulDateTime, toIstanbulTime, hhmmFromMin } from "@/lib/timezone";
 import { sseHub } from "@/lib/sse";
+import { computeBranchWifiDiscovery } from "../branches/wifi-discovery/route";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +21,8 @@ export async function GET() {
       audits,
       accessLogTotal,
       lateReasons,
-      todayExcuses
+      todayExcuses,
+      wifiDiscovery
     ] = await Promise.all([
       prisma.branch.findMany({ orderBy: { id: "asc" } }),
       prisma.shift.findMany({ orderBy: { id: "asc" } }),
@@ -69,7 +72,8 @@ export async function GET() {
       prisma.dailyAttendance.findMany({
         where: { workDate: todayIso, lateExcusedMin: { gt: 0 } },
         select: { employeeId: true, lateExcusedMin: true }
-      })
+      }),
+      computeBranchWifiDiscovery()
     ]);
 
     const todayExcuseMap = new Map<number, number>(
@@ -82,6 +86,7 @@ export async function GET() {
       serverTimeUtc: new Date().toISOString(),
       serverTimeIstanbul: toIstanbulDateTime(new Date()),
       branches: branches.map((b) => ({
+        id: b.id,
         code: b.code,
         name: b.name,
         city: b.city,
@@ -93,8 +98,13 @@ export async function GET() {
         lng: b.lng,
         radius: b.radiusMeters,
         wifi: b.wifiSsid,
+        wifiBssid: b.wifiBssid || "",
+        backupWifiBssids: b.backupWifiBssids || "",
+        backupBssidsList: parseBssidList(b.backupWifiBssids),
+        wifiEnforcementMode: b.wifiEnforcementMode || "LEARNING",
         w: b.weight
       })),
+      wifiDiscovery,
       shifts: shifts.map((s) => ({
         id: s.id,
         code: s.code,
@@ -173,22 +183,35 @@ export async function GET() {
         reviewedBy: d.lateReviewedBy,
         reviewedAt: d.lateReviewedAtUtc ? toIstanbulDateTime(d.lateReviewedAtUtc) : null
       })),
-      accessLogs: accessLogs.map((a) => ({
-        id: a.id,
-        empId: a.employeeId,
-        sicil: a.employee.sicil,
-        name: a.employee.name,
-        dept: a.employee.dept,
-        branch: a.branchCode,
-        eventType: a.eventType,
-        source: a.source,
-        distanceMeters: a.distanceMeters,
-        isMockGps: a.isMockGps,
-        note: a.note,
-        timestampUtc: a.timestampUtc.toISOString(),
-        timeIstanbul: toIstanbulTime(a.timestampUtc),
-        dateIstanbul: toIstanbulDate(a.timestampUtc)
-      })),
+      accessLogs: accessLogs.map((a) => {
+        let nearbyWifis: Array<{ bssid: string; ssid?: string; rssi?: number }> = [];
+        try {
+          const parsed = JSON.parse(a.nearbyWifisJson || "[]");
+          if (Array.isArray(parsed)) nearbyWifis = parsed;
+        } catch {
+          nearbyWifis = [];
+        }
+        return {
+          id: a.id,
+          empId: a.employeeId,
+          sicil: a.employee.sicil,
+          name: a.employee.name,
+          dept: a.employee.dept,
+          branch: a.branchCode,
+          eventType: a.eventType,
+          source: a.source,
+          distanceMeters: a.distanceMeters,
+          accuracyMeters: a.accuracyMeters,
+          isMockGps: a.isMockGps,
+          nearbyWifis,
+          matchedBssid: a.matchedBssid,
+          wifiStatus: a.wifiStatus,
+          note: a.note,
+          timestampUtc: a.timestampUtc.toISOString(),
+          timeIstanbul: toIstanbulTime(a.timestampUtc),
+          dateIstanbul: toIstanbulDate(a.timestampUtc)
+        };
+      }),
       alerts: alerts.map((al) => ({
         id: al.code,
         dbId: al.id,

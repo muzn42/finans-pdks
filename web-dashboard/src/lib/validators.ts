@@ -35,6 +35,58 @@ export const VALID_ACCESS_EVENTS = [
 ] as const;
 
 const hhmmRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
+const bssidRegex = /^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$/;
+
+export function normalizeBssid(raw: string | null | undefined): string {
+  const s = String(raw || "")
+    .trim()
+    .toLowerCase()
+    .replace(/-/g, ":");
+  if (!bssidRegex.test(s)) return "";
+  return s;
+}
+
+export function parseBssidList(raw: string | string[] | null | undefined): string[] {
+  if (!raw) return [];
+  const arr = Array.isArray(raw) ? raw : String(raw).split(/[,;\s]+/);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of arr) {
+    const n = normalizeBssid(item);
+    if (n && !seen.has(n)) {
+      seen.add(n);
+      out.push(n);
+    }
+  }
+  return out;
+}
+
+/**
+ * Gerçek GPS uyduları hiçbir zaman tam sayı (0.00000, 1.0, 5.0, 10.0) sapma vermez;
+ * gerçek bir telefonun location.coords.accuracy değeri 3.4521, 8.124 gibi küsuratlı değişir.
+ * Sabit tam sayı gönderen ucuz Fake GPS uygulamalarını yakalar.
+ */
+export function isSuspiciousGpsAccuracy(accuracyMeters: number | null | undefined): boolean {
+  if (accuracyMeters == null || !Number.isFinite(accuracyMeters)) return false;
+  if (accuracyMeters <= 0) return true;
+  const frac = Math.abs(accuracyMeters - Math.round(accuracyMeters));
+  if (frac < 1e-5) {
+    // 1.0, 2.0, 3.0, 5.0, 10.0, 15.0, 20.0 gibi sabit tam sayı sahte GPS imzaları
+    return true;
+  }
+  return false;
+}
+
+export const NearbyWifiItemSchema = z.object({
+  bssid: z
+    .string()
+    .trim()
+    .transform((v) => v.toLowerCase().replace(/-/g, ":"))
+    .refine((v) => bssidRegex.test(v), "Geçersiz modem MAC (BSSID) formatı."),
+  ssid: z.string().trim().max(80).optional().default(""),
+  rssi: z.coerce.number().int().min(-120).max(0).optional().default(-62),
+  frequency: z.coerce.number().int().min(2000).max(7000).optional()
+});
 
 export const LoginSchema = z.object({
   email: z.string().trim().email("Geçerli bir kurumsal e-posta adresi giriniz."),
@@ -83,7 +135,11 @@ export const AccessLogCreateSchema = z.object({
   source: z.enum(["MOBILE_GEOFENCE", "WEB_MANUAL"]).default("MOBILE_GEOFENCE"),
   branchCode: z.string().trim().default("ŞB-001"),
   distanceMeters: z.coerce.number().min(0).max(5000).default(5.4),
+  accuracyMeters: z.coerce.number().min(0).max(1000).optional(),
+  locationAgeMs: z.coerce.number().min(0).max(86400000).optional().default(0),
   isMockGps: z.boolean().default(false),
+  locationMocked: z.boolean().optional(),
+  nearbyWifis: z.array(NearbyWifiItemSchema).max(40).optional().default([]),
   clockHhmm: z.string().regex(hhmmRegex, "Saat SS:DD formatında olmalıdır.").optional(),
   note: z.string().trim().max(240).optional()
 });

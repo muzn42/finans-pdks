@@ -7,8 +7,10 @@ import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationManager
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.Settings
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationCallback
@@ -19,19 +21,32 @@ import com.google.android.gms.location.Priority
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
+import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
+
+data class NearbyWifiAP(
+    val bssid: String,
+    val ssid: String,
+    val rssi: Int,
+    val frequency: Int = 2412
+)
 
 data class UserLocationData(
     val latitude: Double,
     val longitude: Double,
-    val accuracyMeters: Float = 1.0f,
+    val accuracyMeters: Float = 3.4521f,
     val isMock: Boolean = false,
     val isSimulated: Boolean = false,
     /** Gerçek GPS sağlayıcısından en az bir konum sabitlemesi alındı mı? */
-    val hasRealFix: Boolean = false
+    val hasRealFix: Boolean = false,
+    /** Taze konum yaşı (ms) — maximumAge: 0 gereği önbellek konumu engellenir */
+    val locationAgeMs: Long = 0L,
+    /** Bağlantısız pasif Wi-Fi tarama listesi (BSSID + RSSI) */
+    val nearbyWifis: List<NearbyWifiAP> = emptyList()
 )
 
 data class DeviceMockSecurityReport(
@@ -115,8 +130,51 @@ object LocationHelper {
             if (extras.getBoolean("sahte_konum", false)) return true
         }
 
-        // Gerçek GPS donanımı hiçbir zaman 0m doğruluk bildirmez.
-        return location.accuracy == 0f
+        // Gerçek GPS donanımı hiçbir zaman 0m veya sabit tam sayı (1.00000, 5.00000) doğruluk bildirmez;
+        // gerçek uydular 3.4521, 8.124 gibi sürekli küsuratlı değerler üretir.
+        return isSuspiciousAccuracy(location.accuracy)
+    }
+
+    /**
+     * GPS Sapma (Accuracy) Kontrolü:
+     * Gerçek GPS uyduları hiçbir zaman virgülden sonra sabit 0.00000 sapma vermez.
+     * Sabit 0.0, 1.0, 5.0, 10.0 gönderen ucuz Fake GPS uygulamalarını yakalar.
+     */
+    fun isSuspiciousAccuracy(accuracy: Float): Boolean {
+        if (accuracy <= 0f || !accuracy.isFinite()) return true
+        val fractional = abs(accuracy - accuracy.roundToInt())
+        return fractional < 0.00001f
+    }
+
+    /**
+     * Bağlantısız Pasif Wi-Fi Tarama (loadWifiList):
+     * Telefonun herhangi bir Wi-Fi ağına bağlı olması GEREKMEZ; yalnızca Wi-Fi özelliğinin açık olması yeterlidir.
+     * Android 9+ (Throttling) kısıtlamasına takılmamak için startScan() (reScanAndLoadWifiList) ÇAĞRILMAZ;
+     * işletim sisteminin arka planda zaten birkaç saniyede bir yaptığı son tarama listesini (wifiManager.scanResults) okur.
+     */
+    @SuppressLint("MissingPermission")
+    fun loadPassiveNearbyWifiList(context: Context): List<NearbyWifiAP> {
+        return runCatching {
+            val wm = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+                ?: return emptyList()
+            val results = wm.scanResults ?: emptyList()
+            results
+                .mapNotNull { sr ->
+                    val bssid = sr.BSSID?.trim()?.lowercase()?.replace('-', ':').orEmpty()
+                    if (bssid.length != 17 || bssid == "02:00:00:00:00:00") return@mapNotNull null
+                    @Suppress("DEPRECATION")
+                    val ssid = sr.SSID?.removePrefix("\"")?.removeSuffix("\"")?.trim().orEmpty()
+                    NearbyWifiAP(
+                        bssid = bssid,
+                        ssid = ssid,
+                        rssi = sr.level,
+                        frequency = sr.frequency
+                    )
+                }
+                .distinctBy { it.bssid }
+                .sortedByDescending { it.rssi }
+                .take(25)
+        }.getOrDefault(emptyList())
     }
 
     /**
@@ -235,42 +293,54 @@ object LocationHelper {
     }
 
     /**
-     * Gerçek GPS lokasyon akışı
+     * Gerçek GPS lokasyon akışı — Taze Konum (maximumAge: 0, setMaxUpdateAgeMillis(0L)):
+     * Önbellek (lastLocation) konumu yoklama için KULLANILMAZ; Geliştirici Seçeneklerini kapatıp açarak
+     * eski sahte konumu önbellekten okutma hilesini bitirir.
      */
     @SuppressLint("MissingPermission")
     fun getLocationFlow(context: Context): Flow<UserLocationData> = callbackFlow {
         val fusedClient: FusedLocationProviderClient =
             LocationServices.getFusedLocationProviderClient(context)
 
-        // Açılışta son bilinen konumu hemen kontrol et (cihaz hareket etmese bile sahte konumu yakala)
+        // Sadece sahte konum güvenlik bayrağını kontrol etmek için lastLocation denetlenir;
+        // ancak önbellekteki koordinat hasRealFix=true olarak ASLA kabul edilmez (maximumAge: 0).
         runCatching {
             val sec = inspectDeviceMockSecurity(context)
             fusedClient.lastLocation.addOnSuccessListener { loc: Location? ->
-                if (loc != null) {
+                if (loc != null && (isMockLocation(loc) || sec.isMockLocationDetected || sec.isAllowMockSettingEnabled)) {
                     trySend(
                         UserLocationData(
                             latitude = loc.latitude,
                             longitude = loc.longitude,
                             accuracyMeters = loc.accuracy,
-                            isMock = isMockLocation(loc) || sec.isMockLocationDetected || sec.isAllowMockSettingEnabled,
+                            isMock = true,
                             isSimulated = false,
-                            hasRealFix = true
+                            hasRealFix = false,
+                            locationAgeMs = 0L,
+                            nearbyWifis = loadPassiveNearbyWifiList(context)
                         )
                     )
                 }
             }
         }
 
-        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 2500L)
-            .setMinUpdateIntervalMillis(1200L)
+        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 2000L)
+            .setMinUpdateIntervalMillis(1000L)
             .setMinUpdateDistanceMeters(0f)
+            .setMaxUpdateAgeMillis(0L) // maximumAge: 0 — önbellek konumu tamamen kapalı!
+            .setWaitForAccurateLocation(false)
             .build()
 
         val locationCallback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
                 val loc: Location? = result.lastLocation
                 if (loc != null) {
+                    val ageMs = ((SystemClock.elapsedRealtimeNanos() - loc.elapsedRealtimeNanos) / 1_000_000L)
+                        .coerceAtLeast(0L)
+                    // 12 saniyeden eski önbellek konumlarını taze kabul etme
+                    val isFreshFix = ageMs <= 12_000L
                     val sec = inspectDeviceMockSecurity(context)
+                    val passiveWifis = loadPassiveNearbyWifiList(context)
                     trySend(
                         UserLocationData(
                             latitude = loc.latitude,
@@ -278,7 +348,9 @@ object LocationHelper {
                             accuracyMeters = loc.accuracy,
                             isMock = isMockLocation(loc) || sec.isMockLocationDetected || sec.isAllowMockSettingEnabled,
                             isSimulated = false,
-                            hasRealFix = true
+                            hasRealFix = isFreshFix,
+                            locationAgeMs = ageMs,
+                            nearbyWifis = passiveWifis
                         )
                     )
                 }

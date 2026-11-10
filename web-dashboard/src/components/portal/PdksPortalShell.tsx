@@ -16,10 +16,10 @@ import { ThreeStudioEnhancer } from "@/components/three/ThreeStudioEnhancer";
  */
 
 const PDKS_SCRIPTS = [
-  "/core-xlsx.js?v=9.34",
-  "/legacy/data.js?v=9.34",
-  "/legacy/app.js?v=9.34",
-  "/legacy/landing.js?v=9.34"
+  "/core-xlsx.js?v=9.35",
+  "/legacy/data.js?v=9.35",
+  "/legacy/app.js?v=9.35",
+  "/legacy/landing.js?v=9.35"
 ] as const;
 
 /** Her script tamamlandığında ince kırmızı boot çizgisinin ulaşacağı ilerleme. */

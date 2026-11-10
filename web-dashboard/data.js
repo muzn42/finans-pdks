@@ -638,7 +638,71 @@
        ========================================================================= */
     const SHIFTS = [];
     const ACCESS_LOGS = [];
+    const WIFI_DISCOVERY = [];
     const SYNC = { ok: false, inFlight: false, lastSync: null, error: null, sse: 'idle', events: [], accessLogTotal: 0 };
+
+    function deterministicMacJs(branchIdx, slot) {
+        const b0 = 0xa4;
+        const b1 = (0x2b + ((branchIdx * 7) % 180)) & 0xff;
+        const b2 = (0x8c + ((branchIdx * 13 + slot * 19) % 160)) & 0xff;
+        const b3 = (0x1d + ((branchIdx * 29 + slot * 31) % 200)) & 0xff;
+        const b4 = (0xe0 + ((branchIdx + slot * 3) % 28)) & 0xff;
+        const b5 = (0x10 + ((branchIdx * 11 + slot * 41) % 220)) & 0xff;
+        return [b0, b1, b2, b3, b4, b5].map(x => x.toString(16).padStart(2, '0')).join(':');
+    }
+
+    function seedFallbackWifiDiscovery() {
+        WIFI_DISCOVERY.length = 0;
+        const neighborSsids = [
+            'TurkTelekom_Fiber_Esnaf',
+            'Superonline_WiFi_YanBina',
+            'VodafoneNet_Komsu_5G',
+            'Kablonet_IsMerkezi_24G',
+            'Eczane_Misafir_WiFi',
+            'Noterlik_Ofis_Fiber'
+        ];
+        BRANCHES.forEach((b, idx) => {
+            const brEmps = EMPLOYEES.filter(e => e.branch === b.code && (e.status === 'PRESENT' || e.status === 'LATE'));
+            const active = brEmps.length ? brEmps : EMPLOYEES.filter(e => e.branch === b.code).slice(0, 6);
+            const total = Math.max(1, active.length);
+            const primaryMac = b.wifiBssid || deterministicMacJs(idx + 1, 1);
+            const backupMac = (b.backupWifiBssids || '').split(',')[0].trim() || deterministicMacJs(idx + 1, 2);
+            WIFI_DISCOVERY.push({
+                branchCode: b.code,
+                branchName: b.name,
+                city: b.city,
+                bssid: primaryMac,
+                ssid: b.wifi || ('ALBAYRAK_' + (idx + 1) + '_WIFI'),
+                avgRssi: -48 - (idx % 7),
+                maxRssi: -44,
+                uniqueEmployeeCount: total,
+                totalBranchCheckInEmployees: total,
+                commonalityPct: 100,
+                scanHitCount: total * 3,
+                employeeSample: active.slice(0, 5).map(e => ({ id: e.id, sicil: e.sicil, name: e.name })),
+                assignmentStatus: b.wifiBssid && b.wifiBssid.toLowerCase() === primaryMac ? 'PRIMARY' : 'UNASSIGNED',
+                recommendedRole: 'PRIMARY'
+            });
+            const bkCount = Math.max(1, Math.round(total * 0.8));
+            WIFI_DISCOVERY.push({
+                branchCode: b.code,
+                branchName: b.name,
+                city: b.city,
+                bssid: backupMac,
+                ssid: neighborSsids[idx % neighborSsids.length],
+                avgRssi: -68 - (idx % 8),
+                maxRssi: -63,
+                uniqueEmployeeCount: bkCount,
+                totalBranchCheckInEmployees: total,
+                commonalityPct: Math.round((bkCount / total) * 100),
+                scanHitCount: bkCount * 2,
+                employeeSample: active.slice(0, 4).map(e => ({ id: e.id, sicil: e.sicil, name: e.name })),
+                assignmentStatus: (b.backupWifiBssids || '').toLowerCase().includes(backupMac) ? 'BACKUP' : 'UNASSIGNED',
+                recommendedRole: 'BACKUP'
+            });
+        });
+    }
+    seedFallbackWifiDiscovery();
 
     /* Personelin atanmış vardiya şablonu (yoksa 08:30 – 17:30 standart) */
     function shiftOf(e) {
@@ -730,8 +794,19 @@
                 lng: +b.lng,
                 radius: b.radius != null ? +b.radius : 30,
                 wifi: b.wifi || '',
+                wifiBssid: b.wifiBssid || '',
+                backupWifiBssids: b.backupWifiBssids || '',
+                backupBssidsList: Array.isArray(b.backupBssidsList) ? b.backupBssidsList : [],
+                wifiEnforcementMode: b.wifiEnforcementMode || 'LEARNING',
                 w: b.w != null ? +b.w : (b.code === 'ŞB-001' ? 0.16 : 0.01585)
             }));
+        }
+
+        if (Array.isArray(d.wifiDiscovery) && d.wifiDiscovery.length) {
+            WIFI_DISCOVERY.length = 0;
+            d.wifiDiscovery.forEach(w => WIFI_DISCOVERY.push(Object.assign({}, w)));
+        } else {
+            seedFallbackWifiDiscovery();
         }
 
         SHIFTS.length = 0;
@@ -1120,7 +1195,7 @@
 
     g.ATF.DATA = {
         BRANCHES, DEPTS, TITLES, EMPLOYEES, DAYS, LEAVES, LEAVE_TYPES, ALERTS, ALERT_TYPES,
-        TICKETS, TICKET_TYPES, DEVICES, AUDIT, SHIFTS, ACCESS_LOGS, LATE_REASONS, SYNC, hhmm, fmtDurMin, resolveDays, shiftOf,
+        TICKETS, TICKET_TYPES, DEVICES, AUDIT, SHIFTS, ACCESS_LOGS, LATE_REASONS, WIFI_DISCOVERY, SYNC, hhmm, fmtDurMin, resolveDays, shiftOf,
         empAnalytics, computeLeaderboards, addEmployee, updateEmployee, deleteEmployee,
         syncEmployeesFromBackend, syncAllFromPostgres, startRealtimeStream, clearAnalyticsCache
     };
