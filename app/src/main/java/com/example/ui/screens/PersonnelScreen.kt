@@ -1318,7 +1318,8 @@ private fun BranchAndUserLiveMapCard(
     onOpenGoogleMaps: (BranchEntity) -> Unit
 ) {
     var mapStyleIdx by remember { mutableIntStateOf(0) } // 0: Sokak Haritası, 1: 30m Uydu Radarı
-    var mapZoomLevel by remember { mutableFloatStateOf(1f) } // 0.75f .. 1.6f
+    var mapZoomLevel by remember { mutableFloatStateOf(1f) } // 0.75f .. 1.6f (radar görünümü)
+    var streetZoomDelta by remember { mutableIntStateOf(0) } // Sokak haritası: otomatik sığdırmaya göre ek zoom
 
     val infiniteTransition = rememberInfiniteTransition(label = "map_beacon")
     val beaconPulse by infiniteTransition.animateFloat(
@@ -1499,7 +1500,7 @@ private fun BranchAndUserLiveMapCard(
             )
 
             // İnteraktif Harita Canvas (Şube Pin + 30m Geofence Çemberi + Personel Canlı Pin)
-            Box(
+            BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(225.dp)
@@ -1507,84 +1508,53 @@ private fun BranchAndUserLiveMapCard(
                     .border(1.dp, LineHairline, RoundedCornerShape(14.dp))
             ) {
                 val statusPinColor = if (isWithinRadius) StatusOk else StatusBad
+                val isStreetMode = mapStyleIdx == 0
+                val geofenceRadiusMeters = LocationHelper.STRICT_GEOFENCE_RADIUS_METERS
+                val mapWidthDp = maxWidth.value
+                val mapHeightDp = maxHeight.value
+                val branchLat = branch?.latitude ?: userLocation.latitude
+                val branchLon = branch?.longitude ?: userLocation.longitude
+                val userLat = userLocation.latitude
+                val userLon = userLocation.longitude
+
+                // Gerçek koordinatlara göre şube çemberi + personeli birlikte sığdıran görünüm
+                val streetViewport = remember(
+                    branchLat, branchLon, userLat, userLon, mapWidthDp, mapHeightDp, streetZoomDelta
+                ) {
+                    StreetMapProjection.fitViewport(
+                        branchLat = branchLat,
+                        branchLon = branchLon,
+                        userLat = userLat,
+                        userLon = userLon,
+                        radiusMeters = geofenceRadiusMeters,
+                        widthDp = mapWidthDp,
+                        heightDp = mapHeightDp,
+                        paddingHorizontalDp = 72f,
+                        paddingVerticalDp = 130f,
+                        verticalBiasDp = 14f,
+                        zoomDelta = streetZoomDelta
+                    )
+                }
+
+                if (isStreetMode) {
+                    // 1. SOKAK & CADDE HARİTASI — gerçek OpenStreetMap altlığı
+                    OsmTileLayer(viewport = streetViewport)
+                }
 
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     val w = size.width
                     val h = size.height
-                    val cx = w * 0.46f
-                    val cy = h * 0.52f
+                    val edge = 14.dp.toPx()
 
-                    if (mapStyleIdx == 0) {
-                        // 1. SOKAK & CADDE HARİTASI GÖRÜNÜMÜ
-                        drawRect(color = Color(0xFFEEF2F6))
-
-                        // Park / Yeşil Alan Blokları
-                        drawRoundRect(
-                            color = Color(0xFFDCECE2),
-                            topLeft = Offset(w * 0.04f, h * 0.08f),
-                            size = Size(w * 0.24f, h * 0.30f),
-                            cornerRadius = CornerRadius(12f, 12f)
-                        )
-                        drawRoundRect(
-                            color = Color(0xFFDCECE2),
-                            topLeft = Offset(w * 0.72f, h * 0.62f),
-                            size = Size(w * 0.23f, h * 0.30f),
-                            cornerRadius = CornerRadius(12f, 12f)
-                        )
-
-                        // Mimari Bina Adaları
-                        val blocks = listOf(
-                            Offset(w * 0.32f, h * 0.08f) to Size(w * 0.28f, h * 0.22f),
-                            Offset(w * 0.66f, h * 0.08f) to Size(w * 0.28f, h * 0.26f),
-                            Offset(w * 0.05f, h * 0.56f) to Size(w * 0.26f, h * 0.34f),
-                            Offset(w * 0.36f, h * 0.68f) to Size(w * 0.30f, h * 0.24f)
-                        )
-                        blocks.forEach { (topLeft, blockSize) ->
-                            drawRoundRect(
-                                color = Color(0xFFE2E8F0),
-                                topLeft = topLeft,
-                                size = blockSize,
-                                cornerRadius = CornerRadius(8f, 8f)
-                            )
-                        }
-
-                        // Tali Sokaklar ve Ana Caddeler
-                        val roadColor = Color.White
-                        val roadBorder = Color(0xFFCBD5E1)
-                        // Yatay Ana Bulvar
-                        drawLine(
-                            color = roadBorder,
-                            start = Offset(0f, cy),
-                            end = Offset(w, cy),
-                            strokeWidth = 22.dp.toPx()
-                        )
-                        drawLine(
-                            color = roadColor,
-                            start = Offset(0f, cy),
-                            end = Offset(w, cy),
-                            strokeWidth = 18.dp.toPx()
-                        )
-                        // Dikey Ana Cadde
-                        drawLine(
-                            color = roadBorder,
-                            start = Offset(cx, 0f),
-                            end = Offset(cx, h),
-                            strokeWidth = 20.dp.toPx()
-                        )
-                        drawLine(
-                            color = roadColor,
-                            start = Offset(cx, 0f),
-                            end = Offset(cx, h),
-                            strokeWidth = 16.dp.toPx()
-                        )
-                        // Çapraz Bağlantı Yolu
-                        drawLine(
-                            color = roadColor,
-                            start = Offset(w * 0.1f, h * 0.9f),
-                            end = Offset(w * 0.9f, h * 0.15f),
-                            strokeWidth = 10.dp.toPx()
-                        )
+                    val branchPt = if (isStreetMode) {
+                        streetViewport.toLocalDp(branchLat, branchLon) * density
                     } else {
+                        Offset(w * 0.46f, h * 0.52f)
+                    }
+                    val cx = branchPt.x
+                    val cy = branchPt.y
+
+                    if (!isStreetMode) {
                         // 2. 30m UYDU RADAR GÖRÜNÜMÜ
                         drawRect(color = AlbayrakDarkSurface)
                         val gridStep = 28.dp.toPx()
@@ -1628,8 +1598,13 @@ private fun BranchAndUserLiveMapCard(
                         }
                     }
 
-                    // 30m Geofence Güvenlik Alanı Çemberi
-                    val geofenceRadiusPx = (48.dp.toPx() * mapZoomLevel).coerceIn(32.dp.toPx(), 84.dp.toPx())
+                    // 30m Geofence Güvenlik Alanı Çemberi (sokak modunda gerçek metre ölçeğinde)
+                    val geofenceRadiusPx = if (isStreetMode) {
+                        (geofenceRadiusMeters /
+                            StreetMapProjection.metersPerUnit(branchLat, streetViewport.zoom)).toFloat() * density
+                    } else {
+                        (48.dp.toPx() * mapZoomLevel).coerceIn(32.dp.toPx(), 84.dp.toPx())
+                    }
                     drawCircle(
                         color = if (isWithinRadius) StatusOk.copy(alpha = 0.16f) else AlbayrakRed.copy(alpha = 0.14f),
                         radius = geofenceRadiusPx,
@@ -1645,12 +1620,21 @@ private fun BranchAndUserLiveMapCard(
                         )
                     )
 
-                    // Personel Konumunun Şube Merkezine Göre Harita Üzerindeki Noktası
-                    val normalizedRatio = (animatedDist / 30f).coerceIn(0.05f, 2.1f)
-                    val userOffsetPx = geofenceRadiusPx * normalizedRatio
-                    val angleRad = Math.toRadians(28.0) // Kuzeydoğu - Doğu yönü
-                    val ux = (cx + userOffsetPx * cos(angleRad).toFloat()).coerceIn(24.dp.toPx(), w - 24.dp.toPx())
-                    val uy = (cy - userOffsetPx * sin(angleRad).toFloat()).coerceIn(24.dp.toPx(), h - 24.dp.toPx())
+                    // Personel Konumunun Harita Üzerindeki Noktası
+                    val ux: Float
+                    val uy: Float
+                    if (isStreetMode) {
+                        // Gerçek GPS koordinatı → harita pikseli (yakınlaştırınca kenara sabitlenir)
+                        val userPt = streetViewport.toLocalDp(userLat, userLon) * density
+                        ux = userPt.x.coerceIn(edge, w - edge)
+                        uy = userPt.y.coerceIn(edge, h - edge)
+                    } else {
+                        val normalizedRatio = (animatedDist / 30f).coerceIn(0.05f, 2.1f)
+                        val userOffsetPx = geofenceRadiusPx * normalizedRatio
+                        val angleRad = Math.toRadians(28.0) // Kuzeydoğu - Doğu yönü
+                        ux = (cx + userOffsetPx * cos(angleRad).toFloat()).coerceIn(24.dp.toPx(), w - 24.dp.toPx())
+                        uy = (cy - userOffsetPx * sin(angleRad).toFloat()).coerceIn(24.dp.toPx(), h - 24.dp.toPx())
+                    }
 
                     // Şube ile Personel Arası Mesafe Vektör Çizgisi
                     drawLine(
@@ -1762,7 +1746,13 @@ private fun BranchAndUserLiveMapCard(
                     Box(
                         modifier = Modifier
                             .size(30.dp)
-                            .clickable { mapZoomLevel = (mapZoomLevel + 0.2f).coerceAtMost(1.6f) },
+                            .clickable {
+                                if (isStreetMode) {
+                                    if (streetViewport.zoom < StreetMapProjection.MAX_ZOOM) streetZoomDelta += 1
+                                } else {
+                                    mapZoomLevel = (mapZoomLevel + 0.2f).coerceAtMost(1.6f)
+                                }
+                            },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -1776,7 +1766,13 @@ private fun BranchAndUserLiveMapCard(
                     Box(
                         modifier = Modifier
                             .size(30.dp)
-                            .clickable { mapZoomLevel = (mapZoomLevel - 0.2f).coerceAtLeast(0.75f) },
+                            .clickable {
+                                if (isStreetMode) {
+                                    if (streetViewport.zoom > StreetMapProjection.MIN_ZOOM) streetZoomDelta -= 1
+                                } else {
+                                    mapZoomLevel = (mapZoomLevel - 0.2f).coerceAtLeast(0.75f)
+                                }
+                            },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -1786,6 +1782,21 @@ private fun BranchAndUserLiveMapCard(
                             modifier = Modifier.size(16.dp)
                         )
                     }
+                }
+
+                // OpenStreetMap lisans atfı (ODbL zorunluluğu)
+                if (isStreetMode) {
+                    Text(
+                        text = "© OpenStreetMap katkıcıları",
+                        color = InkSecondary,
+                        fontSize = 8.sp,
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(bottom = 40.dp, end = 6.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(CardSurface.copy(alpha = 0.8f))
+                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                    )
                 }
 
                 // Alt Koordinat & Google Haritalar'da Aç Şeridi
