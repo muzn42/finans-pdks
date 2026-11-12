@@ -75,7 +75,11 @@
         grip: '<circle cx="9" cy="6" r="1.2"/><circle cx="15" cy="6" r="1.2"/><circle cx="9" cy="12" r="1.2"/><circle cx="15" cy="12" r="1.2"/><circle cx="9" cy="18" r="1.2"/><circle cx="15" cy="18" r="1.2"/>',
         expand: '<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>',
         edit: '<path d="M4 20h4L18.5 9.5a2.5 2.5 0 0 0-3.5-3.5L4.5 16.5V20z"/><path d="M13.5 6.5l4 4"/>',
-        tool: '<path d="M4 20h4L18.5 9.5a2.5 2.5 0 0 0-3.5-3.5L4.5 16.5V20z"/><path d="M13.5 6.5l4 4"/>'
+        tool: '<path d="M4 20h4L18.5 9.5a2.5 2.5 0 0 0-3.5-3.5L4.5 16.5V20z"/><path d="M13.5 6.5l4 4"/>',
+        sliders: '<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>',
+        eyeOff: '<path d="M3 3l18 18"/><path d="M10.6 5.6A10.6 10.6 0 0 1 12 5.5c6.4 0 10 6.5 10 6.5a17.6 17.6 0 0 1-3.2 3.9M6.6 6.6C3.7 8.4 2 12 2 12s3.6 6.5 10 6.5a9.6 9.6 0 0 0 4.4-1.1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
+        arrUp: '<path d="M12 19V5M6 11l6-6 6 6"/>',
+        arrDown: '<path d="M12 5v14M6 13l6 6 6-6"/>'
     };
     ATF.ICONS = I;
     ATF.ic = (n, c) => `<svg class="ic${c ? ' ' + c : ''}" viewBox="0 0 24 24">${I[n] || ''}</svg>`;
@@ -653,9 +657,15 @@
         try { saved = JSON.parse(localStorage.getItem(storageKey) || '{}'); } catch (e) { saved = {}; }
 
         grids.forEach((grid, gi) => {
-            const gKey = 'g' + gi;
+            /* Kişiselleştirilebilir sayfalarda satırlar sabit kimlik taşır (data-gid);
+               satır gizlense de diğer satırların kayıtlı sırası kaymaz. */
+            const gKey = grid.dataset.gid || 'g' + gi;
             const cards = Array.from(grid.children).filter(el => el.classList.contains('card'));
-            if (cards.length < 2) return;
+            /* Gizlenebilir kart tek başına kalsa da gizle butonu görünmeli */
+            if (cards.length < 2) {
+                cards.forEach(card => { if (card.dataset.hideable === '1') ATF.addHideBtn(card); });
+                return;
+            }
             grid.classList.add('dnd-grid');
 
             cards.forEach((card, ci) => {
@@ -675,6 +685,7 @@
                         <span class="dnd-handle" title="Sürükleyip yerini değiştirin">${ATF.ic('grip')}</span>
                     `;
                     card.appendChild(bar);
+                    if (card.dataset.hideable === '1') ATF.addHideBtn(card);
                     bar.querySelector('.dnd-span').addEventListener('click', e => {
                         e.stopPropagation();
                         card.classList.toggle('span-wide');
@@ -777,6 +788,20 @@
             saveState();
             ATF.toast('Panel düzeni kaydedildi');
         });
+    };
+
+    /* Kart köşesine "Kartı gizle" butonu ekler; tıklama app.js'deki data-act="w-hide" işleyicisine gider. */
+    ATF.addHideBtn = function (card) {
+        const wid = card.dataset.wid;
+        if (!wid || card.querySelector('.dnd-hide')) return;
+        let bar = card.querySelector('.dnd-bar');
+        if (!bar) {
+            bar = document.createElement('div');
+            bar.className = 'dnd-bar';
+            card.appendChild(bar);
+        }
+        const title = card.dataset.wtitle || 'Kart';
+        bar.insertAdjacentHTML('afterbegin', `<button type="button" class="dnd-btn dnd-hide" data-act="w-hide" data-id="${ATF.esc(wid)}" title="Kartı gizle (Düzeni özelleştir'den geri ekleyebilirsiniz)" aria-label="${ATF.esc(title)} kartını gizle">${ATF.ic('eyeOff')}</button>`);
     };
 
     ATF.resetDragLayout = function (storageKey, onDone) {

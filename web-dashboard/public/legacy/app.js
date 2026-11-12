@@ -243,7 +243,7 @@
 
     /* ======================= Ortak Parçalar ======================= */
     function kpi(o) {
-        return `<article class="card kpi lift"><div class="kpi-top"><span class="kpi-label">${esc(o.label)}</span><span class="kpi-ic ${o.tone || ''}">${ic(o.icon)}</span></div>
+        return `<article class="card kpi lift${o.cls ? ' ' + o.cls : ''}"><div class="kpi-top"><span class="kpi-label">${esc(o.label)}</span><span class="kpi-ic ${o.tone || ''}">${ic(o.icon)}</span></div>
         <div class="kpi-val"><span data-count="${o.val}" data-dec="${o.dec || 0}">0</span>${o.unit ? `<small>${o.unit}</small>` : ''}</div>
         <div class="kpi-foot">${o.delta || ''}<span>${o.foot || ''}</span>${o.spark || ''}</div></article>`;
     }
@@ -278,6 +278,92 @@
     const cardHead = (t, sub, right) => `<div class="card-head"><div><h3>${esc(t)}</h3>${sub ? `<p>${esc(sub)}</p>` : ''}</div>${right || ''}</div>`;
     const rank = (items, cls) => `<div class="rank">${items.map((it, i) => `<div class="rank-row"><div class="rank-top"><span>${esc(it.l)}</span><b>${it.v}</b></div><div class="bar-track"><div class="bar-fill ${it.cls || cls || ''}" style="--w:${it.w}%;--k:${i}"></div></div></div>`).join('')}</div>`;
 
+    /* ======================= Kişiselleştirilebilir Kart Düzeni =======================
+       Her kart W() ile kayda girer (kimlik, başlık, bölüm, varsayılan görünürlük).
+       Kullanıcının gizle/göster tercihi rol + sayfa bazında tarayıcıda saklanır;
+       sıralama ve genişlik mevcut sürükle-bırak motoru (A.enableDragGrid) ile tutulur. */
+    let WREG = [];
+    const wKey = () => 'atf_wvis_' + (S.user ? S.user.role : 'HR') + '_' + S.page;
+    function wPrefs() {
+        try {
+            const p = JSON.parse(localStorage.getItem(wKey()) || '{}');
+            return p && typeof p === 'object' ? p : {};
+        } catch (_) { return {}; }
+    }
+    function wSetVisible(id, on) {
+        const p = wPrefs();
+        const vis = Object.assign({}, p.vis || {}, { [id]: !!on });
+        try { localStorage.setItem(wKey(), JSON.stringify(Object.assign({}, p, { vis }))); } catch (_) { }
+    }
+    function wIsVisible(id, def) {
+        const v = (wPrefs().vis || {})[id];
+        return v == null ? def !== false : !!v;
+    }
+    /* Kartı kayda ekler. html bir `.card` ile başlamalı; görünür değilse boş döner. */
+    function W(o, html) {
+        const on = wIsVisible(o.id, o.def);
+        WREG.push({ id: o.id, title: o.title, group: o.group || 'Kartlar', row: o.row || '', def: o.def !== false, on });
+        if (!on) return '';
+        return String(html).replace(/^\s*<(section|article)\b/, m => `${m} data-wid="${esc(o.id)}" data-wtitle="${esc(o.title)}" data-hideable="1"`);
+    }
+    /* Satır: görünür kart sayısına göre sütun düzenini seçer; tümü gizliyse satır hiç basılmaz. */
+    function wRow(gid, items, kind) {
+        const vis = items.filter(Boolean);
+        if (!vis.length) return '';
+        const n = vis.length;
+        let cls;
+        if (kind === 'kpi') cls = n >= 5 ? 'g-5' : n === 4 ? 'g-4' : n === 3 ? 'g-3' : n === 2 ? 'g-2' : 'g-1';
+        else if (kind === 'main') cls = n === 2 ? 'g-main' : n >= 3 ? 'g-3' : 'g-1';
+        else cls = n >= 3 ? 'g-3' : n === 2 ? 'g-2' : 'g-1';
+        return `<div class="grid ${cls} mt" data-gid="${esc(gid)}">${vis.join('')}</div>`;
+    }
+    /* Bölüm başlığı: Analitik ve Genel bakışta içerik gruplarını ayırır */
+    function wSection(id, title, sub, body) {
+        if (!body.trim()) return '';
+        const closed = !!(S.ui.secClosed && S.ui.secClosed[S.page + ':' + id]);
+        return `<section class="w-section${closed ? ' is-closed' : ''}" id="sec-${esc(id)}" aria-labelledby="sec-${esc(id)}-h">
+            <header class="w-section-head">
+                <button type="button" class="w-section-toggle" data-act="w-sec" data-v="${esc(id)}" aria-expanded="${!closed}" aria-controls="sec-${esc(id)}-b">
+                    <span class="w-section-caret">${ic('chevron')}</span>
+                    <h2 id="sec-${esc(id)}-h">${esc(title)}</h2>
+                </button>
+                ${sub ? `<p>${esc(sub)}</p>` : ''}
+            </header>
+            <div class="w-section-body" id="sec-${esc(id)}-b"${closed ? ' hidden' : ''}>${body}</div>
+        </section>`;
+    }
+    /* Sayfa üstü araç çubuğu: dönem etiketi + Düzeni özelleştir */
+    const wToolbar = (label, extra) => `<div class="w-toolbar">
+        <span class="w-toolbar-label">${label}</span>
+        <div class="w-toolbar-acts">
+            ${extra || ''}
+            <button type="button" class="btn btn-soft btn-sm" data-act="w-panel" aria-haspopup="dialog">${ic('sliders')} Düzeni özelleştir</button>
+        </div>
+    </div>`;
+    function wPanelHtml() {
+        const groups = [];
+        WREG.forEach(r => { let g = groups.find(x => x.name === r.group); if (!g) { g = { name: r.group, items: [] }; groups.push(g); } g.items.push(r); });
+        /* İsteğe bağlı kartlar her zaman listenin sonunda */
+        groups.sort((a, b) => (a.name === 'Ek kartlar') - (b.name === 'Ek kartlar'));
+        const shown = WREG.filter(r => r.on).length;
+        return `<p class="muted w-panel-intro">Gösterilecek kartları seçin. Kartları sayfada tutup sürükleyerek veya aşağıdaki oklarla sıralayabilirsiniz. Tercihleriniz bu tarayıcıda saklanır.</p>
+        <div class="w-panel-count"><b>${shown}</b> / ${WREG.length} kart gösteriliyor</div>
+        ${groups.map(g => `<div class="w-panel-group" role="group" aria-label="${esc(g.name)}">
+            <h4>${esc(g.name)}</h4>
+            ${g.items.map(r => `<div class="w-panel-item${r.on ? ' is-on' : ''}">
+                <button type="button" class="w-switch" role="switch" aria-checked="${r.on}" data-act="w-toggle" data-id="${esc(r.id)}" id="wsw-${esc(r.id)}">
+                    <span class="w-switch-track"><span class="w-switch-dot"></span></span>
+                    <span class="w-switch-label">${esc(r.title)}${r.def ? '' : ' <small class="pill info">Ek kart</small>'}</span>
+                </button>
+                <div class="w-panel-move">
+                    <button type="button" class="icon-btn sm" data-act="w-move" data-id="${esc(r.id)}" data-v="-1" ${r.on ? '' : 'disabled'} aria-label="${esc(r.title)} kartını öne al">${ic('arrUp')}</button>
+                    <button type="button" class="icon-btn sm" data-act="w-move" data-id="${esc(r.id)}" data-v="1" ${r.on ? '' : 'disabled'} aria-label="${esc(r.title)} kartını geri al">${ic('arrDown')}</button>
+                </div>
+            </div>`).join('')}
+        </div>`).join('')}
+        <div class="w-panel-foot"><button type="button" class="btn btn-ghost btn-sm" data-act="w-reset">${ic('refresh')} Varsayılan düzene dön</button></div>`;
+    }
+
     /* Şubelere göre zamanında gelme: 54 şube kartı büyütmesin diye arama + İlk 10 / Tümü
        ve kart içinde kaydırma (`.rank-scroll`) ile sınırlandırılır. */
     function branchRankData() {
@@ -300,136 +386,228 @@
         if (meta) meta.textContent = `${shown.length}/${rows.length} şube`;
     }
     const empty = (t, s) => `<div class="empty"><b>${esc(t)}</b>${esc(s || '')}</div>`;
-    const dndToolbar = () => `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;flex-wrap:wrap">
-        <span class="muted" style="font-size:12.5px;display:inline-flex;align-items:center;gap:6px">${ic('grip')} Kutuları sürükleyip bırakarak kendi ekran düzeninizi oluşturabilirsiniz · <b>Dönem: ${esc(rangeLabel())}</b></span>
-        <div style="display:flex;gap:8px;align-items:center">
-            <button type="button" class="dnd-hint" data-act="dnd-reset">${ic('refresh')} Düzeni Sıfırla</button>
-            ${dlBtn('export-analytics', 'Yönetici Excel Raporu (.xlsx)', { cls: 'btn-dark btn-sm' })}
-        </div>
-    </div>`;
 
     /* ======================= İK SAYFALARI ======================= */
     const HR = {};
 
+    /* ---------- İK yardımcıları: bugün ve son 30 iş günü gecikme özeti ---------- */
+    const lateNet = e => Math.max(0, (e.lateMin || 0) - (e.lateExcusedMin || 0));
+    const inBranch = id => { const e = emp(id); return !!e && (S.branch === 'ALL' || e.branch === S.branch); };
+    /* Son N iş gününün günlük gecikme dökümü (personel kayıtlarından, şube filtresine uyumlu) */
+    function dailyLateSeries(lb, days) {
+        const map = new Map(days.map(d => [d.iso, { day: d, cnt: 0, min: 0, att: 0 }]));
+        lb.all.forEach(a => a.logs.forEach(l => {
+            const m = map.get(l.iso); if (!m) return;
+            if (l.status === 'LEAVE' || l.status === 'ABSENT') return;
+            m.att++;
+            if (l.lateMin > 0) { m.cnt++; m.min += l.lateMin; }
+        }));
+        return days.map(d => map.get(d.iso));
+    }
+    function pendingLateReasons() {
+        return (D.LATE_REASONS || []).filter(r => r.status === 'PENDING' && inBranch(r.empId));
+    }
+    function pendingLeaves() {
+        return D.LEAVES.filter(l => l.status === 'pending' && inBranch(l.empId));
+    }
+    const todayLabel = () => { const d = D.DAYS[D.DAYS.length - 1]; return d ? d.fullDate + ' · ' + d.dowName : 'bugün'; };
+
     HR.overview = {
-        title: 'Genel bakış', sub: () => 'Personel katılım durumu, fazla mesai ve net süre bakiyesi özeti · ' + rangeLabel(), tools: { range: 1, branch: 1 }, icon: 'grid',
+        title: 'Genel bakış',
+        sub: () => 'Bugünün devam durumu ve onayınızı bekleyen işler · ' + todayLabel(),
+        tools: { branch: 1 },
+        icon: 'grid',
         render() {
-            const st = stats(), E = emps(), pend = D.LEAVES.filter(l => l.status === 'pending' && emp(l.empId)).slice(0, 3);
-            const curDays = activeDays(), daysChart = curDays.length >= 5 ? curDays.slice(-14) : D.DAYS.slice(-14);
-            const lb = D.computeLeaderboards(E, filterOpts());
-            const geldi = st.onTime + st.late;
-            const netList = S.ui.ovLb === 'best' ? lb.bestNet.slice(0, 5) : lb.worstNet.slice(0, 5);
+            const E = emps(), N = E.length || 1;
+            const lateToday = E.filter(e => lateNet(e) > 0).slice().sort((a, b) => lateNet(b) - lateNet(a));
+            const absentToday = E.filter(e => e.status === 'ABSENT');
+            const leaveToday = E.filter(e => e.status === 'LEAVE');
+            const onTime = E.filter(e => e.status === 'PRESENT' || (e.status === 'LATE' && lateNet(e) === 0)).length;
+            const avgLate = lateToday.length ? Math.round(lateToday.reduce((s, e) => s + lateNet(e), 0) / lateToday.length) : 0;
+            const latestIn = lateToday.reduce((m, e) => (e.inMin != null && e.inMin > m ? e.inMin : m), 0);
 
-            return `
-            ${dndToolbar()}
-            <div class="grid g-4">
-                ${kpi({ label: 'Toplam personel', val: st.N, icon: 'users', tone: '', foot: S.branch === 'ALL' ? D.BRANCHES.length + ' şube · %' + A.pctText(st.geofencePct) + ' geofence' : esc(brName(S.branch)) })}
-                ${kpi({ label: 'Şu an içeride / katılım', val: geldi, icon: 'check', tone: 'ok', delta: delta(st.onTimePct - st.prevPct, ' puan'), foot: st.onTime + ' zamanında · %' + A.pctText(geldi / st.N * 100) + ' katılım', spark: A.spark(daysChart.map(d => 1 - d.absent - d.leave), '#0E9F6E') })}
-                ${kpi({ label: 'Toplam ek mesai', val: st.totalOvertimeH, dec: 1, unit: 'sa', icon: 'activity', tone: 'ok', foot: 'Net bakiye: ' + fmtMinSigned(st.netBalanceMin), spark: A.spark(daysChart.map(d => d.overtimeH), '#0E9F6E') })}
-                ${kpi({ label: 'Geç kalan / devamsız', val: st.late, icon: 'clock', tone: 'warn', delta: delta(st.late - st.prevLate, '', false), foot: 'ort. ' + Math.round(st.avgLate) + ' dk gecikme · ' + st.absent + ' devamsız', spark: A.spark(daysChart.map(d => d.late), '#C77700') })}
-            </div>
+            const lb30 = D.computeLeaderboards(E, { range: 30 });
+            const lateDaysOf = new Map(lb30.all.map(a => [a.empId, a.lateDays]));
+            const series = dailyLateSeries(lb30, D.DAYS.slice(-14));
+            const prev = series[series.length - 2] || { cnt: 0 };
+            const chronic = lb30.mostLate.filter(a => a.lateDays > 0).slice(0, 6);
+            const pLate = pendingLateReasons(), pLeave = pendingLeaves();
+            const absentDaysOf = new Map(lb30.all.map(a => [a.empId, a.absentDays]));
+            /* İzinlinin onaylı izin kaydı (tür + tarih); bulunamazsa genel "İzinli" */
+            const leaveOf = id => D.LEAVES.filter(l => l.empId === id && l.status === 'approved').slice(-1)[0];
 
-            <!-- YENİ: En Çok Mesai Yapanlar & Net Süre Bakiyesi (Ek Mesai - Gecikme) En İyiler / En Kötüler -->
-            <div class="grid g-3 mt">
-                <section class="card flush">
-                    ${cardHead('En çok ek mesai yapanlar', rangeLabel() + ' · toplam fazla mesai liderleri', dlBtn('export-leaderboards', 'Lig Excel', { cls: 'btn-soft btn-sm' }))}
-                    <div class="list" style="margin-top:4px">
-                        ${lb.topOvertime.slice(0, 5).map((a, idx) => `<div class="list-item clickable" data-act="emp-open" data-id="${a.emp.id}" tabindex="0" role="button">
-                            <span class="rank-badge r${idx + 1}">${idx + 1}</span>
-                            ${avatar(a.emp, 'sm')}
-                            <div class="grow">
-                                <b>${esc(a.emp.name)}</b>
-                                <small>${esc(a.emp.dept)} · Zirve: <b>${esc(a.mostOvertimeDay.dowName)}</b> (${a.mostOvertimeDay.totalOvertimeMin} dk)</small>
-                            </div>
-                            <div style="text-align:right">
-                                ${pill('+' + fmtMinDur(a.totalOvertimeMin), 'ok')}
-                                <small class="muted" style="font-size:10.5px;display:block;margin-top:2px">Net: ${fmtMinSigned(a.netBalanceMin)}</small>
-                            </div>
-                        </div>`).join('')}
-                    </div>
-                </section>
+            const kpis = wRow('ov-kpi', [
+                W({ id: 'ov-k-late', title: 'Bugün geç kalan', group: 'Bugün' }, kpi({
+                    label: 'Bugün geç kalan', val: lateToday.length, icon: 'clock', tone: 'warn', cls: 'kpi-primary',
+                    delta: delta(lateToday.length - prev.cnt, ' kişi', false),
+                    foot: lateToday.length ? `ort. ${avgLate} dk · en geç giriş ${D.hhmm(latestIn)}` : 'Bugün gecikme yok',
+                    spark: A.spark(series.map(s => s.cnt), '#C77700')
+                })),
+                W({ id: 'ov-k-absent', title: 'Gelmeyen (izinsiz)', group: 'Bugün' }, kpi({
+                    label: 'Gelmeyen (izinsiz)', val: absentToday.length, icon: 'alert', tone: absentToday.length ? 'red' : 'ok',
+                    foot: absentToday.length ? 'İzin kaydı olmadan giriş yapmadı' : 'Herkes giriş yaptı ya da izinli'
+                })),
+                W({ id: 'ov-k-leave', title: 'İzinli', group: 'Bugün' }, kpi({
+                    label: 'İzinli', val: leaveToday.length, icon: 'calendar', tone: 'info',
+                    foot: pLeave.length ? pLeave.length + ' izin talebi onay bekliyor' : 'Bekleyen izin talebi yok'
+                })),
+                W({ id: 'ov-k-ontime', title: 'Zamanında katılım', group: 'Bugün' }, kpi({
+                    label: 'Zamanında katılım', val: +(onTime / N * 100).toFixed(1), dec: 1, unit: '%', icon: 'check', tone: onTime / N >= 0.95 ? 'ok' : 'warn',
+                    foot: `${fmt(onTime)} / ${fmt(E.length)} personel · hedef %95`,
+                    spark: A.spark(series.map(s => s.att ? 100 - s.cnt / s.att * 100 : 100), '#0E9F6E')
+                })),
+                W({ id: 'ov-k-total', title: 'Toplam personel', group: 'Ek kartlar', def: false }, kpi({
+                    label: 'Toplam personel', val: E.length, icon: 'users',
+                    foot: S.branch === 'ALL' ? D.BRANCHES.length + ' şube' : esc(brName(S.branch))
+                }))
+            ], 'kpi');
 
-                <section class="card flush">
-                    ${cardHead(
-                        'Net süre bakiyesi (Ek mesai − gecikme)',
-                        'Ek mesaiden geç kalınan dakika çıkınca kalan net süre',
-                        chips([{ v: 'best', l: 'En İyiler (+)' }, { v: 'worst', l: 'En Kötüler (−)' }], S.ui.ovLb, 'ov-lb-tab')
-                    )}
-                    <div class="list" style="margin-top:4px">
-                        ${netList.map((a, idx) => `<div class="list-item clickable" data-act="emp-open" data-id="${a.emp.id}" tabindex="0" role="button">
-                            <span class="rank-badge ${S.ui.ovLb === 'best' ? 'r' + (idx + 1) : ''}">${idx + 1}</span>
-                            ${avatar(a.emp, 'sm')}
-                            <div class="grow">
-                                <b>${esc(a.emp.name)}</b>
-                                <small>Mesai: <b>+${a.totalOvertimeMin} dk</b> · Geç: <b>−${a.totalLateMin} dk</b></small>
-                            </div>
-                            <div style="text-align:right">
-                                ${netPill(a.netBalanceMin)}
-                                <small class="muted" style="font-size:10.5px;display:block;margin-top:2px">${S.ui.ovLb === 'best' ? 'En iyi: ' + a.mostOvertimeDay.dowShort : 'En geç: ' + a.mostLateDay.dowShort}</small>
-                            </div>
-                        </div>`).join('')}
-                    </div>
-                </section>
-
-                <section class="card flush">
-                    ${cardHead('En çok geç kalanlar', rangeLabel() + ' · gecikme süresi ve en sık gecikilen gün', dlBtn('export-late', 'Excel İndir', { cls: 'btn-soft btn-sm' }))}
-                    <div class="list" style="margin-top:4px">
-                        ${lb.mostLate.slice(0, 5).map((a, idx) => `<div class="list-item clickable" data-act="emp-open" data-id="${a.emp.id}" tabindex="0" role="button">
-                            <span class="rank-badge">${idx + 1}</span>
-                            ${avatar(a.emp, 'sm')}
-                            <div class="grow">
-                                <b>${esc(a.emp.name)}</b>
-                                <small>${esc(a.emp.dept)} · En çok: <b>${esc(a.mostLateDay.dowName)}</b> (${a.mostLateDay.lateCount} kez)</small>
-                            </div>
-                            <div style="text-align:right">
-                                ${pill('−' + fmtMinDur(a.totalLateMin), 'warn')}
-                                <small class="muted" style="font-size:10.5px;display:block;margin-top:2px">Net: ${fmtMinSigned(a.netBalanceMin)}</small>
-                            </div>
-                        </div>`).join('')}
-                    </div>
-                </section>
-            </div>
-
-            <div class="grid g-main mt">
-                <section class="card">${cardHead(curDays.length === 1 ? 'Giriş yoğunluğu (15 dk dilimler)' : 'Zamanında gelme oranı trendi', curDays.length === 1 ? 'Vardiya başlangıcı 08:30 referanslı' : rangeLabel() + ' · günlük oran (%)')}<div id="chArrival"></div></section>
-                <section class="card">${cardHead('Durum dağılımı', rangeLabel())}<div id="chDonut"></div></section>
-            </div>
-
-            <div class="grid g-3 mt">
-                <section class="card">${cardHead('Departmanlara göre zamanında gelme', rangeLabel())}${rank(deptStats().slice(0, 7).map(x => ({ l: x.d, v: A.pctText(x.pct) + '% · Net ' + fmtMinSigned(x.netMin), w: A.clamp(x.pct, 0, 100), cls: x.pct > 94 ? 'ok' : x.pct > 88 ? '' : 'warn' })))}</section>
-                <section class="card">${cardHead('Geliş saati yoğunluk haritası', 'Haftanın günü × saat yoğunluğu')}<div id="chHeat"></div></section>
-                <section class="card flush">${cardHead('Bekleyen izin & mazeret talepleri', pend.length + ' talep onay bekliyor', `<button class="btn btn-soft btn-sm" data-go="leaves">Tümü</button>`)}
-                    <div class="list" style="margin-top:8px">${pend.length ? pend.map(l => { const e = emp(l.empId); return `<div class="list-item">${avatar(e, 'sm')}<div class="grow"><b>${esc(e.name)}</b><small>${esc(l.type)} · ${l.days} gün</small></div><div class="row-actions"><button class="btn btn-ok btn-sm" data-act="leave-act" data-id="${l.id}" data-v="approved" aria-label="Onayla">${ic('check')}</button><button class="btn btn-bad btn-sm" data-act="leave-act" data-id="${l.id}" data-v="rejected" aria-label="Reddet">${ic('x')}</button></div></div>`; }).join('') : empty('Bekleyen talep yok')}</div></section>
-            </div>
-
-            <div class="grid g-2 mt">
-                <section class="card">${cardHead('Günlük çalışma süresi istikrarı (8,5 sa hedef)', 'Mobil ve web birleşik mesai istikrar grafiği · ' + rangeLabel())}<div id="chStabilityOv"></div></section>
-                <section class="card">${cardHead('Fazla mesai eğilimi', 'Günlük toplam fazla mesai saati · ' + rangeLabel())}<div id="chOvertime"></div></section>
+            const seeAll = (list, status) => list.length > 6
+                ? `<div class="card-foot-link"><button type="button" class="btn btn-ghost btn-sm" data-act="ov-see-list" data-v="${status}">Tümünü gör (${list.length}) ${ic('chevron')}</button></div>`
+                : '';
+            const personRow = (e, meta, right) => `<div class="list-item clickable" data-act="emp-open" data-id="${e.id}" tabindex="0" role="button">
+                ${avatar(e, 'sm')}
+                <div class="grow"><b>${esc(e.name)}</b><small>${meta}</small></div>
+                ${right}
             </div>`;
+
+            const todayCard = W({ id: 'ov-today', title: 'Bugün geç kalanlar', group: 'Bugün' }, `<section class="card flush">
+                ${cardHead('Bugün geç kalanlar', 'Gecikme süresine göre · rozet son 30 iş günündeki tekrar sayısı', pill(lateToday.length + ' kişi', lateToday.length ? 'warn' : 'ok'))}
+                <div class="list" style="margin-top:4px">
+                    ${lateToday.length ? lateToday.slice(0, 6).map(e => {
+                        const rep = lateDaysOf.get(e.id) || 0;
+                        return personRow(e,
+                            `${esc(e.dept)} · ${esc(brName(e.branch))}${e.inMin != null ? ' · giriş <b class="mono">' + D.hhmm(e.inMin) + '</b>' : ''}`,
+                            `${rep >= 3 ? `<span class="pill warn" title="Son 30 iş gününde ${rep} gün geç kaldı">30 günde ${rep} kez</span>` : ''}<span class="late-chip" aria-label="${lateNet(e)} dakika geç">${ic('clock')}−${fmtMinDur(lateNet(e))}</span>`);
+                    }).join('') : empty('Bugün geç kalan yok', 'Harika bir gün.')}
+                </div>
+                ${seeAll(lateToday, 'LATE')}
+            </section>`);
+
+            /* Gelmeyenler iki ayrı kartta: izinsizler (İK aksiyonu gerekir) ve izinliler (bilgi) */
+            const absentCard = W({ id: 'ov-absent', title: 'İzinsiz gelmeyenler', group: 'Bugün' }, `<section class="card flush">
+                ${cardHead('İzinsiz gelmeyenler', 'İzin kaydı olmadan giriş yapmayan personel · rozet son 30 iş günündeki devamsızlık', pill(absentToday.length + ' kişi', absentToday.length ? 'bad' : 'ok'))}
+                <div class="list" style="margin-top:4px">
+                    ${absentToday.length ? absentToday.slice(0, 6).map(e => {
+                        const ad = absentDaysOf.get(e.id) || 0;
+                        return personRow(e,
+                            `${esc(e.dept)} · ${esc(brName(e.branch))}`,
+                            `${ad >= 2 ? `<span class="pill bad" title="Son 30 iş gününde ${ad} gün izinsiz gelmedi">30 günde ${ad} gün</span>` : ''}<span class="absent-chip">${ic('alert')}Giriş yok</span>`);
+                    }).join('') : empty('Bugün izinsiz gelmeyen yok', 'Gelmeyenlerin hepsinin izin kaydı var.')}
+                </div>
+                ${seeAll(absentToday, 'ABSENT')}
+            </section>`);
+
+            const leaveCard = W({ id: 'ov-leave', title: 'Bugün izinliler', group: 'Bugün' }, `<section class="card flush">
+                ${cardHead('Bugün izinliler', 'Onaylı izin, rapor ve saha görevi', pill(leaveToday.length + ' kişi', 'info'))}
+                <div class="list" style="margin-top:4px">
+                    ${leaveToday.length ? leaveToday.slice(0, 6).map(e => {
+                        const lv = leaveOf(e.id);
+                        const detail = lv ? (lv.isHourly && lv.startClock ? esc(lv.startClock) + '–' + esc(lv.endClock) : lv.days + ' gün') : '';
+                        return personRow(e,
+                            `${esc(e.dept)} · ${esc(brName(e.branch))}${detail ? ' · ' + detail : ''}`,
+                            pill(lv ? lv.type : 'İzinli', 'info'));
+                    }).join('') : empty('Bugün izinli personel yok')}
+                </div>
+                ${seeAll(leaveToday, 'LEAVE')}
+            </section>`);
+
+            const pendCount = pLate.length + pLeave.length;
+            const pendItems = []
+                .concat(pLate.slice(0, 4).map(r => {
+                    const e = emp(r.empId);
+                    return `<div class="list-item">
+                        ${avatar(e, 'sm')}
+                        <div class="grow">
+                            <b>${esc(r.name || (e && e.name) || '—')} <span class="muted" style="font-weight:500">· gecikme gerekçesi</span></b>
+                            <small>${esc(r.workDateTr || r.workDate)} · <b>${r.lateMin} dk</b> · ${esc(lateReasonLabel(r.reasonCode))}</small>
+                        </div>
+                        <div class="row-actions"><button type="button" class="btn btn-soft btn-sm" data-act="late-reason-open" data-id="${r.id}">${ic('tool')}İncele</button></div>
+                    </div>`;
+                }))
+                .concat(pLeave.slice(0, 4).map(l => {
+                    const e = emp(l.empId);
+                    return `<div class="list-item">
+                        ${avatar(e, 'sm')}
+                        <div class="grow">
+                            <b>${esc(e.name)} <span class="muted" style="font-weight:500">· ${esc(l.type)}</span></b>
+                            <small>${l.isHourly && l.startClock ? esc(l.startClock) + '–' + esc(l.endClock) + ' (saatlik)' : l.days + ' gün'} · ${esc(l.from || '')}</small>
+                        </div>
+                        <div class="row-actions">
+                            <button class="btn btn-ok btn-sm" data-act="leave-act" data-id="${l.id}" data-v="approved" aria-label="${esc(e.name)} izin talebini onayla">${ic('check')}</button>
+                            <button class="btn btn-bad btn-sm" data-act="leave-act" data-id="${l.id}" data-v="rejected" aria-label="${esc(e.name)} izin talebini reddet">${ic('x')}</button>
+                        </div>
+                    </div>`;
+                }));
+            const pendCard = W({ id: 'ov-pending', title: 'Onayınızı bekleyenler', group: 'Bugün' }, `<section class="card flush">
+                ${cardHead('Onayınızı bekleyenler', 'Gecikme gerekçeleri ve izin talepleri', `<div class="card-head-acts">${pill(pendCount + ' bekliyor', pendCount ? 'warn' : 'ok')}<button type="button" class="btn btn-soft btn-sm" data-go="leaves">Tümü</button></div>`)}
+                <div class="list" style="margin-top:4px">${pendItems.length ? pendItems.join('') : empty('Bekleyen işiniz yok', 'Tüm talepler sonuçlandırıldı.')}</div>
+                ${pendCount > pendItems.length ? `<div class="card-foot-link"><button type="button" class="btn btn-ghost btn-sm" data-go="leaves">${pendCount - pendItems.length} talep daha · tümünü gör ${ic('chevron')}</button></div>` : ''}
+            </section>`);
+
+            const chronicCard = W({ id: 'ov-chronic', title: 'Sürekli geç kalanlar', group: 'Son 30 iş günü' }, `<section class="card flush">
+                ${cardHead('Sürekli geç kalanlar', 'Son 30 iş günü · geç kalınan gün sayısına göre', dlBtn('export-late', 'Excel', { cls: 'btn-soft btn-sm' }))}
+                <div class="list" style="margin-top:4px">
+                    ${chronic.length ? chronic.map((a, i) => `<div class="list-item clickable" data-act="emp-open" data-id="${a.emp.id}" tabindex="0" role="button">
+                        <span class="rank-badge">${i + 1}</span>
+                        ${avatar(a.emp, 'sm')}
+                        <div class="grow">
+                            <b>${esc(a.emp.name)}</b>
+                            <small>${esc(a.emp.dept)} · en çok <b>${esc(a.mostLateDay.dowName)}</b></small>
+                        </div>
+                        <div style="text-align:right">
+                            <span class="late-chip">${a.lateDays} gün</span>
+                            <small class="muted mono" style="display:block;font-size:11px;margin-top:2px">toplam −${fmtMinDur(a.totalLateMin)}</small>
+                        </div>
+                    </div>`).join('') : empty('Son 30 iş gününde gecikme yok')}
+                </div>
+            </section>`);
+
+            const trendCard = W({ id: 'ov-trend', title: 'Gecikme trendi', group: 'Son 30 iş günü' }, `<section class="card">
+                ${cardHead('Gecikme trendi', 'Son 14 iş günü · günlük geç kalan kişi sayısı', pill('Bugün ' + lateToday.length + ' kişi', 'warn'))}
+                <div id="chOvLate"></div>
+            </section>`);
+
+            /* İsteğe bağlı kartlar (varsayılan kapalı): Düzeni özelleştir > Ek kartlar */
+            const otCard = W({ id: 'ov-ot', title: 'En çok ek mesai yapanlar', group: 'Ek kartlar', def: false }, `<section class="card flush">
+                ${cardHead('En çok ek mesai yapanlar', 'Son 30 iş günü')}
+                <div class="list" style="margin-top:4px">${lb30.topOvertime.slice(0, 5).map((a, i) => `<div class="list-item clickable" data-act="emp-open" data-id="${a.emp.id}" tabindex="0" role="button">
+                    <span class="rank-badge r${i + 1}">${i + 1}</span>${avatar(a.emp, 'sm')}
+                    <div class="grow"><b>${esc(a.emp.name)}</b><small>${esc(a.emp.dept)}</small></div>${pill('+' + fmtMinDur(a.totalOvertimeMin), 'ok')}
+                </div>`).join('')}</div>
+            </section>`);
+            const deptCard = W({ id: 'ov-dept', title: 'Departmanlara göre zamanında gelme', group: 'Ek kartlar', def: false }, `<section class="card">
+                ${cardHead('Departmanlara göre zamanında gelme', 'Son 30 iş günü')}
+                ${rank(deptStats().slice(0, 7).map(x => ({ l: x.d, v: A.pctText(x.pct) + '%', w: A.clamp(x.pct, 0, 100), cls: x.pct > 94 ? 'ok' : x.pct > 88 ? '' : 'warn' })))}
+            </section>`);
+            const donutCard = W({ id: 'ov-donut', title: 'Bugünkü durum dağılımı', group: 'Ek kartlar', def: false }, `<section class="card">
+                ${cardHead('Bugünkü durum dağılımı', todayLabel())}<div id="chDonut"></div>
+            </section>`);
+
+            return wToolbar(`<b>Bugün</b> · ${esc(todayLabel())} · ${S.branch === 'ALL' ? 'Tüm şubeler' : esc(brName(S.branch))}`)
+                + kpis
+                + wRow('ov-act', [todayCard, pendCard], 'main')
+                + wRow('ov-away', [absentCard, leaveCard])
+                + wRow('ov-30', [chronicCard, trendCard], 'main')
+                + wRow('ov-extra', [otCard, deptCard, donutCard]);
         },
         mount() {
-            const st = stats(), E = emps(), curDays = activeDays(), dChart = curDays.length >= 2 ? curDays : D.DAYS.slice(-14);
-            if (curDays.length === 1) {
-                const b = Array(11).fill(0); E.forEach(e => { if (e.inMin != null) b[A.clamp(Math.floor((e.inMin - 450) / 15), 0, 10)]++; });
-                A.areaChart($('#chArrival'), { labels: b.map((_, i) => D.hhmm(450 + i * 15)), series: [{ data: b }], aria: 'Giriş yoğunluğu', tip: (i, v) => `<b>${D.hhmm(450 + i * 15)} – ${D.hhmm(465 + i * 15)}</b>${v[0]} kişi girdi` });
-            } else {
-                A.areaChart($('#chArrival'), { labels: dChart.map(x => x.label), series: [{ data: dChart.map(x => A.num(x.onTime * 100)) }], yMin: 80, yMax: 100, yFmt: v => v + '%', aria: 'Zamanında gelme oranı', tip: (i, v) => `<b>${dChart[i].fullDate} (${dChart[i].dowName})</b>%${String(v[0]).replace('.', ',')} zamanında` });
-            }
-            A.donut($('#chDonut'), { items: [{ label: 'Zamanında', value: st.onTime, color: '#1C1D1F' }, { label: 'Geç kalan', value: st.late, color: '#E31E24' }, { label: 'İzinli', value: st.leave, color: '#8E949C' }, { label: 'Devamsız', value: st.absent, color: '#D9DBDF' }], centerTop: '%' + A.pctText(st.onTimePct), centerSub: 'zamanında', aria: 'Durum dağılımı' });
-            const days = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum'], cols = ['07:30', '08:00', '08:30', '09:00', '09:30'], r = A.rng(A.hash(S.branch));
-            const rows = days.map((l, di) => ({ label: l, cells: cols.map((_, ci) => { const peak = di === 0 ? 2.2 : di === 4 ? 1.1 : 1.6; return A.clamp(Math.exp(-Math.pow(ci - peak, 2) / 1.25) * (.88 + r() * .12) + (ci === 4 ? di === 0 ? .1 : 0 : 0), 0, 1); }) }));
-            A.heatmap($('#chHeat'), { cols, rows, tip: v => 'yoğunluk %' + Math.round(v * 100) });
-            const d14 = dChart.slice(-14);
-            A.areaChart($('#chStabilityOv'), {
-                labels: d14.map(x => x.label),
-                series: [
-                    { data: d14.map(x => A.num(x.workH)) },
-                    { data: d14.map(() => 8.5) }
-                ],
-                yMin: 7, yMax: 10, yFmt: v => v + ' sa',
-                tip: (i, v) => `<b>${d14[i].fullDate} (${d14[i].dowName})</b>Gerçekleşen: ${String(v[0]).replace('.', ',')} sa · Standart: 8,5 sa`
+            const E = emps();
+            const lb30 = D.computeLeaderboards(E, { range: 30 });
+            const s = dailyLateSeries(lb30, D.DAYS.slice(-14));
+            const host = $('#chOvLate');
+            if (host) A.barChart(host, {
+                data: s.map(x => ({ label: x.day.label, value: x.cnt, fullDate: x.day.fullDate, dow: x.day.dowName, avg: x.cnt ? Math.round(x.min / x.cnt) : 0 })),
+                accentLast: true, yFmt: v => v + ' kişi', aria: 'Son 14 iş günü geç kalan kişi sayısı',
+                tip: d => `<b>${d.fullDate} (${d.dow})</b>${d.value} kişi geç kaldı · ort. ${d.avg} dk`
             });
-            A.barChart($('#chOvertime'), { data: d14.map(x => ({ label: x.label, value: Math.round(x.overtimeH), fullDate: x.fullDate, dow: x.dowName })), accentLast: true, yFmt: v => v + ' sa', aria: 'Fazla mesai', tip: d => `<b>${d.fullDate} (${d.dow})</b>${d.value} saat fazla mesai` });
+            const dn = $('#chDonut');
+            if (dn) {
+                const lateN = E.filter(e => lateNet(e) > 0).length;
+                const leaveN = E.filter(e => e.status === 'LEAVE').length, absN = E.filter(e => e.status === 'ABSENT').length;
+                const onN = Math.max(0, E.length - lateN - leaveN - absN);
+                A.donut(dn, { items: [{ label: 'Zamanında', value: onN, color: '#1C1D1F' }, { label: 'Geç kalan', value: lateN, color: '#E31E24' }, { label: 'İzinli', value: leaveN, color: '#8E949C' }, { label: 'Devamsız', value: absN, color: '#D9DBDF' }], centerTop: '%' + A.pctText(onN / (E.length || 1) * 100), centerSub: 'zamanında', aria: 'Bugünkü durum dağılımı' });
+            }
         }
     };
 
@@ -763,108 +941,142 @@
         }
     };
 
+    /* Gizli (kapalı bölüm / gizli kart) alanlara grafik çizilmez */
+    const visEl = sel => { const el = $(sel); return el && !el.closest('.w-section-body[hidden], details:not([open])') ? el : null; };
+    /* Dönemdeki tüm gecikme kayıtları ve özet (şube + tarih filtresine uyumlu) */
+    function lateDigest() {
+        const E = emps(), lb = D.computeLeaderboards(E, filterOpts());
+        let att = 0, lateCnt = 0, lateMin = 0;
+        const buckets = [0, 0, 0, 0]; // 1–15, 16–30, 31–60, 60+
+        lb.all.forEach(a => a.logs.forEach(l => {
+            if (l.status === 'LEAVE' || l.status === 'ABSENT') return;
+            att++;
+            if (l.lateMin > 0) {
+                lateCnt++; lateMin += l.lateMin;
+                buckets[l.lateMin <= 15 ? 0 : l.lateMin <= 30 ? 1 : l.lateMin <= 60 ? 2 : 3]++;
+            }
+        }));
+        const isoSet = new Set(activeDays().map(d => d.iso));
+        const reasons = (D.LATE_REASONS || []).filter(r => inBranch(r.empId) && isoSet.has(String(r.workDate || '').slice(0, 10)));
+        const excusedMin = reasons.filter(r => r.status === 'APPROVED').reduce((s, r) => s + (r.excusedMin || 0), 0)
+            || E.reduce((s, e) => s + (e.lateExcusedMin || 0), 0);
+        const byCode = {};
+        reasons.forEach(r => { const k = r.reasonCode || 'DIGER'; byCode[k] = (byCode[k] || 0) + 1; });
+        const reasonRows = Object.keys(byCode).map(k => ({ k, n: byCode[k] })).sort((a, b) => b.n - a.n);
+        return { E, lb, att, lateCnt, lateMin, buckets, excusedMin, reasons, reasonRows };
+    }
+    function weekdayAgg(lb) {
+        const names = ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma'], short = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum'];
+        return [0, 1, 2, 3, 4].map(i => {
+            let lateMin = 0, otMin = 0, lateCnt = 0;
+            lb.all.forEach(a => { const w = a.weekdayList[i]; if (w) { lateMin += w.totalLateMin; otMin += w.totalOvertimeMin; lateCnt += w.lateCount; } });
+            return { name: names[i], short: short[i], lateMin, otMin, netMin: otMin - lateMin, lateCnt };
+        });
+    }
+
     HR.analytics = {
-        title: 'Katılım, ek mesai & net bakiye analitiği', sub: () => 'En çok mesai yapanlar, net süre bakiyesi (ek mesai − gecikme) en iyiler/en kötüler ve kök neden analizi · ' + rangeLabel(), tools: { range: 1, branch: 1 }, icon: 'chart',
+        title: 'Analitik',
+        sub: () => 'Gecikme, katılım, ek mesai ve departman analizi · ' + rangeLabel(),
+        tools: { range: 1, branch: 1 },
+        icon: 'chart',
         render() {
-            const st = stats(), curDays = activeDays(), d = curDays.length >= 3 ? curDays : D.DAYS.slice(-14);
-            const avg = (k) => d.reduce((a, x) => a + x[k], 0) / (d.length || 1);
-            const E = emps(), ds = deptStats(), lb = D.computeLeaderboards(E, filterOpts());
-            const geofencePct = st.geofencePct;
-            const excusedMin = E.reduce((a, e) => a + (e.lateExcusedMin || 0), 0);
-            const excusedCnt = E.filter(e => (e.lateExcusedMin || 0) > 0).length;
-            const maxOnTime = Math.max(...d.map(x => A.num(x.onTime * 100)));
-            const minOnTime = Math.min(...d.map(x => A.num(x.onTime * 100)));
+            const g = lateDigest(), { E, lb } = g;
+            const st = stats(), ds = deptStats(), curDays = activeDays();
+            const d = curDays.length >= 3 ? curDays : D.DAYS.slice(-14);
+            const avgWork = d.reduce((a, x) => a + x.workH, 0) / (d.length || 1);
+            const lateRate = g.att ? g.lateCnt / g.att * 100 : 0;
+            const avgLatePer = g.lateCnt ? Math.round(g.lateMin / g.lateCnt) : 0;
+            const lateEmpN = lb.all.filter(a => a.totalLateMin > 0).length;
+            const onTimeSeries = d.map(x => A.num(x.onTime * 100));
+            const maxOn = onTimeSeries.length ? Math.max(...onTimeSeries) : 0, minOn = onTimeSeries.length ? Math.min(...onTimeSeries) : 0;
             const withIn = E.filter(e => e.inMin != null);
-            const avgInMin = withIn.length ? Math.round(withIn.reduce((s, e) => s + e.inMin, 0) / withIn.length) : 526;
+            const avgInMin = withIn.length ? Math.round(withIn.reduce((s, e) => s + e.inMin, 0) / withIn.length) : 0;
+            const netTab = S.ui.ovLb === 'worst' ? 'worst' : 'best';
+            const netList = (netTab === 'worst' ? lb.worstNet : lb.bestNet).slice(0, 7);
+            const deptLate = ds.map(x => ({ d: x.d, per: x.n ? Math.round(x.totalLateMin / x.n) : 0, avg: x.avgLate })).sort((a, b) => b.per - a.per);
+            const maxDeptLate = Math.max(1, ...deptLate.map(x => x.per));
+            const maxReason = Math.max(1, ...g.reasonRows.map(r => r.n));
 
-            return `${dndToolbar()}
-            <div class="grid g-6">
-                ${kpi({ label: 'Zamanında katılım', val: st.onTimePct, dec: 1, unit: '%', icon: 'check', tone: 'ok', delta: delta(st.onTimePct - st.prevPct, ' p'), foot: 'kurumsal hedef %95' })}
-                ${kpi({ label: 'Ortalama mesai', val: avg('workH'), dec: 1, unit: 'sa', icon: 'clock', tone: '', foot: 'standart 8,5 sa/gün' })}
-                ${kpi({ label: 'Toplam ek mesai', val: st.totalOvertimeH, dec: 1, unit: 'sa', icon: 'activity', tone: 'ok', foot: curDays.length + ' iş günü toplamı' })}
-                ${kpi({ label: 'Net süre bakiyesi', val: +(st.netBalanceMin / 60).toFixed(1), dec: 1, unit: 'sa', icon: 'spark', tone: st.netBalanceMin >= 0 ? 'ok' : 'warn', foot: 'Ek mesai − gecikme' })}
-                ${kpi({ label: 'Geofence (30m) uyum', val: geofencePct, dec: 1, unit: '%', icon: 'pin', tone: 'ok', foot: 'şube içi doğrulama' })}
-                ${kpi({ label: 'Ort. gecikme süresi', val: st.avgLate, dec: 0, unit: 'dk', icon: 'alert', tone: 'warn', foot: excusedMin ? `${excusedCnt} personel · ${excusedMin} dk gerekçeli düşüldü` : 'geç kalan personel' })}
-            </div>
+            /* ---------- A. GECİKME ---------- */
+            const lateKpis = wRow('an-late-kpi', [
+                W({ id: 'an-k-latetotal', title: 'Toplam gecikme', group: 'Gecikme analizi' }, kpi({
+                    label: 'Toplam gecikme', val: +(g.lateMin / 60).toFixed(1), dec: 1, unit: 'sa', icon: 'clock', tone: 'warn', cls: 'kpi-primary',
+                    foot: `${fmt(g.lateCnt)} geç giriş · ${fmt(lateEmpN)} kişi`
+                })),
+                W({ id: 'an-k-lateavg', title: 'Geç girişte ortalama', group: 'Gecikme analizi' }, kpi({
+                    label: 'Geç girişte ortalama', val: avgLatePer, unit: 'dk', icon: 'alert', tone: 'warn', foot: 'gecikme başına süre'
+                })),
+                W({ id: 'an-k-laterate', title: 'Geç giriş oranı', group: 'Gecikme analizi' }, kpi({
+                    label: 'Geç giriş oranı', val: +lateRate.toFixed(1), dec: 1, unit: '%', icon: 'activity', tone: lateRate > 8 ? 'warn' : 'ok',
+                    foot: `${fmt(g.att)} giriş kaydı içinde`
+                })),
+                W({ id: 'an-k-excused', title: 'Gerekçeyle düşülen', group: 'Gecikme analizi' }, kpi({
+                    label: 'Gerekçeyle düşülen', val: g.excusedMin, unit: 'dk', icon: 'check', tone: 'info',
+                    foot: `${g.reasons.filter(r => r.status === 'PENDING').length} gerekçe değerlendirme bekliyor`
+                }))
+            ], 'kpi');
 
-            <!-- 3 Sütunlu Lig Tablosu: 1) En Çok Mesai Yapanlar, 2) Net Süre En İyiler, 3) Net Süre En Kötüler -->
-            <div class="grid g-3 mt">
-                <section class="card flush">
-                    ${cardHead('1. En çok ek mesai yapanlar', rangeLabel() + ' · fazla mesai şampiyonları', dlBtn('export-leaderboards', 'Excel', { cls: 'btn-soft btn-sm' }))}
-                    <div class="list" style="margin-top:4px">
-                        ${lb.topOvertime.slice(0, 7).map((a, i) => `<div class="list-item clickable" data-act="emp-open" data-id="${a.emp.id}" tabindex="0" role="button">
-                            <span class="rank-badge r${i + 1}">${i + 1}</span>
-                            ${avatar(a.emp, 'sm')}
-                            <div class="grow">
-                                <b>${esc(a.emp.name)}</b>
-                                <small>${esc(a.emp.dept)} · En çok: <b>${esc(a.mostOvertimeDay.dowName)}</b> (+${a.mostOvertimeDay.totalOvertimeMin} dk)</small>
-                            </div>
-                            <div style="text-align:right">
-                                ${pill('+' + fmtMinDur(a.totalOvertimeMin), 'ok')}
-                                <small class="muted mono" style="font-size:10.5px;display:block;margin-top:2px">${a.overtimeDays} gün mesai</small>
-                            </div>
-                        </div>`).join('')}
-                    </div>
-                </section>
+            const lateMain = wRow('an-late-main', [
+                W({ id: 'an-late-trend', title: 'Gecikme trendi', group: 'Gecikme analizi' }, `<section class="card">
+                    ${cardHead('Gecikme trendi', 'Günlük geç kalan kişi sayısı · ' + rangeLabel())}<div id="chAnLate"></div>
+                </section>`),
+                W({ id: 'an-late-buckets', title: 'Gecikme süresi dağılımı', group: 'Gecikme analizi' }, `<section class="card">
+                    ${cardHead('Gecikme süresi dağılımı', 'Geç girişler kaç dakika sürdü?')}<div id="chAnBuckets"></div>
+                </section>`)
+            ], 'main');
 
-                <section class="card flush">
-                    ${cardHead('2. Net bakiye en iyiler (Mesai − Geç)', 'Ek mesaiden gecikme çıkınca kalan sürede zirvedekiler')}
-                    <div class="list" style="margin-top:4px">
-                        ${lb.bestNet.slice(0, 7).map((a, i) => `<div class="list-item clickable" data-act="emp-open" data-id="${a.emp.id}" tabindex="0" role="button">
-                            <span class="rank-badge r${i + 1}">${i + 1}</span>
-                            ${avatar(a.emp, 'sm')}
-                            <div class="grow">
-                                <b>${esc(a.emp.name)}</b>
-                                <small>Ek Mesai: <span style="color:var(--ok);font-weight:700">+${a.totalOvertimeMin} dk</span> · Geç: <span style="color:var(--bad);font-weight:700">−${a.totalLateMin} dk</span></small>
-                            </div>
-                            <div style="text-align:right">
-                                ${netPill(a.netBalanceMin)}
-                                <small class="muted" style="font-size:10.5px;display:block;margin-top:2px">Ort. ${String(a.avgWorkH).replace('.', ',')} sa/gün</small>
-                            </div>
-                        </div>`).join('')}
-                    </div>
-                </section>
+            const lateLists = wRow('an-late-lists', [
+                W({ id: 'an-most-late', title: 'En çok geç kalanlar', group: 'Gecikme analizi' }, `<section class="card flush">
+                    ${cardHead('En çok geç kalanlar', rangeLabel(), dlBtn('export-late', 'Excel', { cls: 'btn-soft btn-sm' }))}
+                    <div class="list" style="margin-top:4px">${lb.mostLate.filter(a => a.totalLateMin > 0).slice(0, 7).map((a, i) => `<div class="list-item clickable" data-act="emp-open" data-id="${a.emp.id}" tabindex="0" role="button">
+                        <span class="rank-badge">${i + 1}</span>${avatar(a.emp, 'sm')}
+                        <div class="grow"><b>${esc(a.emp.name)}</b><small>${esc(a.emp.dept)} · en çok <b>${esc(a.mostLateDay.dowName)}</b> (${a.mostLateDay.lateCount} kez)</small></div>
+                        <div style="text-align:right"><span class="late-chip">−${fmtMinDur(a.totalLateMin)}</span><small class="muted mono" style="display:block;font-size:11px;margin-top:2px">${a.lateDays} gün</small></div>
+                    </div>`).join('') || empty('Bu dönemde gecikme yok')}</div>
+                </section>`),
+                W({ id: 'an-late-weekday', title: 'Haftanın gününe göre gecikme', group: 'Gecikme analizi' }, `<section class="card">
+                    ${cardHead('Haftanın gününe göre gecikme', 'Toplam gecikme süresi (saat)')}<div id="chAnWeekday"></div>
+                </section>`),
+                W({ id: 'an-late-reasons', title: 'Gecikme gerekçeleri', group: 'Gecikme analizi' }, `<section class="card">
+                    ${cardHead('Gecikme gerekçeleri', 'Personelin bildirdiği nedenler · ' + g.reasons.length + ' bildirim', `<button type="button" class="btn btn-soft btn-sm" data-go="leaves">İncele</button>`)}
+                    ${g.reasonRows.length ? rank(g.reasonRows.slice(0, 7).map(r => ({ l: lateReasonLabel(r.k), v: r.n + ' bildirim', w: A.clamp(r.n / maxReason * 100, 6, 100), cls: 'warn' }))) : empty('Bu dönemde bildirilmiş gerekçe yok', 'Personel mobil uygulamadan gerekçe bildirdikçe burada dağılım görünür.')}
+                </section>`)
+            ]);
 
-                <section class="card flush">
-                    ${cardHead('3. Net bakiye en kötüler (Mesai − Geç)', 'Gecikme süresi ek mesaisini aşan / en düşük net süreliler')}
-                    <div class="list" style="margin-top:4px">
-                        ${lb.worstNet.slice(0, 7).map((a, i) => `<div class="list-item clickable" data-act="emp-open" data-id="${a.emp.id}" tabindex="0" role="button">
-                            <span class="rank-badge">${i + 1}</span>
-                            ${avatar(a.emp, 'sm')}
-                            <div class="grow">
-                                <b>${esc(a.emp.name)}</b>
-                                <small>Geç: <span style="color:var(--bad);font-weight:700">−${a.totalLateMin} dk</span> (${esc(a.mostLateDay.dowShort)}) · Mesai: <span style="color:var(--ok);font-weight:700">+${a.totalOvertimeMin} dk</span></small>
-                            </div>
-                            <div style="text-align:right">
-                                ${netPill(a.netBalanceMin)}
-                                <small class="muted" style="font-size:10.5px;display:block;margin-top:2px">${a.lateDays} gün gecikme</small>
-                            </div>
-                        </div>`).join('')}
-                    </div>
-                </section>
-            </div>
+            const lateDept = wRow('an-late-dept', [
+                W({ id: 'an-dept-late', title: 'Departmanlara göre gecikme', group: 'Gecikme analizi' }, `<section class="card">
+                    ${cardHead('Departmanlara göre gecikme', 'Kişi başı toplam gecikme · ' + rangeLabel())}
+                    ${rank(deptLate.slice(0, 8).map(x => ({ l: x.d, v: fmtMinDur(x.per) + ' / kişi', w: A.clamp(x.per / maxDeptLate * 100, 4, 100), cls: x.per >= maxDeptLate * 0.75 ? 'warn' : '' })))}
+                </section>`),
+                W({ id: 'an-weekday-table', title: 'Gün bazında gecikme ve ek mesai', group: 'Gecikme analizi' }, `<section class="card">
+                    ${cardHead('Gün bazında gecikme ve ek mesai', 'Pazartesi–Cuma kurum toplamları')}<div id="chWeekdayTable"></div>
+                </section>`)
+            ]);
 
-            <div class="grid g-main mt">
-                <section class="card">
-                    ${cardHead('Katılım ve dakiklik trend analizi', 'Günlük zamanında giriş oranı (%) ve %95 kurumsal hedef çizgisi')}
+            /* ---------- B. KATILIM ---------- */
+            const attKpis = wRow('an-att-kpi', [
+                W({ id: 'an-k-ontime', title: 'Zamanında katılım', group: 'Katılım' }, kpi({ label: 'Zamanında katılım', val: st.onTimePct, dec: 1, unit: '%', icon: 'check', tone: st.onTimePct >= 95 ? 'ok' : 'warn', delta: delta(st.onTimePct - st.prevPct, ' p'), foot: 'kurumsal hedef %95' })),
+                W({ id: 'an-k-work', title: 'Ortalama günlük mesai', group: 'Katılım' }, kpi({ label: 'Ortalama günlük mesai', val: avgWork, dec: 1, unit: 'sa', icon: 'clock', foot: 'standart 8,5 sa/gün' })),
+                W({ id: 'an-k-absent', title: 'Bugün devamsız', group: 'Katılım' }, kpi({ label: 'Bugün devamsız', val: st.absent, icon: 'alert', tone: st.absent ? 'red' : 'ok', foot: st.leave + ' kişi izinli' })),
+                W({ id: 'an-k-geo', title: 'Konum (30 m) uyumu', group: 'Ek kartlar', def: false }, kpi({ label: 'Konum (30 m) uyumu', val: st.geofencePct, dec: 1, unit: '%', icon: 'pin', tone: 'ok', foot: 'şube içi doğrulama' }))
+            ], 'kpi');
+            const attMain = wRow('an-att-main', [
+                W({ id: 'an-ontime-trend', title: 'Zamanında gelme trendi', group: 'Katılım' }, `<section class="card">
+                    ${cardHead('Zamanında gelme trendi', 'Günlük oran (%) ve %95 hedef çizgisi')}
                     <div id="chTrendDual"></div>
                     <div class="stat-mini-grid">
-                        <div class="stat-mini"><small>En Yüksek Uyum</small><b style="color:var(--ok)">%${A.pctText(maxOnTime)}</b></div>
-                        <div class="stat-mini"><small>En Düşük Uyum</small><b style="color:var(--warn)">%${A.pctText(minOnTime)}</b></div>
-                        <div class="stat-mini"><small>Vardiya Başlangıç Ort.</small><b>${D.hhmm(avgInMin)}</b></div>
+                        <div class="stat-mini"><small>En yüksek</small><b style="color:var(--ok)">%${A.pctText(maxOn)}</b></div>
+                        <div class="stat-mini"><small>En düşük</small><b style="color:var(--warn)">%${A.pctText(minOn)}</b></div>
+                        <div class="stat-mini"><small>Bugün ort. giriş</small><b class="mono">${avgInMin ? D.hhmm(avgInMin) : '—'}</b></div>
                     </div>
-                </section>
-                <section class="card">${cardHead('Gecikme kök neden & süre kırılımı', 'Geç giriş kayıtlarının süre ve neden dağılımı')}<div id="chLateRoot"></div></section>
-            </div>
-
-            <div class="grid g-2 mt">
-                <section class="card">${cardHead('Haftanın gününe göre geç kalma vs ek mesai', 'Pazartesi–Cuma kişi başı ortalama gecikme ve ek mesai eğilimi')}<div id="chWeekday"></div></section>
-                <section class="card">${cardHead('Günlük fazla mesai yükü & 8,5 sa istikrarı', 'Toplam fazla mesai saati · ' + rangeLabel())}<div id="chOT"></div></section>
-            </div>
-
-            <div class="grid g-3 mt">
-                <section class="card">
-                    ${cardHead('Şubelere göre zamanında gelme', rangeLabel(), '<span class="pill info" id="brRankMeta"></span>')}
+                </section>`),
+                W({ id: 'an-leave-types', title: 'İzin ve mazeret türleri', group: 'Katılım' }, `<section class="card">
+                    ${cardHead('İzin ve mazeret türleri', 'Talep dağılımı')}<div id="chLeaveType"></div>
+                </section>`)
+            ], 'main');
+            const attBranch = wRow('an-att-branch', [
+                W({ id: 'an-branch-rank', title: 'Şubelere göre zamanında gelme', group: 'Katılım' }, `<section class="card">
+                    ${cardHead('Şubelere göre zamanında gelme', 'Bugün', '<span class="pill info" id="brRankMeta"></span>')}
                     <div class="rank-tools">
                         <label class="search">${ic('search')}<input id="brRankQ" type="search" value="${esc(S.ui.branchRank.q)}" placeholder="Şube ara" autocomplete="off" aria-label="Şube ara"></label>
                         <div class="seg" id="brRankSeg" role="group" aria-label="Şube listesi uzunluğu">
@@ -874,106 +1086,129 @@
                         </div>
                     </div>
                     <div id="chBranch" class="rank-scroll"></div>
-                </section>
-                <section class="card">${cardHead('İzin & mazeret türleri', 'Onaylanan ve bekleyen talep dağılımı')}<div id="chLeaveType"></div></section>
-                <section class="card">${cardHead('Gecikme süresi trendi', 'Günlük ortalama gecikme (dk)')}<div id="chLateMin"></div></section>
-            </div>
+                </section>`),
+                W({ id: 'an-work-stab', title: 'Günlük çalışma süresi istikrarı', group: 'Ek kartlar', def: false }, `<section class="card">
+                    ${cardHead('Günlük çalışma süresi istikrarı', '8,5 saat hedefe göre · ' + rangeLabel())}<div id="chStabilityAn"></div>
+                </section>`)
+            ]);
 
-            <div class="grid g-main mt">
-                <section class="card flush">
-                    ${cardHead('Departman bazlı performans, ek mesai ve net bakiye matrisi', 'Birimlerin giriş saati, fazla mesai, gecikme ve net süre bakiyesi karşılaştırması', dlBtn('export-analytics', 'Matrisi Excel İndir (.xlsx)', { cls: 'btn-soft btn-sm' }))}
-                    <div class="table-wrap">
-                        <table>
-                            <thead><tr><th>Departman</th><th>Kişi</th><th>Ort. Giriş</th><th>Ort. Mesai</th><th>Top. Ek Mesai</th><th>Top. Gecikme</th><th>Net Bakiye</th><th>Uyum Oranı</th><th>Durum</th></tr></thead>
-                            <tbody>
-                                ${ds.map((x, i) => `<tr style="--r:${i}">
-                                    <td><b>${esc(x.d)}</b></td>
-                                    <td class="mono">${x.n}</td>
-                                    <td class="mono">${x.avgIn}</td>
-                                    <td class="mono">${String(x.avgWorkH).replace('.', ',')} sa</td>
-                                    <td class="mono" style="color:var(--ok)"><b>+${fmtMinDur(x.totalOvertimeMin)}</b></td>
-                                    <td class="mono" style="color:var(--warn)">−${fmtMinDur(x.totalLateMin)}</td>
-                                    <td>${netPill(x.netMin)}</td>
-                                    <td class="mono"><b>%${A.pctText(x.pct)}</b></td>
-                                    <td>${pill(x.pct >= 93 ? 'Yüksek Uyum' : x.pct >= 88 ? 'Normal' : 'İzlenmeli', x.pct >= 93 ? 'ok' : x.pct >= 88 ? 'info' : 'warn')}</td>
-                                </tr>`).join('')}
-                            </tbody>
-                        </table>
-                    </div>
-                </section>
-                <section class="card">
-                    ${cardHead('Haftanın günleri (Pzt–Cum) kurum özeti', rangeLabel() + ' · hangi gün geç kalınıyor, hangi gün mesai yapılıyor?')}
-                    <div id="chWeekdayTable"></div>
-                </section>
-            </div>`;
+            /* ---------- C. EK MESAİ & NET BAKİYE ---------- */
+            const otKpis = wRow('an-ot-kpi', [
+                W({ id: 'an-k-ot', title: 'Toplam ek mesai', group: 'Ek mesai ve net bakiye' }, kpi({ label: 'Toplam ek mesai', val: st.totalOvertimeH, dec: 1, unit: 'sa', icon: 'activity', tone: 'ok', foot: curDays.length + ' iş günü toplamı' })),
+                W({ id: 'an-k-net', title: 'Net süre bakiyesi', group: 'Ek mesai ve net bakiye' }, kpi({ label: 'Net süre bakiyesi', val: +(st.netBalanceMin / 60).toFixed(1), dec: 1, unit: 'sa', icon: 'spark', tone: st.netBalanceMin >= 0 ? 'ok' : 'warn', foot: 'ek mesai − gecikme' }))
+            ], 'kpi');
+            const otLists = wRow('an-ot-lists', [
+                W({ id: 'an-ot-top', title: 'En çok ek mesai yapanlar', group: 'Ek mesai ve net bakiye' }, `<section class="card flush">
+                    ${cardHead('En çok ek mesai yapanlar', rangeLabel(), dlBtn('export-leaderboards', 'Excel', { cls: 'btn-soft btn-sm' }))}
+                    <div class="list" style="margin-top:4px">${lb.topOvertime.slice(0, 7).map((a, i) => `<div class="list-item clickable" data-act="emp-open" data-id="${a.emp.id}" tabindex="0" role="button">
+                        <span class="rank-badge r${i + 1}">${i + 1}</span>${avatar(a.emp, 'sm')}
+                        <div class="grow"><b>${esc(a.emp.name)}</b><small>${esc(a.emp.dept)} · en çok <b>${esc(a.mostOvertimeDay.dowName)}</b></small></div>
+                        <div style="text-align:right">${pill('+' + fmtMinDur(a.totalOvertimeMin), 'ok')}<small class="muted mono" style="display:block;font-size:10.5px;margin-top:2px">${a.overtimeDays} gün</small></div>
+                    </div>`).join('')}</div>
+                </section>`),
+                W({ id: 'an-net', title: 'Net süre bakiyesi sıralaması', group: 'Ek mesai ve net bakiye' }, `<section class="card flush">
+                    ${cardHead('Net süre bakiyesi', 'Ek mesaiden gecikme düşülünce kalan süre', chips([{ v: 'best', l: 'En iyiler' }, { v: 'worst', l: 'En kötüler' }], netTab, 'ov-lb-tab'))}
+                    <div class="list" style="margin-top:4px">${netList.map((a, i) => `<div class="list-item clickable" data-act="emp-open" data-id="${a.emp.id}" tabindex="0" role="button">
+                        <span class="rank-badge ${netTab === 'best' ? 'r' + (i + 1) : ''}">${i + 1}</span>${avatar(a.emp, 'sm')}
+                        <div class="grow"><b>${esc(a.emp.name)}</b><small>Mesai <b style="color:var(--ok)">+${a.totalOvertimeMin} dk</b> · Geç <b style="color:var(--bad)">−${a.totalLateMin} dk</b></small></div>
+                        ${netPill(a.netBalanceMin)}
+                    </div>`).join('')}</div>
+                </section>`),
+                W({ id: 'an-ot-trend', title: 'Günlük fazla mesai yükü', group: 'Ek mesai ve net bakiye' }, `<section class="card">
+                    ${cardHead('Günlük fazla mesai yükü', 'Toplam saat · ' + rangeLabel())}<div id="chOT"></div>
+                </section>`)
+            ]);
+
+            /* ---------- D. DEPARTMAN ---------- */
+            const deptRow = wRow('an-dept', [
+                W({ id: 'an-dept-matrix', title: 'Departman performans matrisi', group: 'Departman' }, `<section class="card flush">
+                    ${cardHead('Departman performans matrisi', 'Giriş saati, gecikme, ek mesai ve net bakiye karşılaştırması', dlBtn('export-analytics', 'Excel (.xlsx)', { cls: 'btn-soft btn-sm' }))}
+                    <div class="table-wrap"><table>
+                        <thead><tr><th>Departman</th><th>Kişi</th><th>Ort. giriş</th><th>Top. gecikme</th><th>Kişi başı gecikme</th><th>Top. ek mesai</th><th>Net bakiye</th><th>Zamanında</th><th>Durum</th></tr></thead>
+                        <tbody>${ds.slice().sort((a, b) => (b.n ? b.totalLateMin / b.n : 0) - (a.n ? a.totalLateMin / a.n : 0)).map((x, i) => `<tr style="--r:${i}">
+                            <td><b>${esc(x.d)}</b></td>
+                            <td class="mono">${x.n}</td>
+                            <td class="mono">${x.avgIn}</td>
+                            <td class="mono" style="color:var(--warn)"><b>−${fmtMinDur(x.totalLateMin)}</b></td>
+                            <td class="mono">${fmtMinDur(x.n ? x.totalLateMin / x.n : 0)}</td>
+                            <td class="mono" style="color:var(--ok)">+${fmtMinDur(x.totalOvertimeMin)}</td>
+                            <td>${netPill(x.netMin)}</td>
+                            <td class="mono">%${A.pctText(x.pct)}</td>
+                            <td>${pill(x.pct >= 93 ? 'Yüksek uyum' : x.pct >= 88 ? 'Normal' : 'İzlenmeli', x.pct >= 93 ? 'ok' : x.pct >= 88 ? 'info' : 'warn')}</td>
+                        </tr>`).join('')}</tbody>
+                    </table></div>
+                </section>`)
+            ]);
+
+            const jump = [['late', 'Gecikme'], ['att', 'Katılım'], ['ot', 'Ek mesai'], ['dept', 'Departman']]
+                .map(([k, l]) => `<button type="button" class="chip" data-act="an-jump" data-v="${k}">${l}</button>`).join('');
+            return wToolbar(`<b>Dönem:</b> ${esc(rangeLabel())} · ${S.branch === 'ALL' ? 'Tüm şubeler' : esc(brName(S.branch))}`,
+                `<nav class="chips an-jump" aria-label="Analitik bölümleri">${jump}</nav>${dlBtn('export-analytics', 'Yönetici raporu (.xlsx)', { cls: 'btn-dark btn-sm' })}`)
+                + wSection('late', 'Gecikme analizi', 'Kim, ne zaman, ne kadar ve neden geç kalıyor?', lateKpis + lateMain + lateLists + lateDept)
+                + wSection('att', 'Katılım', 'Zamanında gelme, devamsızlık ve izinler', attKpis + attMain + attBranch)
+                + wSection('ot', 'Ek mesai ve net bakiye', 'Bordro dönemi için fazla çalışma ve net süre', otKpis + otLists)
+                + wSection('dept', 'Departman', 'Birimlerin karşılaştırmalı tablosu', deptRow);
         },
         mount() {
-            const curDays = activeDays(), d = curDays.length >= 3 ? curDays : D.DAYS.slice(-14), E = emps(), lb = D.computeLeaderboards(E, filterOpts());
-            A.areaChart($('#chTrendDual'), {
-                labels: d.map(x => x.label),
-                series: [
-                    { data: d.map(x => A.num(x.onTime * 100)) },
-                    { data: d.map(() => 95) }
-                ],
+            const g = lateDigest(), { lb } = g;
+            const curDays = activeDays(), d = curDays.length >= 3 ? curDays : D.DAYS.slice(-14);
+            const ser = dailyLateSeries(lb, d);
+            let el;
+            if ((el = visEl('#chAnLate'))) A.areaChart(el, {
+                labels: ser.map(x => x.day.label), series: [{ data: ser.map(x => x.cnt) }], yFmt: v => v + ' kişi',
+                aria: 'Günlük geç kalan kişi sayısı',
+                tip: (i, v) => `<b>${ser[i].day.fullDate} (${ser[i].day.dowName})</b>${v[0]} kişi geç kaldı · ort. ${ser[i].cnt ? Math.round(ser[i].min / ser[i].cnt) : 0} dk`
+            });
+            if ((el = visEl('#chAnBuckets'))) {
+                const b = g.buckets, tot = b.reduce((s, x) => s + x, 0);
+                A.donut(el, {
+                    items: [
+                        { label: '1–15 dk', value: b[0], color: '#8E949C' },
+                        { label: '16–30 dk', value: b[1], color: '#C77700' },
+                        { label: '31–60 dk', value: b[2], color: '#E31E24' },
+                        { label: '60 dk üzeri', value: b[3], color: '#1C1D1F' }
+                    ],
+                    centerTop: fmt(tot), centerSub: 'geç giriş', aria: 'Gecikme süresi dağılımı'
+                });
+            }
+            const wd = weekdayAgg(lb);
+            if ((el = visEl('#chAnWeekday'))) A.barChart(el, {
+                data: wd.map(w => ({ label: w.short, value: Math.round(w.lateMin / 60), name: w.name, cnt: w.lateCnt })),
+                accentLast: false, yFmt: v => v + ' sa', aria: 'Haftanın gününe göre gecikme',
+                tip: x => `<b>${x.name}</b>${x.value} sa toplam gecikme · ${x.cnt} geç giriş`
+            });
+            if ((el = visEl('#chWeekdayTable'))) el.innerHTML = `<div class="table-wrap"><table style="font-size:12.5px">
+                <thead><tr><th>Gün</th><th>Geç giriş</th><th>Top. gecikme</th><th>Top. ek mesai</th><th>Net</th></tr></thead>
+                <tbody>${wd.map(w => `<tr><td><b>${w.name}</b></td><td class="mono">${w.lateCnt}</td><td class="mono" style="color:var(--warn)">−${fmtMinDur(w.lateMin)}</td><td class="mono" style="color:var(--ok)">+${fmtMinDur(w.otMin)}</td><td>${netPill(w.netMin)}</td></tr>`).join('')}</tbody>
+            </table></div>`;
+            if ((el = visEl('#chTrendDual'))) A.areaChart(el, {
+                labels: d.map(x => x.label), series: [{ data: d.map(x => A.num(x.onTime * 100)) }, { data: d.map(() => 95) }],
                 yMin: 80, yMax: 100, yFmt: v => v + '%',
                 tip: (i, v) => `<b>${d[i].fullDate} (${d[i].dowName})</b>Gerçekleşen: %${String(v[0]).replace('.', ',')} · Hedef: %95`
             });
-            const c10 = Math.max(3, lb.all.filter(e => e.totalLateMin > 0 && e.totalLateMin <= 35).length);
-            const c25 = Math.max(2, lb.all.filter(e => e.totalLateMin > 35 && e.totalLateMin <= 90).length);
-            const cCrit = Math.max(1, lb.all.filter(e => e.totalLateMin > 90).length);
-            A.donut($('#chLateRoot'), {
-                items: [
-                    { label: 'Düşük Gecikme (Trafik / Ulaşım)', value: c10, color: '#1C1D1F' },
-                    { label: 'Orta Gecikme (Sabah Yoğunluğu)', value: c25, color: '#E31E24' },
-                    { label: 'Yüksek Gecikme (Kritik Takip)', value: cCrit, color: '#C77700' },
-                    { label: 'Saha / Dış Görev Kaynaklı', value: 4, color: '#8E949C' }
-                ],
-                centerTop: (c10 + c25 + cCrit + 4),
-                centerSub: 'personel analizi'
+            if ((el = visEl('#chLeaveType'))) {
+                const lt = D.LEAVE_TYPES.map((t, i) => ({ label: t, value: D.LEAVES.filter(l => l.type === t && inBranch(l.empId)).length, color: ['#E31E24', '#1C1D1F', '#8E949C', '#B8161B', '#D9DBDF'][i % 5] }));
+                A.donut(el, { items: lt, centerTop: lt.reduce((s, x) => s + x.value, 0), centerSub: 'talep', aria: 'İzin türleri' });
+            }
+            if ((el = visEl('#chOT'))) A.areaChart(el, { labels: d.map(x => x.label), series: [{ data: d.map(x => Math.round(x.overtimeH)) }], yFmt: v => v + ' sa', tip: (i, v) => `<b>${d[i].fullDate} (${d[i].dowName})</b>${v[0]} saat fazla mesai` });
+            if ((el = visEl('#chStabilityAn'))) A.areaChart(el, {
+                labels: d.map(x => x.label), series: [{ data: d.map(x => A.num(x.workH)) }, { data: d.map(() => 8.5) }],
+                yMin: 7, yMax: 10, yFmt: v => v + ' sa',
+                tip: (i, v) => `<b>${d[i].fullDate}</b>Gerçekleşen: ${String(v[0]).replace('.', ',')} sa · Standart: 8,5 sa`
             });
-
-            // Haftanın günleri kurumsal toplamlar
-            const wdNames = ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma'];
-            const wdShort = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum'];
-            const wdAgg = [1, 2, 3, 4, 5].map((dow, i) => {
-                let lateMin = 0, otMin = 0, lateCnt = 0;
-                lb.all.forEach(a => {
-                    const w = a.weekdayList[i];
-                    if (w) { lateMin += w.totalLateMin; otMin += w.totalOvertimeMin; lateCnt += w.lateCount; }
-                });
-                return { dow, name: wdNames[i], short: wdShort[i], lateMin, otMin, netMin: otMin - lateMin, lateCnt };
-            });
-
-            A.barChart($('#chWeekday'), {
-                data: wdAgg.map(w => ({ label: w.short, value: Math.round(w.lateMin / 60), otH: Math.round(w.otMin / 60), name: w.name })),
-                accentLast: false, yFmt: v => v + ' sa',
-                tip: x => `<b>${x.name}</b>Toplam Gecikme: ${x.value} sa · Ek Mesai: +${x.otH} sa`
-            });
-            A.areaChart($('#chOT'), { labels: d.map(x => x.label), series: [{ data: d.map(x => Math.round(x.overtimeH)) }], yFmt: v => v + ' sa', tip: (i, v) => `<b>${d[i].fullDate} (${d[i].dowName})</b>${v[0]} saat fazla mesai` });
-            paintBranchRank();
-            const rankQ = $('#brRankQ'), rankSeg = $('#brRankSeg');
-            if (rankSeg) A.placeSeg(rankSeg);
-            if (rankQ) rankQ.addEventListener('input', () => { S.ui.branchRank.q = rankQ.value; paintBranchRank(); });
-            if (rankSeg) rankSeg.addEventListener('click', e => {
-                const b = e.target.closest('.seg-btn'); if (!b) return;
-                S.ui.branchRank.limit = +b.dataset.rankLimit;
-                $$('#brRankSeg .seg-btn').forEach(x => { const on = x === b; x.classList.toggle('is-active', on); x.setAttribute('aria-pressed', String(on)); });
-                A.placeSeg(rankSeg);
+            if (visEl('#chBranch')) {
                 paintBranchRank();
-            });
-            const lt = D.LEAVE_TYPES.map((t, i) => ({ label: t, value: D.LEAVES.filter(l => l.type === t && (S.branch === 'ALL' || (emp(l.empId) && emp(l.empId).branch === S.branch))).length, color: ['#E31E24', '#1C1D1F', '#8E949C', '#B8161B', '#D9DBDF'][i % 5] }));
-            A.donut($('#chLeaveType'), { items: lt, centerTop: lt.reduce((s, x) => s + x.value, 0), centerSub: 'talep' });
-            A.areaChart($('#chLateMin'), { labels: d.map(x => x.label), series: [{ data: d.map(x => Math.round(x.lateMin)) }], yFmt: v => v + ' dk', h: 200, tip: (i, v) => `<b>${d[i].fullDate}</b>${v[0]} dk ortalama` });
-
-            $('#chWeekdayTable').innerHTML = `<div class="table-wrap"><table style="font-size:12.5px">
-                <thead><tr><th>Gün</th><th>Top. Gecikme</th><th>Top. Ek Mesai</th><th>Net Bakiye</th></tr></thead>
-                <tbody>${wdAgg.map(w => `<tr>
-                    <td><b>${w.name}</b></td>
-                    <td class="mono" style="color:var(--warn)">−${fmtMinDur(w.lateMin)}</td>
-                    <td class="mono" style="color:var(--ok)">+${fmtMinDur(w.otMin)}</td>
-                    <td>${netPill(w.netMin)}</td>
-                </tr>`).join('')}</tbody>
-            </table></div>`;
+                const rankQ = $('#brRankQ'), rankSeg = $('#brRankSeg');
+                if (rankSeg) A.placeSeg(rankSeg);
+                if (rankQ) rankQ.addEventListener('input', () => { S.ui.branchRank.q = rankQ.value; paintBranchRank(); });
+                if (rankSeg) rankSeg.addEventListener('click', e => {
+                    const b = e.target.closest('.seg-btn'); if (!b) return;
+                    S.ui.branchRank.limit = +b.dataset.rankLimit;
+                    $$('#brRankSeg .seg-btn').forEach(x => { const on = x === b; x.classList.toggle('is-active', on); x.setAttribute('aria-pressed', String(on)); });
+                    A.placeSeg(rankSeg);
+                    paintBranchRank();
+                });
+            }
         }
     };
 
@@ -983,7 +1218,7 @@
        Anasayfa (HR.overview) ile Birebir Tasarım & Tipografi Bütünlüğü + 4 İnteraktif Grafik
        ========================================================================= */
     HR.profile = {
-        title: 'Personel profili & derin PDKS karnesi',
+        title: 'Personel profili',
         sub: () => (S.openEmpId && emp(S.openEmpId)) ? emp(S.openEmpId).name + ' (' + emp(S.openEmpId).sicil + ') · ' + emp(S.openEmpId).dept + ' · ' + rangeLabel() : rangeLabel(),
         tools: { range: 1 },
         icon: 'users',
@@ -1088,297 +1323,121 @@
                 return `<th class="th-sort${active ? ' is-sorted' : ''}" data-act="prof-log-sort" data-v="${key}" title="Sıralamak için tıklayın (${esc(label)})">${esc(label)}<span class="sort-ind">${arrow}</span></th>`;
             };
 
+            /* İK önce davranışa bakar: gecikme özeti, son gecikmeler, gün gün cetvel.
+               Özlük / cihaz bilgileri en altta kapalı bölümde durur. */
+            const empReasons = (D.LATE_REASONS || []).filter(r => r.empId === e.id);
+            const reasonOf = iso => empReasons.find(r => String(r.workDate || '').slice(0, 10) === iso);
+            const pendingReasonN = empReasons.filter(r => r.status === 'PENDING').length;
+            const recentLate = an.logs.filter(l => l.lateMin > 0).slice().sort((x, y) => String(y.iso).localeCompare(String(x.iso))).slice(0, 8);
+            const lateRatio = deptAvgLate > 0 ? an.totalLateMin / deptAvgLate : 0;
+            const summaryTone = an.lateDays === 0 && an.absentDays === 0 ? 'ok' : (lateRatio >= 1.5 || an.absentDays > 0 || an.lateDays >= 5) ? 'warn' : 'info';
+            const summaryParts = [];
+            if (an.lateDays > 0) {
+                summaryParts.push(`Bu dönemde <b>${an.lateDays} gün</b> geç kaldı (toplam <b>${fmtMinDur(an.totalLateMin)}</b>)`);
+                if (an.mostLateDay.lateCount > 1) summaryParts.push(`en çok <b>${esc(an.mostLateDay.dowName)}</b> günleri`);
+                if (deptAvgLate > 0) summaryParts.push(lateRatio >= 1.15 ? `birim ortalamasının <b>${A.numText(lateRatio)} katı</b>` : lateRatio <= 0.85 ? 'birim ortalamasının altında' : 'birim ortalamasına yakın');
+            } else {
+                summaryParts.push('Bu dönemde <b>hiç geç kalmadı</b>');
+            }
+            if (an.absentDays > 0) summaryParts.push(`<b>${an.absentDays} gün</b> izinsiz gelmedi`);
+            if (pendingReasonN > 0) summaryParts.push(`<b>${pendingReasonN}</b> gecikme gerekçesi onayınızı bekliyor`);
+            const detOpen = !!S.ui.profDetOpen;
+
             return `
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;flex-wrap:wrap">
-                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                    <button type="button" class="btn btn-soft btn-sm" data-go="employees">${ic('chevron')} Personel Listesine Dön</button>
-                    <button type="button" class="btn btn-ghost btn-sm" data-act="emp-profile" data-id="${prevEmp.id}" title="${esc(prevEmp.name)}">‹ Önceki (${esc(prevEmp.sicil)})</button>
-                    <button type="button" class="btn btn-ghost btn-sm" data-act="emp-profile" data-id="${nextEmp.id}" title="${esc(nextEmp.name)}">Sonraki (${esc(nextEmp.sicil)}) ›</button>
+            <div class="prof-bar">
+                <div class="prof-bar-nav">
+                    <button type="button" class="btn btn-soft btn-sm" data-go="employees">${ic('chevron', 'flip')} Personel listesi</button>
+                    <button type="button" class="btn btn-ghost btn-sm" data-act="emp-profile" data-id="${prevEmp.id}" title="${esc(prevEmp.name)}" aria-label="Önceki personel: ${esc(prevEmp.name)}">‹ Önceki</button>
+                    <button type="button" class="btn btn-ghost btn-sm" data-act="emp-profile" data-id="${nextEmp.id}" title="${esc(nextEmp.name)}" aria-label="Sonraki personel: ${esc(nextEmp.name)}">Sonraki ›</button>
                 </div>
-                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                    <span class="muted" style="font-size:12px;display:inline-flex;align-items:center;gap:6px">${ic('expand')} Kutuların sağ üstündeki büyütme ikonuna tıklayarak grafikleri büyütebilirsiniz</span>
-                    <button type="button" class="btn btn-soft btn-sm" data-act="emp-edit" data-id="${e.id}">${ic('tool')} Bilgileri Düzenle</button>
-                    <button type="button" class="btn btn-bad btn-sm" data-act="emp-delete" data-id="${e.id}">${ic('x')} Personeli Sil</button>
-                    <button type="button" class="dnd-hint" data-act="dnd-reset">${ic('refresh')} Düzeni Sıfırla</button>
-                    ${dlBtn('export-one', e.name + ' · Dikey PDKS Karnesi (.xlsx)', { cls: 'btn-primary btn-sm', id: e.id })}
+                <div class="prof-bar-acts">
+                    ${dlBtn('export-one', 'PDKS karnesi (.xlsx)', { cls: 'btn-primary btn-sm', id: e.id })}
+                    <button type="button" class="btn btn-soft btn-sm" data-act="emp-edit" data-id="${e.id}">${ic('tool')} Düzenle</button>
+                    <button type="button" class="btn btn-bad btn-sm icon-only" data-act="emp-delete" data-id="${e.id}" title="Personeli sil" aria-label="${esc(e.name)} personelini sil">${ic('x')}</button>
                 </div>
             </div>
 
-            <!-- YALIN KİMLİK KARTI (Kutu içinde kutu olmadan, sade ve kurumsal başlık) -->
-            <section class="card profile-banner">
-                <div class="profile-hero-id">
-                    ${avatar(e, 'lg')}
-                    <div class="profile-hero-txt">
-                        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-                            <h2>${esc(e.name)}</h2>
-                            ${pill(STATUS[e.status][0], STATUS[e.status][1])}
-                            ${netPill(an.netBalanceMin)}
-                        </div>
-                        <p>${esc(e.title)} · <b>${esc(e.dept)}</b> · ${esc(b.name)} (${esc(b.city)}) · <span class="mono">${esc(corpEmail)}</span></p>
-                        <div class="profile-hero-tags">
-                            ${pill('Sicil: ' + e.sicil, 'mute')}
-                            ${pill('Birim Sırası: ' + deptRank + ' / ' + dn + '. sıra', 'info')}
-                            ${pill('Kurum Sırası: ' + compRank + ' / ' + cn + '. sıra', 'mute')}
-                            ${pill('Cihaz: ' + (devObj ? devObj.model + ' · v' + devObj.ver : 'Kurumsal Android · v2.4.1'), devObj && devObj.status !== 'BOUND' ? 'warn' : 'ok')}
-                            ${pill('İşe Giriş: ' + startDateStr, 'mute')}
-                        </div>
-                    </div>
+            <section class="card prof-head">
+                ${avatar(e, 'lg')}
+                <div class="prof-head-txt">
+                    <div class="prof-head-name"><h2>${esc(e.name)}</h2>${pill('Bugün: ' + STATUS[e.status][0], STATUS[e.status][1])}</div>
+                    <p>${esc(e.title)} · <b>${esc(e.dept)}</b> · ${esc(b.name)} · <span class="mono">${esc(e.sicil)}</span></p>
                 </div>
+                <div class="prof-head-rank">${pill('Birimde ' + deptRank + ' / ' + dn, 'info')}</div>
             </section>
 
-            <!-- SATIR 1: 4 FERAH KPI KARTI (Anasayfa ile birebir aynı g-4 düzeni · Büyütülünce interaktif grafik açılır) -->
+            <div class="prof-summary ${summaryTone}" role="note">
+                ${ic(summaryTone === 'ok' ? 'check' : 'alert')}
+                <p>${summaryParts.join(' · ')}. <span class="muted">(${esc(rangeLabel())})</span></p>
+            </div>
+
             <div class="grid g-4 mt">
                 ${kpi({
-                    label: 'Net süre bakiyesi',
-                    val: +(an.netBalanceMin / 60).toFixed(1),
-                    dec: 1,
-                    unit: 'sa',
-                    icon: 'activity',
-                    tone: an.netBalanceMin >= 0 ? 'ok' : 'bad',
-                    foot: fmtMinSigned(an.netBalanceMin) + ' net mesai farkı',
-                    spark: A.spark(an.logs.slice(-14).map(x => x.netMin || 0), an.netBalanceMin >= 0 ? '#0E9F6E' : '#C8102E')
-                })}
-                ${kpi({
-                    label: 'Toplam onaylı ek mesai',
-                    val: +(an.totalOvertimeMin / 60).toFixed(1),
-                    dec: 1,
-                    unit: 'sa',
-                    icon: 'spark',
-                    tone: 'ok',
-                    foot: '+' + fmtMinDur(an.totalOvertimeMin) + ' (' + an.overtimeDays + ' iş günü)',
-                    spark: A.spark(an.logs.slice(-14).map(x => x.overtimeMin || 0), '#0E9F6E')
-                })}
-                ${kpi({
-                    label: 'Toplam gecikme süresi',
-                    val: an.totalLateMin,
-                    dec: 0,
-                    unit: 'dk',
-                    icon: 'clock',
+                    label: 'Toplam gecikme',
+                    /* 2 saati aşan gecikme saat olarak okunur (688 dk yerine 11,5 sa) */
+                    val: an.totalLateMin >= 120 ? +(an.totalLateMin / 60).toFixed(1) : an.totalLateMin,
+                    dec: an.totalLateMin >= 120 ? 1 : 0,
+                    unit: an.totalLateMin >= 120 ? 'sa' : 'dk', icon: 'clock', cls: 'kpi-primary',
                     tone: an.totalLateMin > 0 ? 'warn' : 'ok',
-                    foot: an.lateDays + ' iş günü · Birim ort: ' + deptAvgLate + ' dk',
+                    delta: deptAvgLate > 0 ? delta(an.totalLateMin - deptAvgLate, ' dk', false) : '',
+                    foot: an.lateDays + ' gün · birim ort. ' + deptAvgLate + ' dk',
                     spark: A.spark(an.logs.slice(-14).map(x => x.lateMin || 0), '#C77700')
                 })}
                 ${kpi({
-                    label: 'Zamanında giriş & devam',
-                    val: onTimeRate,
-                    dec: 1,
-                    unit: '%',
-                    icon: 'check',
-                    tone: onTimeRate >= 85 ? 'ok' : 'warn',
-                    foot: an.presentDays + '/' + an.attendedDays + ' zamanında · %' + String(attRate).replace('.', ',') + ' devam',
-                    spark: A.spark(an.logs.slice(-14).map(x => x.lateMin > 0 ? 0 : 100), '#0E9F6E')
+                    label: 'Zamanında giriş', val: onTimeRate, dec: 1, unit: '%', icon: 'check',
+                    tone: onTimeRate >= 90 ? 'ok' : 'warn',
+                    foot: an.presentDays + ' / ' + an.attendedDays + ' çalışılan gün'
+                })}
+                ${kpi({
+                    label: 'Devamsız gün', val: an.absentDays, unit: 'gün', icon: 'alert',
+                    tone: an.absentDays > 0 ? 'red' : 'ok',
+                    foot: an.leaveDays + ' gün izinli / raporlu'
+                })}
+                ${kpi({
+                    label: 'Net süre bakiyesi', val: +(an.netBalanceMin / 60).toFixed(1), dec: 1, unit: 'sa', icon: 'activity',
+                    tone: an.netBalanceMin >= 0 ? 'ok' : 'bad',
+                    foot: '+' + fmtMinDur(an.totalOvertimeMin) + ' ek mesai − ' + fmtMinDur(an.totalLateMin) + ' gecikme'
                 })}
             </div>
 
-            <!-- SATIR 2: 3 BAĞIMSIZ YÖNETİCİ ANALİZ KARTI (Kutu içinde kutu olmadan, sade ve okunaklı) -->
-            <div class="grid g-3 mt">
-                <section class="card profile-exec-card">
-                    ${cardHead('Ek mesai ve gecikme terazisi', rangeLabel() + ' net süre dengesi', netPill(an.netBalanceMin))}
-                    <div>
-                        <div class="net-split-track" role="img" aria-label="Ek mesai ve gecikme oranı">
-                            <div class="net-split-ot" style="width:${otPct}%"></div>
-                            <div class="net-split-late" style="width:${latePct}%"></div>
-                        </div>
-                    </div>
-                    <div class="profile-exec-rows">
-                        <div class="profile-exec-row"><span>● Onaylı Ek Mesai (%${otPct})</span><b style="color:var(--ok)">+${fmtMinDur(an.totalOvertimeMin)} (${an.overtimeDays} gün)</b></div>
-                        <div class="profile-exec-row"><span>● Toplam Gecikme (%${latePct})</span><b style="color:${an.totalLateMin > 0 ? 'var(--bad)' : 'var(--ink)'}">${an.totalLateMin > 0 ? '−' + fmtMinDur(an.totalLateMin) : '0 dk'} (${an.lateDays} gün)</b></div>
-                        <div class="profile-exec-row"><span>${esc(e.dept)} Birim Ort. Mesai</span><b>+${fmtMinDur(deptAvgOt)}</b></div>
-                    </div>
-                </section>
-
-                <section class="card profile-exec-card">
-                    ${cardHead('En çok geç kaldığı gün', 'Vardiya başlangıç disiplini ve zirve kayıt', pill(an.lateDays + ' iş günü', an.lateDays > 0 ? 'warn' : 'ok'))}
-                    <div class="profile-exec-val ${an.mostLateDay.totalLateMin > 0 ? 'warn' : 'ok'}">
-                        ${an.mostLateDay.totalLateMin > 0 ? esc(an.mostLateDay.dowName) + ' (−' + an.mostLateDay.totalLateMin + ' dk)' : 'Gecikme Kaydı Yok'}
-                    </div>
-                    <div class="profile-exec-rows">
-                        <div class="profile-exec-row"><span>Tekrar & Ortalama</span><b>${an.mostLateDay.totalLateMin > 0 ? `${an.mostLateDay.lateCount} kez · ort. −${an.mostLateDay.avgLateMin} dk` : 'Tam vardiya uyumu'}</b></div>
-                        <div class="profile-exec-row"><span>Zirve Gecikme Kaydı</span><b class="mono">${an.peakLateRec && an.peakLateRec.lateMin > 0 ? `${an.peakLateRec.fullDate} (−${an.peakLateRec.lateMin} dk · ${an.peakLateRec.checkIn})` : '—'}</b></div>
-                        <div class="profile-exec-row"><span>Dönem Ort. Giriş Saati</span><b class="mono">${an.avgCheckIn} (En erken: ${an.earliestCheckIn})</b></div>
-                    </div>
-                </section>
-
-                <section class="card profile-exec-card">
-                    ${cardHead('En çok ek mesai günü', 'Fazla çalışma yoğunluğu ve zirve kayıt', pill(an.overtimeDays + ' iş günü', 'ok'))}
-                    <div class="profile-exec-val ok">
-                        ${an.mostOvertimeDay.totalOvertimeMin > 0 ? esc(an.mostOvertimeDay.dowName) + ' (+' + fmtMinDur(an.mostOvertimeDay.totalOvertimeMin) + ')' : 'Ek Mesai Kaydı Yok'}
-                    </div>
-                    <div class="profile-exec-rows">
-                        <div class="profile-exec-row"><span>Tekrar & Ortalama</span><b>${an.mostOvertimeDay.totalOvertimeMin > 0 ? `${an.mostOvertimeDay.otCount} iş günü · ort. +${an.mostOvertimeDay.avgOvertimeMin} dk` : 'Standart mesai'}</b></div>
-                        <div class="profile-exec-row"><span>Zirve Ek Mesai Kaydı</span><b class="mono">${an.peakOtRec && an.peakOtRec.overtimeMin > 0 ? `${an.peakOtRec.fullDate} (+${an.peakOtRec.overtimeMin} dk · ${an.peakOtRec.checkOut})` : '—'}</b></div>
-                        <div class="profile-exec-row"><span>Dönem Ort. Çıkış & Mesai</span><b class="mono">${an.avgCheckOut} · ${String(an.avgWorkH).replace('.', ',')} sa/gün</b></div>
-                    </div>
-                </section>
-            </div>
-
-            <!-- GRAFİK SATIRI 1: GÜNLÜK MESAİ İSTİKRARI (AREA CHART) & DÖNEM PUANTAJ DAĞILIMI (DONUT CHART) -->
             <div class="grid g-main mt">
-                <section class="card">
-                    ${cardHead('Günlük çalışma süresi istikrarı ve vardiya hedefi', 'Seçili dönemdeki günlük fiili çalışma saatleri (kırmızı) ve 8,5 saat kurumsal hedef çizgisi', pill('Ort. ' + String(an.avgWorkH).replace('.', ',') + ' sa / gün', an.avgWorkH >= 8.5 ? 'ok' : 'warn'))}
-                    <div id="prChartWork"></div>
-                    <div class="stat-mini-grid" style="grid-template-columns:repeat(4,minmax(0,1fr));margin-top:12px">
-                        <div class="stat-mini"><small>Ort. Giriş / En Erken</small><b class="mono">${an.avgCheckIn} <span class="muted" style="font-size:11.5px">(${an.earliestCheckIn})</span></b></div>
-                        <div class="stat-mini"><small>Ort. Çıkış / En Geç</small><b class="mono">${an.avgCheckOut} <span class="muted" style="font-size:11.5px">(${an.latestCheckOut})</span></b></div>
-                        <div class="stat-mini"><small>En Verimli Gün (Net)</small><b>${esc(an.bestNetDay.dowName)} (${fmtMinSigned(an.bestNetDay.netMin)})</b></div>
-                        <div class="stat-mini"><small>En Geç Giriş Saati</small><b class="mono">${an.latestCheckIn}</b></div>
+                <section class="card flush">
+                    ${cardHead('Son gecikmeler', 'En yeni önce · gerekçe durumu ile', pill(an.lateDays + ' gün', an.lateDays ? 'warn' : 'ok'))}
+                    <div class="list" style="margin-top:4px">
+                        ${recentLate.length ? recentLate.map(l => {
+                            const r = reasonOf(l.iso);
+                            const st = !r ? ['Gerekçe yok', 'mute'] : r.status === 'APPROVED' ? ['Haklı bulundu', 'ok'] : r.status === 'REJECTED' ? ['Reddedildi', 'bad'] : ['Onay bekliyor', 'warn'];
+                            return `<div class="list-item">
+                                <div class="grow">
+                                    <b class="mono">${esc(l.fullDate)} <span class="muted" style="font-weight:500;font-family:var(--font)">· ${esc(l.dowName)}</span></b>
+                                    <small>Giriş <b class="mono">${esc(l.checkIn)}</b>${r ? ' · ' + esc(lateReasonLabel(r.reasonCode)) : ''}</small>
+                                </div>
+                                ${pill(st[0], st[1])}
+                                <span class="late-chip">−${fmtMinDur(l.lateMin)}</span>
+                                ${r && r.status === 'PENDING' ? `<button type="button" class="btn btn-soft btn-sm" data-act="late-reason-open" data-id="${r.id}">İncele</button>` : ''}
+                            </div>`;
+                        }).join('') : empty('Bu dönemde gecikme yok', 'Tam vardiya uyumu.')}
                     </div>
                 </section>
                 <section class="card">
-                    ${cardHead('Dönem yoklama ve puantaj dağılımı', an.totalDays + ' takvim iş günü içinde devam kırılımı', pill('%' + String(attRate).replace('.', ',') + ' devam', 'ok'))}
-                    <div id="prChartDonut"></div>
-                </section>
-            </div>
-
-            <!-- GRAFİK SATIRI 2: HAFTANIN GÜNLERİNE GÖRE MESAİ/GECİKME (BAR CHART) & 30M GEOFENCE MESAFE (AREA CHART) -->
-            <div class="grid g-2 mt">
-                <section class="card">
-                    ${cardHead('Haftanın günlerine göre (Pzt–Cum) ek mesai ve gecikme yükü', 'İK Davranış Analizi: Personel hangi günler geç kalıyor, hangi günler fazla mesai yapıyor?', pill('Lider: ' + an.bestNetDay.dowName, 'ok'))}
+                    ${cardHead('Haftanın günlerine göre gecikme', 'Hangi gün geç kalıyor?', an.mostLateDay.totalLateMin > 0 ? pill('En çok: ' + an.mostLateDay.dowName, 'warn') : pill('Gecikme yok', 'ok'))}
                     <div id="prChartWeekday"></div>
                 </section>
-                <section class="card">
-                    ${cardHead('30m şube geofence mesafe ve konum doğrulama istikrarı', b.name + ' merkez koordinatına günlük giriş mesafesi (metre) ve 30m güvenlik sınırı', pill('Ort. ' + String(an.avgDist).replace('.', ',') + ' m', 'info'))}
-                    <div id="prChartDist"></div>
-                </section>
             </div>
 
-            <!-- EXCEL EŞLENİĞİ TABLOLAR: 1. ÖZLÜK/CİHAZ SİCİL KARTI & 2. DÖNEM PUANTAJ TAHAKKUK CETVELİ -->
-            <div class="grid g-2 mt">
-                <section class="card flush">
-                    ${cardHead('1. Personel özlük, kadro, şube geofence ve mobil cihaz sicil kartı', 'Dikey PDKS Excel karnesi 1. bölüm verilerinin eksiksiz sicil dökümü', pill(e.sicil, 'mute'))}
-                    <div class="table-wrap">
-                        <table class="pdks-kv-table">
-                            <tbody>
-                                <tr><th>Sicil Numarası</th><td class="mono"><b>${esc(e.sicil)}</b></td><th>Ad Soyad</th><td><b>${esc(e.name)}</b></td></tr>
-                                <tr><th>Departman / Birim</th><td>${pill(e.dept, 'ok')}</td><th>Unvan / Görev</th><td>${esc(e.title)}</td></tr>
-                                <tr><th>Kurumsal E-posta</th><td class="mono">${esc(corpEmail)}</td><th>İşe Başlama Tarihi</th><td class="mono">${esc(startDateStr)}</td></tr>
-                                <tr><th>Bağlı Olduğu Şube</th><td><b>${esc(b.name)}</b> (${esc(b.city)})</td><th>Şube Koordinat & Geofence</th><td class="mono">${b.lat.toFixed(4)}, ${b.lng.toFixed(4)} · ${b.radius}m Sınır</td></tr>
-                                <tr><th>Şube Açık Adresi</th><td><small style="display:block;line-height:1.35">${esc(b.address || (b.name + ' · ' + b.city))}</small></td><th>Şube Harita & Telefon</th><td><span class="mono">${esc(b.phone || '0850 222 0 252')}</span> · <button type="button" class="btn btn-soft btn-sm" style="height:24px;padding:0 8px;font-size:11px" data-act="br-map" data-code="${esc(b.code)}">${ic('pin')}Haritada Gör</button></td></tr>
-                                <tr><th>Kurumsal Wi-Fi ağı</th><td class="mono">${esc(b.wifi)}</td><th>Atanmış Vardiya Şablonu</th><td class="mono">${esc(D.shiftOf(e).name)} · ${D.hhmm(D.shiftOf(e).startMin)} – ${D.hhmm(D.shiftOf(e).endMin)} (Tolerans ${D.shiftOf(e).graceMin} dk)</td></tr>
-                                <tr><th>Eşlenmiş Mobil Cihaz</th><td>${devObj ? esc(devObj.model + ' (' + devObj.os + ')') : esc(e.device || 'Kurumsal Android Cihaz · Android 14')}</td><th>Cihaz Durumu & Sürüm</th><td>${devObj ? pill(devStatusLabel + ' · v' + devObj.ver, devObj.status === 'BOUND' ? 'ok' : 'warn') : pill('Eşlendi (Aktif) · v2.4.1', 'ok')}</td></tr>
-                                <tr><th>Cihaz Kimlik Maskesi</th><td class="mono">${devObj ? esc(devObj.mask) + ' · Son: ' + esc(devObj.lastSeen || 'Aktif') : '9f3c••••81a2 · Aktif'}</td><th>Güncel Yoklama Durumu</th><td>${pill(STATUS[e.status][0], STATUS[e.status][1])}</td></tr>
-                                <tr><th>İncelenen Rapor Dönemi</th><td class="mono">${esc(periodStr)}</td><th>Geofence Doğrulama</th><td>${pill('%' + String(an.geofenceRate).replace('.', ',') + ' Uyum (Ort. ' + String(an.avgDist).replace('.', ',') + 'm)', an.geofenceRate >= 98 ? 'ok' : 'warn')}</td></tr>
-                                <tr><th>Mock GPS Koruması</th><td>${pill('Aktif · Anlık Denetim', 'ok')}</td><th>Cihaz Bağlama Kuralı</th><td>Tekil Kurumsal Android Cihaz</td></tr>
-                                <tr><th>PDKS Doğrulama Yöntemi</th><td>GPS (30m) + Kurumsal Wi-Fi</td><th>Bağlı Birim Yönetimi</th><td>${esc(e.dept)} Müdürlüğü</td></tr>
-                                <tr><th>Dönem İzin Talepleri</th><td class="mono">${empLeaves.length} kayıt</td><th>Güvenlik Denetim Özeti</th><td>${empSec.length ? pill(empSec.length + ' güvenlik kaydı', 'warn') : pill('İhlal Yok (Temiz)', 'ok')}</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </section>
-
-                <section class="card flush">
-                    ${cardHead('2. Dönem puantaj, mesai ve devam tahakkuk cetveli', 'Dikey PDKS Excel karnesi 2. bölüm puantaj ve tahakkuk hesaplamaları', netPill(an.netBalanceMin))}
-                    <div class="table-wrap">
-                        <table class="pdks-kv-table">
-                            <tbody>
-                                <tr><th>Toplam Takvim İş Günü</th><td class="mono"><b>${an.totalDays} iş günü</b></td><th>Fiili Çalışılan Gün</th><td class="mono"><b>${an.attendedDays} gün</b> (%${String(attRate).replace('.', ',')} devam)</td></tr>
-                                <tr><th>Zamanında Giriş Günü</th><td>${pill(an.presentDays + ' gün (%' + String(onTimeRate).replace('.', ',') + ' uyum)', 'ok')}</td><th>Geç Kalınan Gün Sayısı</th><td>${an.lateDays > 0 ? pill(an.lateDays + ' iş günü gecikme', 'warn') : pill('0 gün (Tam uyum)', 'ok')}</td></tr>
-                                <tr><th>İzinli / Raporlu Gün</th><td class="mono">${an.leaveDays} gün</td><th>Devamsız İş Günü</th><td>${an.absentDays > 0 ? pill(an.absentDays + ' gün devamsız', 'bad') : '<span class="mono">0 gün</span>'}</td></tr>
-                                <tr><th>Toplam Fiili Çalışma</th><td class="mono"><b>${String(totalWorkH).replace('.', ',')} saat</b> (${totalWorkMin} dk)</td><th>Günlük Ortalama Mesai</th><td class="mono"><b>${String(an.avgWorkH).replace('.', ',')} sa / gün</b> (Hedef: 8,5 sa)</td></tr>
-                                <tr><th>Toplam Onaylı Ek Mesai</th><td style="color:var(--ok)"><b>+${fmtMinDur(an.totalOvertimeMin)}</b> (${an.totalOvertimeMin} dk · ${an.overtimeDays} gün)</td><th>Toplam Gecikme Süresi</th><td style="color:${an.totalLateMin > 0 ? 'var(--bad)' : 'var(--ink)'}"><b>${an.totalLateMin > 0 ? '−' + fmtMinDur(an.totalLateMin) + ' (' + an.totalLateMin + ' dk)' : '0 dk'}</b></td></tr>
-                                <tr><th>Net Süre Bakiyesi</th><td>${netPill(an.netBalanceMin)} <small class="muted">(${an.netBalanceMin >= 0 ? '+' : ''}${an.netBalanceMin} dk)</small></td><th>Departman & Kurum Sırası</th><td><b>${esc(e.dept)}: ${deptRank}/${dn}</b> · Kurum: ${compRank}/${cn}</td></tr>
-                                <tr><th>Ortalama Giriş / Çıkış</th><td class="mono"><b>${an.avgCheckIn} → ${an.avgCheckOut}</b></td><th>En Erken / En Geç Saatler</th><td class="mono">Giriş: ${an.earliestCheckIn}–${an.latestCheckIn} · Çıkış: ${an.latestCheckOut}</td></tr>
-                                <tr><th>En Çok Gecikilen Gün</th><td>${an.mostLateDay.totalLateMin > 0 ? `<b>${esc(an.mostLateDay.dowName)}</b> (−${an.mostLateDay.totalLateMin} dk · ${an.mostLateDay.lateCount}x)` : 'Gecikme Yok'}</td><th>Zirve Gecikme Kaydı</th><td class="mono">${an.peakLateRec && an.peakLateRec.lateMin > 0 ? `${an.peakLateRec.fullDate} (−${an.peakLateRec.lateMin} dk · ${an.peakLateRec.checkIn})` : 'Dönem İçinde Yok'}</td></tr>
-                                <tr><th>En Çok Ek Mesai Günü</th><td>${an.mostOvertimeDay.totalOvertimeMin > 0 ? `<b>${esc(an.mostOvertimeDay.dowName)}</b> (+${an.mostOvertimeDay.totalOvertimeMin} dk · ${an.mostOvertimeDay.otCount}x)` : 'Ek Mesai Yok'}</td><th>Zirve Ek Mesai Kaydı</th><td class="mono">${an.peakOtRec && an.peakOtRec.overtimeMin > 0 ? `${an.peakOtRec.fullDate} (+${an.peakOtRec.overtimeMin} dk · ${an.peakOtRec.checkOut})` : 'Dönem İçinde Yok'}</td></tr>
-                                <tr><th>En Verimli (Net Lider) Gün</th><td><b>${esc(an.bestNetDay.dowName)}</b> (${fmtMinSigned(an.bestNetDay.netMin)} · Ort. ${String(an.bestNetDay.avgWorkH).replace('.', ',')} sa)</td><th>Birim Ortalaması Kıyas</th><td>Ort. Mesai: +${fmtMinDur(deptAvgOt)} · Geç: −${fmtMinDur(deptAvgLate)}</td></tr>
-                                <tr><th>30m Geofence Konum Uyumu</th><td class="mono">%${String(an.geofenceRate).replace('.', ',')} (Min ${String(minDist).replace('.', ',')}m · Maks ${String(maxDist).replace('.', ',')}m)</td><th>İzin & Güvenlik Özeti</th><td>${empLeaves.length} izin talebi · ${empSec.length ? empSec.length + ' güvenlik uyarısı' : 'İhlal yok'}</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </section>
-            </div>
-
-            <!-- HAFTANIN GÜNLERİ TABLOSU & DEPARTMAN / KURUM ORTALAMASI KIYASLAMA ÇUBUKLARI -->
-            <div class="grid g-main mt">
-                <section class="card flush">
-                    ${cardHead('Haftanın günlerine göre (Pazartesi – Cuma) davranış ve mesai analizi', 'Gün bazında katılım, ortalama giriş-çıkış, ortalama çalışma saati, gecikme, ek mesai ve net süre bakiyesi')}
-                    <div class="table-wrap">
-                        <table>
-                            <thead>
-                                <tr><th>Haftanın Günü</th><th>Katılım</th><th>Ort. Giriş</th><th>Ort. Çıkış</th><th>Ort. Mesai</th><th>Top. Gecikme</th><th>Top. Ek Mesai</th><th>Net Süre Bakiyesi</th></tr>
-                            </thead>
-                            <tbody>
-                                ${an.weekdayList.map(w => `<tr>
-                                    <td><b>${esc(w.dowName)}</b></td>
-                                    <td class="mono">${w.attended} iş günü</td>
-                                    <td class="mono">${w.avgIn}</td>
-                                    <td class="mono">${w.avgOut}</td>
-                                    <td class="mono">${String(w.avgWorkH).replace('.', ',')} sa</td>
-                                    <td class="mono" style="color:${w.totalLateMin > 0 ? 'var(--warn)' : 'var(--muted)'}"><b>${w.totalLateMin > 0 ? '−' + w.totalLateMin + ' dk' : '0 dk'}</b> <small class="muted">(${w.lateCount}x)</small></td>
-                                    <td class="mono" style="color:${w.totalOvertimeMin > 0 ? 'var(--ok)' : 'var(--muted)'}"><b>+${w.totalOvertimeMin} dk</b> <small class="muted">(${w.otCount}x)</small></td>
-                                    <td>${netPill(w.netMin)}</td>
-                                </tr>`).join('')}
-                            </tbody>
-                        </table>
-                    </div>
-                </section>
-
-                <section class="card">
-                    ${cardHead(e.dept + ' birimi ve kurum ortalaması ile kıyaslama', 'Personelin departman ve banka geneli ortalamalarına göre performans konumu', pill(deptRank + ' / ' + dn + '. sıra', 'info'))}
-                    ${rank([
-                        { l: e.name + ' · Onaylı Ek Mesai', v: '+' + fmtMinDur(an.totalOvertimeMin), w: A.clamp((an.totalOvertimeMin / Math.max(60, Math.max(deptAvgOt, compAvgOt, an.totalOvertimeMin) * 1.15)) * 100, 8, 100), cls: 'ok' },
-                        { l: e.dept + ' Birim Ort. Ek Mesai', v: '+' + fmtMinDur(deptAvgOt), w: A.clamp((deptAvgOt / Math.max(60, Math.max(deptAvgOt, compAvgOt, an.totalOvertimeMin) * 1.15)) * 100, 8, 100), cls: '' },
-                        { l: 'Kurum Geneli Ort. Ek Mesai', v: '+' + fmtMinDur(compAvgOt), w: A.clamp((compAvgOt / Math.max(60, Math.max(deptAvgOt, compAvgOt, an.totalOvertimeMin) * 1.15)) * 100, 8, 100), cls: '' },
-                        { l: e.name + ' · Toplam Gecikme', v: an.totalLateMin > 0 ? '−' + fmtMinDur(an.totalLateMin) : '0 dk', w: A.clamp((an.totalLateMin / Math.max(30, Math.max(deptAvgLate, compAvgLate, an.totalLateMin) * 1.15)) * 100, 4, 100), cls: 'warn' },
-                        { l: e.dept + ' Birim Ort. Gecikme', v: '−' + fmtMinDur(deptAvgLate), w: A.clamp((deptAvgLate / Math.max(30, Math.max(deptAvgLate, compAvgLate, an.totalLateMin) * 1.15)) * 100, 4, 100), cls: '' },
-                        { l: e.name + ' · Günlük Ort. Mesai', v: String(an.avgWorkH).replace('.', ',') + ' sa / ' + String(deptAvgWorkH).replace('.', ',') + ' sa birim', w: A.clamp((an.avgWorkH / 10.5) * 100, 10, 100), cls: 'ok' }
-                    ])}
-                </section>
-            </div>
-
-            <!-- DÖNEM İZİN, MAZERET VE GÜVENLİK / CİHAZ KAYITLARI ÖZETİ -->
-            <section class="card flush mt">
-                ${cardHead('Dönem izin, mazeret ve güvenlik / cihaz denetim kayıtları', 'Personelin seçili dönemdeki izin talepleri, mazeret bildirimleri ve 30m geofence / cihaz doğrulama geçmişi', pill(empLeaves.length + ' izin · ' + empSec.length + ' güvenlik kaydı', empSec.length > 0 ? 'warn' : 'ok'))}
-                <div class="table-wrap">
-                    <table>
-                        <thead><tr><th>Kayıt Türü</th><th>Tarih / Dönem</th><th>Kategori / Başlık</th><th>Detay ve Açıklama</th><th>Durum / İşlem</th></tr></thead>
-                        <tbody>
-                            ${empLeaves.map(l => {
-                                const stMap = { pending: ['Onay Bekliyor', 'warn'], approved: ['Onaylandı', 'ok'], rejected: ['Reddedildi', 'bad'], PENDING: ['Onay Bekliyor', 'warn'], APPROVED: ['Onaylandı', 'ok'], REJECTED: ['Reddedildi', 'bad'] }[l.status] || [l.status, 'mute'];
-                                return `<tr>
-                                    <td>${pill('İzin / Mazeret', 'info')}</td>
-                                    <td class="mono"><b>${esc(l.from || l.dates || '')}</b> (${l.days} gün)</td>
-                                    <td><b>${esc(l.type)}</b></td>
-                                    <td>${esc(l.reason || l.note || '')}</td>
-                                    <td>${pill(stMap[0], stMap[1])} ${(l.status === 'pending' || l.status === 'PENDING') ? `<button type="button" class="btn btn-ok btn-xs" data-act="leave-act" data-id="${l.id}" data-v="approved">Onayla</button> <button type="button" class="btn btn-bad btn-xs" data-act="leave-act" data-id="${l.id}" data-v="rejected">Reddet</button>` : ''}</td>
-                                </tr>`;
-                            }).join('')}
-                            ${empSec.map(s => {
-                                const sevMap = { HIGH: ['Yüksek Risk', 'bad'], MED: ['Orta Risk', 'warn'], LOW: ['Bilgi', 'info'] }[s.sev] || [s.sev, 'mute'];
-                                return `<tr>
-                                    <td>${pill('Güvenlik / Cihaz', sevMap[1])}</td>
-                                    <td class="mono"><b>${esc((s.ago || '') + ' önce')}</b></td>
-                                    <td><b>${esc(D.ALERT_TYPES[s.type] || s.type)}</b></td>
-                                    <td>${esc(brName(s.branch))}${s.dist != null ? ' · Mesafe: ' + s.dist + ' m' : ''}</td>
-                                    <td>${pill(s.resolved ? 'Çözüldü' : sevMap[0], s.resolved ? 'ok' : sevMap[1])}</td>
-                                </tr>`;
-                            }).join('')}
-                            ${(!empLeaves.length && !empSec.length) ? `<tr>
-                                <td>${pill('Tam Uyum', 'ok')}</td>
-                                <td class="mono"><b>${esc(periodStr)}</b></td>
-                                <td><b>İzin ve Güvenlik Denetimi</b></td>
-                                <td>Seçili dönemde mazeret/izin talebi veya 30m geofence / sahte GPS güvenlik ihlali bulunmamaktadır.</td>
-                                <td>${pill('Temiz Sicil', 'ok')}</td>
-                            </tr>` : ''}
-                        </tbody>
-                    </table>
-                </div>
-            </section>
-
-            <!-- GÜN GÜN PDKS GİRİŞ-ÇIKIŞ, MESAİ, GECİKME, EK MESAİ VE KONUM CETVELİ (SIRALANABİLİR & FİLTRELENEBİLİR) -->
+            <!-- GÜN GÜN PDKS CETVELİ (sıralanabilir & filtrelenebilir) -->
             <section class="card flush mt">
                 ${cardHead(
-                    'Gün gün PDKS giriş-çıkış, mesai, gecikme, ek mesai ve konum cetveli',
-                    'Sütun başlıklarına tıklayarak (Gecikme, Onaylı Ek Mesai, Fiili Mesai, Net Bakiye, Giriş/Çıkış saati vb.) artan veya azalan sıralayabilirsiniz · Gösterilen: ' + sortedLogs.length + ' / ' + an.logs.length + ' iş günü',
+                    'Gün gün giriş-çıkış cetveli',
+                    'Sütun başlığına tıklayarak sıralayın · Gösterilen: ' + sortedLogs.length + ' / ' + an.logs.length + ' iş günü',
                     `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
                         ${chips([
                             { v: 'ALL', l: 'Tümü', n: an.logs.length },
-                            { v: 'OT', l: 'Ek Mesai Yapan', n: an.overtimeDays },
-                            { v: 'LATE', l: 'Geç Kaldı', n: an.lateDays },
+                            { v: 'LATE', l: 'Geç kaldı', n: an.lateDays },
+                            { v: 'LEAVE_ABS', l: 'İzin / Devamsız', n: an.leaveDays + an.absentDays },
                             { v: 'PRESENT', l: 'Zamanında', n: an.presentDays },
-                            { v: 'LEAVE_ABS', l: 'İzin / Devamsız', n: an.leaveDays + an.absentDays }
+                            { v: 'OT', l: 'Ek mesai', n: an.overtimeDays }
                         ], pl.status, 'prof-log-status')}
-                        ${dlBtn('export-one', 'Dikey Excel Karnesi İndir (.xlsx)', { cls: 'btn-soft btn-xs', id: e.id })}
                     </div>`
                 )}
                 <div class="table-wrap" style="max-height:460px;overflow-y:auto">
@@ -1387,39 +1446,198 @@
                             <tr>
                                 ${thSort('date', 'Tarih')}
                                 ${thSort('dow', 'Gün')}
-                                <th>Şube</th>
-                                ${thSort('in', 'İlk Giriş')}
-                                ${thSort('out', 'Son Çıkış')}
-                                ${thSort('work', 'Fiili Mesai')}
+                                ${thSort('in', 'İlk giriş')}
                                 ${thSort('late', 'Gecikme')}
-                                ${thSort('ot', 'Onaylı Ek Mesai')}
-                                ${thSort('net', 'Net Süre Bakiyesi')}
-                                ${thSort('dist', 'Konum & Mesafe')}
+                                ${thSort('out', 'Son çıkış')}
+                                ${thSort('work', 'Fiili mesai')}
+                                ${thSort('ot', 'Ek mesai')}
+                                ${thSort('net', 'Net')}
                                 ${thSort('status', 'Durum')}
+                                ${thSort('dist', 'Konum')}
                             </tr>
                         </thead>
                         <tbody>
                             ${sortedLogs.length ? sortedLogs.map(l => {
                                 const st = STATUS[l.status] || [l.status, 'mute'];
-                                const wMin = Math.round((l.workH || 0) * 60);
                                 return `<tr>
                                     <td class="mono"><b>${l.fullDate}</b></td>
                                     <td>${esc(l.dowName)}</td>
-                                    <td>${esc(b.name)}</td>
                                     <td class="mono"><b>${l.checkIn || '—'}</b></td>
-                                    <td class="mono"><b>${l.checkOut || '—'}</b></td>
-                                    <td class="mono">${l.workH ? String(l.workH).replace('.', ',') + ' sa <small class="muted">(' + wMin + ' dk)</small>' : '—'}</td>
                                     <td class="mono" style="color:${l.lateMin > 0 ? 'var(--warn)' : 'var(--muted)'}"><b>${l.lateMin > 0 ? '−' + l.lateMin + ' dk' : '0 dk'}</b></td>
-                                    <td class="mono" style="color:${l.overtimeMin > 0 ? 'var(--ok)' : 'var(--muted)'}"><b>${l.overtimeMin > 0 ? '+' + l.overtimeMin + ' dk' : '0 dk'}</b></td>
+                                    <td class="mono">${l.checkOut || '—'}</td>
+                                    <td class="mono">${l.workH ? String(l.workH).replace('.', ',') + ' sa' : '—'}</td>
+                                    <td class="mono" style="color:${l.overtimeMin > 0 ? 'var(--ok)' : 'var(--muted)'}">${l.overtimeMin > 0 ? '+' + l.overtimeMin + ' dk' : '0 dk'}</td>
                                     <td>${l.status === 'LEAVE' || l.status === 'ABSENT' ? '—' : netPill(l.netMin)}</td>
-                                    <td class="mono">${l.dist != null ? pill(String(l.dist).replace('.', ',') + ' m · ≤30m', l.dist <= 30 ? 'ok' : 'bad') : '—'}</td>
                                     <td>${pill(st[0], st[1])}</td>
+                                    <td class="mono">${l.dist != null ? pill(String(l.dist).replace('.', ',') + ' m', l.dist <= 30 ? 'ok' : 'bad') : '—'}</td>
                                 </tr>`;
-                            }).join('') : `<tr><td colspan="11">${empty('Seçili filtreye uygun gün kaydı bulunamadı', 'Tüm günleri görmek için "Tümü" filtresini seçin.')}</td></tr>`}
+                            }).join('') : `<tr><td colspan="10">${empty('Seçili filtreye uygun gün kaydı bulunamadı', 'Tüm günleri görmek için "Tümü" filtresini seçin.')}</td></tr>`}
                         </tbody>
                     </table>
                 </div>
-            </section>`;
+            </section>
+
+            <div class="grid g-3 mt">
+                <section class="card profile-exec-card">
+                    ${cardHead('En çok geç kaldığı gün', 'Vardiya başlangıç disiplini', pill(an.lateDays + ' gün', an.lateDays > 0 ? 'warn' : 'ok'))}
+                    <div class="profile-exec-val ${an.mostLateDay.totalLateMin > 0 ? 'warn' : 'ok'}">
+                        ${an.mostLateDay.totalLateMin > 0 ? esc(an.mostLateDay.dowName) + ' (−' + an.mostLateDay.totalLateMin + ' dk)' : 'Gecikme kaydı yok'}
+                    </div>
+                    <div class="profile-exec-rows">
+                        <div class="profile-exec-row"><span>Tekrar ve ortalama</span><b>${an.mostLateDay.totalLateMin > 0 ? `${an.mostLateDay.lateCount} kez · ort. −${an.mostLateDay.avgLateMin} dk` : 'Tam vardiya uyumu'}</b></div>
+                        <div class="profile-exec-row"><span>En uzun gecikme</span><b class="mono">${an.peakLateRec && an.peakLateRec.lateMin > 0 ? `${an.peakLateRec.fullDate} (−${an.peakLateRec.lateMin} dk · ${an.peakLateRec.checkIn})` : '—'}</b></div>
+                        <div class="profile-exec-row"><span>Ortalama / en geç giriş</span><b class="mono">${an.avgCheckIn} · ${an.latestCheckIn}</b></div>
+                    </div>
+                </section>
+                <section class="card profile-exec-card">
+                    ${cardHead('Ek mesai ve gecikme dengesi', 'Net süre', netPill(an.netBalanceMin))}
+                    <div class="net-split-track" role="img" aria-label="Ek mesai yüzde ${otPct}, gecikme yüzde ${latePct}">
+                        <div class="net-split-ot" style="width:${otPct}%"></div>
+                        <div class="net-split-late" style="width:${latePct}%"></div>
+                    </div>
+                    <div class="profile-exec-rows">
+                        <div class="profile-exec-row"><span>● Ek mesai (%${otPct})</span><b style="color:var(--ok)">+${fmtMinDur(an.totalOvertimeMin)} (${an.overtimeDays} gün)</b></div>
+                        <div class="profile-exec-row"><span>● Gecikme (%${latePct})</span><b style="color:${an.totalLateMin > 0 ? 'var(--bad)' : 'var(--ink)'}">${an.totalLateMin > 0 ? '−' + fmtMinDur(an.totalLateMin) : '0 dk'} (${an.lateDays} gün)</b></div>
+                        <div class="profile-exec-row"><span>${esc(e.dept)} birim ort. ek mesai</span><b>+${fmtMinDur(deptAvgOt)}</b></div>
+                    </div>
+                </section>
+                <section class="card profile-exec-card">
+                    ${cardHead('En çok ek mesai günü', 'Fazla çalışma yoğunluğu', pill(an.overtimeDays + ' gün', 'ok'))}
+                    <div class="profile-exec-val ok">
+                        ${an.mostOvertimeDay.totalOvertimeMin > 0 ? esc(an.mostOvertimeDay.dowName) + ' (+' + fmtMinDur(an.mostOvertimeDay.totalOvertimeMin) + ')' : 'Ek mesai kaydı yok'}
+                    </div>
+                    <div class="profile-exec-rows">
+                        <div class="profile-exec-row"><span>Tekrar ve ortalama</span><b>${an.mostOvertimeDay.totalOvertimeMin > 0 ? `${an.mostOvertimeDay.otCount} gün · ort. +${an.mostOvertimeDay.avgOvertimeMin} dk` : 'Standart mesai'}</b></div>
+                        <div class="profile-exec-row"><span>En uzun ek mesai</span><b class="mono">${an.peakOtRec && an.peakOtRec.overtimeMin > 0 ? `${an.peakOtRec.fullDate} (+${an.peakOtRec.overtimeMin} dk)` : '—'}</b></div>
+                        <div class="profile-exec-row"><span>Ortalama çıkış ve mesai</span><b class="mono">${an.avgCheckOut} · ${String(an.avgWorkH).replace('.', ',')} sa/gün</b></div>
+                    </div>
+                </section>
+            </div>
+
+            <div class="grid g-main mt">
+                <section class="card">
+                    ${cardHead('Günlük çalışma süresi', 'Son 14 iş günü · 8,5 saat hedef çizgisi', pill('Ort. ' + String(an.avgWorkH).replace('.', ',') + ' sa / gün', an.avgWorkH >= 8.5 ? 'ok' : 'warn'))}
+                    <div id="prChartWork"></div>
+                </section>
+                <section class="card">
+                    ${cardHead('Dönem devam dağılımı', an.totalDays + ' iş günü', pill('%' + String(attRate).replace('.', ',') + ' devam', 'ok'))}
+                    <div id="prChartDonut"></div>
+                </section>
+            </div>
+
+            <div class="grid g-main mt">
+                <section class="card flush">
+                    ${cardHead('Haftanın günlerine göre davranış', 'Gün bazında giriş-çıkış, gecikme ve ek mesai')}
+                    <div class="table-wrap">
+                        <table>
+                            <thead><tr><th>Gün</th><th>Çalışılan</th><th>Ort. giriş</th><th>Gecikme</th><th>Ek mesai</th><th>Ort. çıkış</th><th>Net</th></tr></thead>
+                            <tbody>
+                                ${an.weekdayList.map(w => `<tr>
+                                    <td><b>${esc(w.dowName)}</b></td>
+                                    <td class="mono">${w.attended} gün</td>
+                                    <td class="mono">${w.avgIn}</td>
+                                    <td class="mono" style="color:${w.totalLateMin > 0 ? 'var(--warn)' : 'var(--muted)'}"><b>${w.totalLateMin > 0 ? '−' + w.totalLateMin + ' dk' : '0 dk'}</b> <small class="muted">(${w.lateCount}x)</small></td>
+                                    <td class="mono" style="color:${w.totalOvertimeMin > 0 ? 'var(--ok)' : 'var(--muted)'}">+${w.totalOvertimeMin} dk <small class="muted">(${w.otCount}x)</small></td>
+                                    <td class="mono">${w.avgOut}</td>
+                                    <td>${netPill(w.netMin)}</td>
+                                </tr>`).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+                <section class="card">
+                    ${cardHead('Birim ve kurum ortalamasıyla kıyas', e.dept + ' · ' + rangeLabel(), pill(deptRank + ' / ' + dn + '. sıra', 'info'))}
+                    ${rank([
+                        { l: 'Toplam gecikme', v: an.totalLateMin > 0 ? '−' + fmtMinDur(an.totalLateMin) : '0 dk', w: A.clamp((an.totalLateMin / Math.max(30, Math.max(deptAvgLate, compAvgLate, an.totalLateMin) * 1.15)) * 100, 4, 100), cls: 'warn' },
+                        { l: 'Birim ort. gecikme', v: '−' + fmtMinDur(deptAvgLate), w: A.clamp((deptAvgLate / Math.max(30, Math.max(deptAvgLate, compAvgLate, an.totalLateMin) * 1.15)) * 100, 4, 100), cls: '' },
+                        { l: 'Kurum ort. gecikme', v: '−' + fmtMinDur(compAvgLate), w: A.clamp((compAvgLate / Math.max(30, Math.max(deptAvgLate, compAvgLate, an.totalLateMin) * 1.15)) * 100, 4, 100), cls: '' },
+                        { l: 'Ek mesai', v: '+' + fmtMinDur(an.totalOvertimeMin), w: A.clamp((an.totalOvertimeMin / Math.max(60, Math.max(deptAvgOt, compAvgOt, an.totalOvertimeMin) * 1.15)) * 100, 8, 100), cls: 'ok' },
+                        { l: 'Birim ort. ek mesai', v: '+' + fmtMinDur(deptAvgOt), w: A.clamp((deptAvgOt / Math.max(60, Math.max(deptAvgOt, compAvgOt, an.totalOvertimeMin) * 1.15)) * 100, 8, 100), cls: '' },
+                        { l: 'Günlük ort. mesai', v: String(an.avgWorkH).replace('.', ',') + ' sa · birim ' + String(deptAvgWorkH).replace('.', ',') + ' sa', w: A.clamp((an.avgWorkH / 10.5) * 100, 10, 100), cls: 'ok' }
+                    ])}
+                </section>
+            </div>
+
+            <section class="card flush mt">
+                ${cardHead('İzin, mazeret ve güvenlik kayıtları', 'Seçili dönemdeki talepler ve konum / cihaz uyarıları', pill(empLeaves.length + ' izin · ' + empSec.length + ' güvenlik', empSec.length > 0 ? 'warn' : 'ok'))}
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th>Kayıt türü</th><th>Tarih</th><th>Başlık</th><th>Açıklama</th><th>Durum</th></tr></thead>
+                        <tbody>
+                            ${empLeaves.map(l => {
+                                const stMap = { pending: ['Onay bekliyor', 'warn'], approved: ['Onaylandı', 'ok'], rejected: ['Reddedildi', 'bad'], PENDING: ['Onay bekliyor', 'warn'], APPROVED: ['Onaylandı', 'ok'], REJECTED: ['Reddedildi', 'bad'] }[l.status] || [l.status, 'mute'];
+                                return `<tr>
+                                    <td>${pill('İzin / mazeret', 'info')}</td>
+                                    <td class="mono"><b>${esc(l.from || l.dates || '')}</b> (${l.days} gün)</td>
+                                    <td><b>${esc(l.type)}</b></td>
+                                    <td>${esc(l.reason || l.note || '')}</td>
+                                    <td>${pill(stMap[0], stMap[1])} ${(l.status === 'pending' || l.status === 'PENDING') ? `<button type="button" class="btn btn-ok btn-xs" data-act="leave-act" data-id="${l.id}" data-v="approved">Onayla</button> <button type="button" class="btn btn-bad btn-xs" data-act="leave-act" data-id="${l.id}" data-v="rejected">Reddet</button>` : ''}</td>
+                                </tr>`;
+                            }).join('')}
+                            ${empSec.map(s => {
+                                const sevMap = { HIGH: ['Yüksek risk', 'bad'], MED: ['Orta risk', 'warn'], LOW: ['Bilgi', 'info'] }[s.sev] || [s.sev, 'mute'];
+                                return `<tr>
+                                    <td>${pill('Güvenlik / cihaz', sevMap[1])}</td>
+                                    <td class="mono"><b>${esc((s.ago || '') + ' önce')}</b></td>
+                                    <td><b>${esc(D.ALERT_TYPES[s.type] || s.type)}</b></td>
+                                    <td>${esc(brName(s.branch))}${s.dist != null ? ' · Mesafe: ' + s.dist + ' m' : ''}</td>
+                                    <td>${pill(s.resolved ? 'Çözüldü' : sevMap[0], s.resolved ? 'ok' : sevMap[1])}</td>
+                                </tr>`;
+                            }).join('')}
+                            ${(!empLeaves.length && !empSec.length) ? `<tr><td colspan="5">${empty('Kayıt yok', 'Seçili dönemde izin talebi veya güvenlik uyarısı bulunmuyor.')}</td></tr>` : ''}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <details class="card prof-details no-zoom mt" id="prDetails"${detOpen ? ' open' : ''}>
+                <summary>
+                    <span class="prof-details-caret">${ic('chevron')}</span>
+                    <span><b>Özlük, şube, cihaz ve puantaj bilgileri</b><small>Sicil kartı, konum doğrulama ve Excel karnesindeki puantaj cetveli</small></span>
+                </summary>
+                <div class="prof-details-body">
+                    <div class="grid g-2">
+                        <section class="card flush">
+                            ${cardHead('Özlük, şube ve cihaz', 'Excel karnesi 1. bölüm', pill(e.sicil, 'mute'))}
+                            <div class="table-wrap">
+                                <table class="pdks-kv-table">
+                                    <tbody>
+                                        <tr><th>Sicil</th><td class="mono"><b>${esc(e.sicil)}</b></td><th>Ad soyad</th><td><b>${esc(e.name)}</b></td></tr>
+                                        <tr><th>Departman</th><td>${esc(e.dept)}</td><th>Unvan</th><td>${esc(e.title)}</td></tr>
+                                        <tr><th>Kurumsal e-posta</th><td class="mono">${esc(corpEmail)}</td><th>İşe başlama</th><td class="mono">${esc(startDateStr)}</td></tr>
+                                        <tr><th>Şube</th><td><b>${esc(b.name)}</b> (${esc(b.city)})</td><th>Konum sınırı</th><td class="mono">${b.lat.toFixed(4)}, ${b.lng.toFixed(4)} · ${b.radius} m</td></tr>
+                                        <tr><th>Şube adresi</th><td><small style="display:block;line-height:1.35">${esc(b.address || (b.name + ' · ' + b.city))}</small></td><th>Şube telefon</th><td><span class="mono">${esc(b.phone || '0850 222 0 252')}</span> · <button type="button" class="btn btn-soft btn-sm" style="height:24px;padding:0 8px;font-size:11px" data-act="br-map" data-code="${esc(b.code)}">${ic('pin')}Harita</button></td></tr>
+                                        <tr><th>Kurumsal Wi-Fi</th><td class="mono">${esc(b.wifi)}</td><th>Vardiya</th><td class="mono">${esc(D.shiftOf(e).name)} · ${D.hhmm(D.shiftOf(e).startMin)} – ${D.hhmm(D.shiftOf(e).endMin)} (tolerans ${D.shiftOf(e).graceMin} dk)</td></tr>
+                                        <tr><th>Mobil cihaz</th><td>${devObj ? esc(devObj.model + ' (' + devObj.os + ')') : esc(e.device || 'Kurumsal Android cihaz')}</td><th>Cihaz durumu</th><td>${devObj ? pill(devStatusLabel + ' · v' + devObj.ver, devObj.status === 'BOUND' ? 'ok' : 'warn') : pill('Eşlendi (aktif)', 'ok')}</td></tr>
+                                        <tr><th>Cihaz kimliği</th><td class="mono">${devObj ? esc(devObj.mask) + ' · Son: ' + esc(devObj.lastSeen || 'Aktif') : '—'}</td><th>Konum uyumu</th><td>${pill('%' + String(an.geofenceRate).replace('.', ',') + ' (ort. ' + String(an.avgDist).replace('.', ',') + ' m)', an.geofenceRate >= 98 ? 'ok' : 'warn')}</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </section>
+                        <section class="card flush">
+                            ${cardHead('Dönem puantaj cetveli', 'Excel karnesi 2. bölüm · ' + periodStr, netPill(an.netBalanceMin))}
+                            <div class="table-wrap">
+                                <table class="pdks-kv-table">
+                                    <tbody>
+                                        <tr><th>Takvim iş günü</th><td class="mono"><b>${an.totalDays}</b></td><th>Çalışılan gün</th><td class="mono"><b>${an.attendedDays}</b> (%${String(attRate).replace('.', ',')})</td></tr>
+                                        <tr><th>Zamanında giriş</th><td class="mono">${an.presentDays} gün</td><th>Geç kalınan</th><td class="mono">${an.lateDays} gün</td></tr>
+                                        <tr><th>İzinli / raporlu</th><td class="mono">${an.leaveDays} gün</td><th>Devamsız</th><td class="mono">${an.absentDays} gün</td></tr>
+                                        <tr><th>Toplam fiili çalışma</th><td class="mono"><b>${String(totalWorkH).replace('.', ',')} sa</b> (${totalWorkMin} dk)</td><th>Günlük ortalama</th><td class="mono">${String(an.avgWorkH).replace('.', ',')} sa (hedef 8,5 · fark ${shiftDiffH >= 0 ? '+' : ''}${String(shiftDiffH).replace('.', ',')})</td></tr>
+                                        <tr><th>Toplam ek mesai</th><td style="color:var(--ok)"><b>+${fmtMinDur(an.totalOvertimeMin)}</b></td><th>Toplam gecikme</th><td style="color:${an.totalLateMin > 0 ? 'var(--bad)' : 'var(--ink)'}"><b>${an.totalLateMin > 0 ? '−' + fmtMinDur(an.totalLateMin) : '0 dk'}</b></td></tr>
+                                        <tr><th>Net süre bakiyesi</th><td>${netPill(an.netBalanceMin)}</td><th>Birim / kurum sırası</th><td><b>${deptRank}/${dn}</b> · ${compRank}/${cn}</td></tr>
+                                        <tr><th>Ort. giriş / çıkış</th><td class="mono">${an.avgCheckIn} → ${an.avgCheckOut}</td><th>En erken / en geç giriş</th><td class="mono">${an.earliestCheckIn} – ${an.latestCheckIn}</td></tr>
+                                        <tr><th>Konum mesafesi</th><td class="mono">Min ${String(minDist).replace('.', ',')} m · Maks ${String(maxDist).replace('.', ',')} m</td><th>İzin / güvenlik</th><td>${empLeaves.length} izin · ${empSec.length ? empSec.length + ' uyarı' : 'ihlal yok'}</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </section>
+                    </div>
+                    <section class="card mt">
+                        ${cardHead('Şube konum mesafesi', b.name + ' merkezine günlük giriş mesafesi ve 30 m sınır', pill('Ort. ' + String(an.avgDist).replace('.', ',') + ' m', 'info'))}
+                        <div id="prChartDist"></div>
+                    </section>
+                </div>
+            </details>`;
         }
     };
 
@@ -2889,13 +3107,34 @@
             + '<div class="sk-table mt">' + '<div class="sk sk-row"></div>'.repeat(8) + '</div>';
     }
 
-    const dndKey = () => 'atf_dnd_' + (S.user ? S.user.role : 'HR') + '_' + S.page;
+    /* v2: kartlar artık sabit kimlikle (data-wid) saklanır; eski konum tabanlı düzenler yok sayılır. */
+    const dndKey = () => 'atf_dnd2_' + (S.user ? S.user.role : 'HR') + '_' + S.page;
+
+    /* Sayfadaki satır sıralarını (data-gid) sürükle-bırak kaydına yazar; genişlik tercihleri korunur. */
+    function wPersistOrder() {
+        const key = dndKey();
+        let saved = {};
+        try { saved = JSON.parse(localStorage.getItem(key) || '{}') || {}; } catch (_) { saved = {}; }
+        const order = Object.assign({}, saved.order || {});
+        $$('#page .grid[data-gid]').forEach(g => {
+            order[g.dataset.gid] = Array.from(g.children).filter(c => c.classList.contains('card') && c.dataset.wid).map(c => c.dataset.wid);
+        });
+        try { localStorage.setItem(key, JSON.stringify(Object.assign({}, saved, { order }))); } catch (_) { }
+    }
+    function wRefreshPanel(focusSel) {
+        const d = $('#drawer');
+        if (!d || !d.classList.contains('on') || !d.dataset.wpanel) return;
+        $('#drawerBody').innerHTML = wPanelHtml();
+        A.hydrate($('#drawerBody'));
+        if (focusSel) { const f = $(focusSel); if (f) try { f.focus({ preventScroll: true }); } catch (_) { } }
+    }
 
     function draw(animate) {
         if (!S.user || !PAGES[S.user.role] || !PAGES[S.user.role][S.page]) return;
         if (A.closeCardPopover) A.closeCardPopover(true);
         const p = PAGES[S.user.role][S.page], pg = $('#page'), active = document.activeElement, focusId = active && active.id && pg.contains(active) ? active.id : null, pos = focusId ? active.selectionStart : null;
         $('#pageTitle').textContent = p.title; $('#pageSub').textContent = typeof p.sub === 'function' ? p.sub() : p.sub; document.title = p.title + ' · Albayrak Finans PDKS';
+        WREG = [];
         pg.innerHTML = p.render(); pg.classList.toggle('still', !animate);
         Array.from(pg.children).forEach((c, i) => c.style.setProperty('--i', i));
         A.hydrate(pg); if (p.mount) p.mount(); A.enableDragGrid(pg, dndKey()); A.countUp(pg); buildNav(); setTools(p);
@@ -2973,27 +3212,35 @@
             });
         }
 
-        // 3. Haftanin Gunlerine Gore (Pzt-Cum) Ek Mesai & Gecikme Yuku (Bar Chart)
+        // 3. Haftanin Gunlerine Gore (Pzt-Cum) Gecikme (İK'nın ilk baktığı davranış)
         const elWeekday = $('#prChartWeekday');
         if (elWeekday) {
             const wList = an.weekdayList;
-            const maxBar = Math.max(60, ...wList.map(w => Math.max(w.totalOvertimeMin, w.totalLateMin))) + 20;
+            const maxBar = Math.max(30, ...wList.map(w => w.totalLateMin)) + 10;
             A.barChart(elWeekday, {
                 data: wList.map(w => ({
-                    label: w.dowName,
-                    value: w.totalOvertimeMin,
-                    color: w.netMin >= 0 ? '#0E9F6E' : '#C77700',
+                    label: w.dowShort || w.dowName,
+                    value: w.totalLateMin,
+                    color: '#C77700',
                     raw: w
                 })),
                 yMax: maxBar, h: 195,
                 yFmt: v => v + ' dk',
-                tip: d => `<b>${d.raw.dowName} (${d.raw.attended} iş günü)</b>Onaylı Ek Mesai: +${d.raw.totalOvertimeMin} dk (${d.raw.otCount}x) · Gecikme: −${d.raw.totalLateMin} dk (${d.raw.lateCount}x) · Net: ${fmtMinSigned(d.raw.netMin)}`
+                aria: 'Haftanın günlerine göre gecikme',
+                tip: d => `<b>${d.raw.dowName} (${d.raw.attended} iş günü)</b>Gecikme: −${d.raw.totalLateMin} dk (${d.raw.lateCount} kez) · Ek mesai: +${d.raw.totalOvertimeMin} dk`
             });
         }
 
-        // 4. 30m Sube Geofence Mesafe & Konum Dogrulama Istikrari (Area Chart)
+        // 4. Sube konum mesafesi — kapalı "Özlük ve cihaz" bölümünde; yalnızca açıkken çizilir
+        const det = $('#prDetails');
+        if (det) det.addEventListener('toggle', () => {
+            S.ui.profDetOpen = det.open;
+            if (det.open) drawDist();
+        });
+        drawDist();
+        function drawDist() {
         const elDist = $('#prChartDist');
-        if (elDist) {
+        if (elDist && !elDist.closest('details:not([open])')) {
             A.areaChart(elDist, {
                 labels: kayitlar.map(x => x.label),
                 series: [
@@ -3003,6 +3250,7 @@
                 yMin: 0, yMax: 35, h: 195, yFmt: v => v + ' m',
                 tip: (i, v) => `<b>${kayitlar[i].fullDate} (${kayitlar[i].dowName})</b>Şube Merkezine Mesafe: ${v[0]} m · Geofence Sınırı: 30 m (${v[0] <= 30 ? 'Uygun' : 'Sınır Dışı'})`
             });
+        }
         }
     }
 
@@ -3019,6 +3267,7 @@
         const d = $('#drawer');
         // Sadece gercekten acikken kapat; S.openEmpId'yi sifirlama (profil sayfasi kullanir)
         if (!d.classList.contains('on')) return;
+        delete d.dataset.wpanel;
         d.classList.remove('on', 'wide');
         d.setAttribute('aria-hidden', 'true');
     }
@@ -4033,6 +4282,18 @@
             draw(false);
         },
         'ov-lb-tab': el => { S.ui.ovLb = el.dataset.v; draw(false); },
+        'w-sec': el => {
+            const k = S.page + ':' + el.dataset.v;
+            S.ui.secClosed = Object.assign({}, S.ui.secClosed, { [k]: !(S.ui.secClosed && S.ui.secClosed[k]) });
+            draw(false);
+            const b = $('[data-act="w-sec"][data-v="' + CSS.escape(el.dataset.v) + '"]');
+            if (b) try { b.focus({ preventScroll: true }); } catch (_) { }
+        },
+        'an-jump': el => {
+            const t = $('#sec-' + CSS.escape(el.dataset.v));
+            if (t) t.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+        },
+        'ov-see-list': el => { Object.assign(S.ui.emp, { status: el.dataset.v, page: 1, openId: null }); go('employees'); },
         'dr-range': el => { S.fromDate = ''; S.toDate = ''; S.range = +el.dataset.v; draw(false); },
         'pol-toggle': el => {
             const k = el.dataset.k;
@@ -4080,6 +4341,48 @@
             if (!synced) draw(false);
         }),
         'dnd-reset': () => A.resetDragLayout(dndKey(), () => draw(true)),
+        'w-panel': () => {
+            openDrawer('Düzeni özelleştir · ' + (NAV_LABEL[S.page] || ''), wPanelHtml());
+            $('#drawer').dataset.wpanel = '1';
+            const first = $('#drawerBody .w-switch');
+            if (first) try { first.focus({ preventScroll: true }); } catch (_) { }
+        },
+        'w-toggle': el => {
+            const r = WREG.find(x => x.id === el.dataset.id); if (!r) return;
+            wSetVisible(r.id, !r.on);
+            draw(false);
+            wRefreshPanel('#wsw-' + CSS.escape(r.id));
+            A.toast(r.on ? `“${r.title}” kartı gizlendi` : `“${r.title}” kartı eklendi`);
+        },
+        'w-hide': el => {
+            const r = WREG.find(x => x.id === el.dataset.id); if (!r) return;
+            const card = el.closest('.card');
+            let finished = false;
+            const done = () => { if (finished) return; finished = true; wSetVisible(r.id, false); draw(false); wRefreshPanel(); A.toast(`“${r.title}” gizlendi · Düzeni özelleştir'den geri ekleyebilirsiniz`); };
+            const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            if (card && !reduce && card.animate) {
+                /* Çıkış animasyonu (opacity + scale); sekme arka plandaysa animasyon beklenmeden tamamlanır */
+                card.animate([{ opacity: 1, transform: 'scale(1)' }, { opacity: 0, transform: 'scale(.96)' }], { duration: 180, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', fill: 'forwards' });
+                setTimeout(done, 190);
+            } else done();
+        },
+        'w-move': el => {
+            const card = $('#page .card[data-wid="' + CSS.escape(el.dataset.id) + '"]');
+            if (!card || !card.parentElement) return;
+            const grid = card.parentElement, sibs = Array.from(grid.children).filter(c => c.classList.contains('card'));
+            const i = sibs.indexOf(card), j = i + (+el.dataset.v);
+            if (j < 0 || j >= sibs.length) { A.toast('Kart zaten satırın ' + (j < 0 ? 'başında' : 'sonunda')); return; }
+            if (+el.dataset.v < 0) grid.insertBefore(card, sibs[j]); else grid.insertBefore(card, sibs[j].nextSibling);
+            wPersistOrder();
+            draw(false);
+            wRefreshPanel('[data-act="w-move"][data-id="' + CSS.escape(el.dataset.id) + '"][data-v="' + el.dataset.v + '"]');
+        },
+        'w-reset': () => {
+            try { localStorage.removeItem(wKey()); localStorage.removeItem(dndKey()); } catch (_) { }
+            draw(true);
+            wRefreshPanel();
+            A.toast('Varsayılan düzene dönüldü');
+        },
         'export-emps': el => A.runDownload(el, exportEmpsExcel),
         'export-leaderboards': el => A.runDownload(el, exportLeaderboardsExcel),
         'export-analytics': el => A.runDownload(el, exportAnalyticsExcel),

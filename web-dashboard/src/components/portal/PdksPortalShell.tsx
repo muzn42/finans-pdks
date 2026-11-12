@@ -16,9 +16,9 @@ import { ThreeStudioEnhancer } from "@/components/three/ThreeStudioEnhancer";
  */
 
 const PDKS_SCRIPTS = [
-  "/core-xlsx.js?v=9.35",
+  "/core-xlsx.js?v=9.37",
   "/legacy/data.js?v=9.35",
-  "/legacy/app.js?v=9.36",
+  "/legacy/app.js?v=9.41",
   "/legacy/landing.js?v=9.35"
 ] as const;
 
