@@ -1472,3 +1472,45 @@ select option:checked {
 .br-table .br-name { min-width: 0; }
 .br-table .br-name b { display: block; white-space: normal; overflow-wrap: anywhere; line-height: 1.3; }
 .br-table .br-name small { display: block; white-space: normal; overflow-wrap: anywhere; color: var(--muted); font-size: 12px; margin-top: 2px; }
+
+/* ---------- Yerel form kontrolleri: tarayıcı / işletim sistemi çerçevelerini kaldır ----------
+   Opera ve bazı Windows Chromium sürümleri appearance:auto olan <select>, <textarea> ve
+   <input type=range> öğelerini kendi koyu dikdörtgen çerçevesiyle çizer. Tüm .input içi
+   kontroller çerçevesiz hale getirilir; odak halkası .input:focus-within üzerinden verilir. */
+.input select,
+.input textarea {
+    -webkit-appearance: none; appearance: none;
+    border: 0; outline: 0; box-shadow: none; border-radius: 0;
+    background-color: transparent; color: var(--ink);
+    width: 100%; min-width: 0; font: inherit; font-weight: 600; font-size: 13px;
+}
+.input input { border: 0; outline: 0; box-shadow: none; background-color: transparent; border-radius: 0; }
+.input select:not([multiple]) {
+    height: 100%; padding-right: 22px; cursor: pointer; text-overflow: ellipsis;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23868B93' stroke-width='2.5' stroke-linecap='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right center;
+}
+.input select:-moz-focusring { color: transparent; text-shadow: 0 0 0 var(--ink); }
+.input:has(select[multiple]), .input:has(textarea) { height: auto; padding: 8px 10px; align-items: stretch; }
+.input select[multiple], .shift-assign .input select[multiple] { border: 0; border-radius: 6px; padding: 2px; background: transparent; min-height: 132px; font-weight: 500; font-size: 12.5px; }
+.input select[multiple] option { padding: 4px 6px; border-radius: 6px; }
+
+/* Kaydırıcı (range): her tarayıcıda aynı kırmızı yuvarlak tutamaç */
+input[type="range"] {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 22px; background: transparent; border: 0; padding: 0; cursor: pointer;
+    accent-color: var(--red);
+}
+input[type="range"]::-webkit-slider-runnable-track { height: 6px; border-radius: 999px; background: var(--line); border: 0; }
+input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 18px; height: 18px; margin-top: -6px; border-radius: 50%;
+    background: var(--red); border: 3px solid var(--surface); box-shadow: 0 1px 4px rgba(0, 0, 0, .28);
+    transition: transform .15s var(--ease);
+}
+input[type="range"]:active::-webkit-slider-thumb { transform: scale(.97); }
+input[type="range"]::-moz-range-track { height: 6px; border-radius: 999px; background: var(--line); border: 0; }
+input[type="range"]::-moz-range-progress { height: 6px; border-radius: 999px; background: var(--red); }
+input[type="range"]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--red); border: 3px solid var(--surface); box-shadow: 0 1px 4px rgba(0, 0, 0, .28); }
+input[type="range"]:focus { outline: 0; }
+input[type="range"]:focus-visible { outline: 2px solid var(--red); outline-offset: 3px; border-radius: 999px; }
