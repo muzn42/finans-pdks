@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import { errorDetail, IT_ROLES, requireUser, STAFF_ROLES } from "@/lib/api-guard";
 import { prisma } from "@/lib/prisma";
 import { toIstanbulDate, toIstanbulTime } from "@/lib/timezone";
 import { sseHub } from "@/lib/sse";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const guard = await requireUser(req, STAFF_ROLES);
+  if (!guard.ok) return guard.response;
   try {
     const rows = await prisma.securityAlert.findMany({
       include: {
@@ -37,13 +40,15 @@ export async function GET() {
     });
   } catch (err) {
     return NextResponse.json(
-      { status: "error", message: "Güvenlik alarmları alınamadı.", detail: String(err) },
+      { status: "error", message: "Güvenlik alarmları alınamadı.", detail: errorDetail(err) },
       { status: 500 }
     );
   }
 }
 
 export async function PATCH(req: NextRequest) {
+  const guard = await requireUser(req, IT_ROLES);
+  if (!guard.ok) return guard.response;
   try {
     const body = await req.json();
     const code = String(body.code || body.id || "").trim();
@@ -74,7 +79,7 @@ export async function PATCH(req: NextRequest) {
     });
   } catch (err) {
     return NextResponse.json(
-      { status: "error", message: "Alarm güncellenemedi.", detail: String(err) },
+      { status: "error", message: "Alarm güncellenemedi.", detail: errorDetail(err) },
       { status: 500 }
     );
   }

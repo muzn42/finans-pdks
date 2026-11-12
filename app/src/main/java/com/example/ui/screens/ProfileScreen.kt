@@ -52,17 +52,20 @@ fun ProfileScreen(
 
     val activeEmp = remember(selectedEmployee, employees) {
         selectedEmployee ?: employees.firstOrNull() ?: EmployeeEntity(
-            id = 1L,
-            employeeCode = "FN-1048",
-            password = "",
-            branchId = 1L,
-            fullName = "Ahmet Yılmaz",
-            department = "Tasarruf Finansman Satış & Portföy",
-            title = "Kıdemli Tasarruf Danışmanı",
+            id = 501L,
+            employeeCode = "FN-1001",
+            password = "123",
+            branchId = 46L,
+            fullName = "Caner Öztürk",
+            department = "Şube Operasyon",
+            title = "Takım Lideri",
             role = "PERSONNEL",
-            email = "ahmet.yilmaz@albayrakfinans.com.tr",
+            email = "caner.ozturk@albayrakfinans.com.tr",
             phone = "+90 532 100 2030",
-            deviceId = "SM-S928B-883A"
+            deviceId = "iPhone 13",
+            shiftStartMin = 480,
+            shiftEndMin = 1020,
+            shiftGraceMin = 5
         )
     }
 
@@ -197,8 +200,10 @@ fun ProfileScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
+                        val shiftStartStr = String.format(Locale.US, "%02d:%02d", activeEmp.shiftStartMin / 60, activeEmp.shiftStartMin % 60)
+                        val shiftEndStr = String.format(Locale.US, "%02d:%02d", activeEmp.shiftEndMin / 60, activeEmp.shiftEndMin % 60)
                         ProfileMetaCol("Sicil No", activeEmp.employeeCode)
-                        ProfileMetaCol("Vardiya", "08:30 – 17:30")
+                        ProfileMetaCol("Vardiya", "$shiftStartStr – $shiftEndStr")
                         ProfileMetaCol("Geofence Sınır", "30.0 Metre")
                     }
                 }

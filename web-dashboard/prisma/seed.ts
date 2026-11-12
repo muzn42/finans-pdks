@@ -306,7 +306,7 @@ async function main() {
         {
           employeeId: e.id,
           eventType: "CHECK_IN",
-          source: idx % 3 === 0 ? "QR_TURNSTILE" : "MOBILE_GEOFENCE",
+          source: "MOBILE_GEOFENCE",
           branchCode: e.branchCode,
           distanceMeters: e.distMeters,
           isMockGps: false,
@@ -316,21 +316,21 @@ async function main() {
         {
           employeeId: e.id,
           eventType: "LUNCH_OUT",
-          source: "QR_TURNSTILE",
+          source: "MOBILE_GEOFENCE",
           branchCode: e.branchCode,
           distanceMeters: 4.2,
           isMockGps: false,
-          note: "Öğle arası turnike çıkışı",
+          note: "Öğle arası çıkış",
           timestampUtc: lunchOutUtc
         },
         {
           employeeId: e.id,
           eventType: "LUNCH_IN",
-          source: "QR_TURNSTILE",
+          source: "MOBILE_GEOFENCE",
           branchCode: e.branchCode,
           distanceMeters: 3.8,
           isMockGps: false,
-          note: "Öğle arası turnike dönüşü",
+          note: "Öğle arası dönüş",
           timestampUtc: lunchInUtc
         }
       );
@@ -340,7 +340,7 @@ async function main() {
         accessSeed.push({
           employeeId: e.id,
           eventType: "CHECK_OUT",
-          source: idx % 3 === 0 ? "QR_TURNSTILE" : "MOBILE_GEOFENCE",
+          source: "MOBILE_GEOFENCE",
           branchCode: e.branchCode,
           distanceMeters: e.distMeters,
           isMockGps: false,
@@ -350,7 +350,7 @@ async function main() {
       }
     }
     await prisma.accessLog.createMany({ data: accessSeed });
-    console.log(`${accessSeed.length} adet gün içi AccessLog (mola/turnike/mobil) kaydı oluşturuldu.`);
+    console.log(`${accessSeed.length} adet gün içi AccessLog (mola/mobil konum) kaydı oluşturuldu.`);
   }
 
   // İzin Talepleri (Yıllık, Rapor, Saha ve Saatlik İzin dahil)
@@ -485,6 +485,33 @@ async function main() {
       employeeSicil: allEmployees[0]?.sicil || "FN-1001",
       active: true,
       permsJson: JSON.stringify(["self_view"])
+    },
+    // Web panelindeki yerel demo hesaplarıyla birebir (sunucu doğrulamalı giriş için)
+    {
+      code: "ACC-6",
+      email: "elif.demir@albayrakfinans.com.tr",
+      passwordHash: "Ik!2026uzman",
+      role: "HR",
+      name: "Elif Demir",
+      title: "İşe Alım ve Özlük Uzmanı",
+      branchCode: "ŞB-001",
+      managedDept: null,
+      employeeSicil: null,
+      active: true,
+      permsJson: JSON.stringify(["emp_view", "emp_add", "leave_manage"])
+    },
+    {
+      code: "ACC-7",
+      email: "kerem.kaya@albayrakfinans.com.tr",
+      passwordHash: "Bt!2026destek",
+      role: "IT",
+      name: "Kerem Kaya",
+      title: "BT Sistem Destek Uzmanı",
+      branchCode: "ALL",
+      managedDept: null,
+      employeeSicil: null,
+      active: true,
+      permsJson: JSON.stringify(["sec_radar", "device_manage", "support_reset"])
     }
   ];
 

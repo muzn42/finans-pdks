@@ -329,6 +329,65 @@ fun AttendanceResultDialog(
             )
         }
 
+        is AttendanceResult.MockLocationDetected -> {
+            AlertDialog(
+                onDismissRequest = onDismiss,
+                icon = {
+                    Box(
+                        modifier = Modifier
+                            .size(54.dp)
+                            .background(OutOfRangeRed.copy(alpha = 0.15f), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Shield,
+                            contentDescription = "Sahte konum engellendi",
+                            tint = OutOfRangeRed,
+                            modifier = Modifier.size(34.dp)
+                        )
+                    }
+                },
+                title = {
+                    Text(
+                        text = "🚫 Sahte Konum (Mock GPS) Engellendi",
+                        fontWeight = FontWeight.Bold,
+                        color = OutOfRangeRed
+                    )
+                },
+                text = {
+                    Column {
+                        Text(
+                            text = result.message,
+                            fontSize = 14.sp,
+                            lineHeight = 20.sp
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(OutOfRangeRed.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                                .padding(8.dp)
+                        ) {
+                            Text(
+                                text = "MOCK_LOCATION ihlali yüksek öncelikli güvenlik alarmı olarak İK ve BT birimlerine kaydedildi.",
+                                fontSize = 12.sp,
+                                color = OutOfRangeRed,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = onDismiss,
+                        colors = ButtonDefaults.buttonColors(containerColor = OutOfRangeRed)
+                    ) {
+                        Text("Anladım", color = Color.White)
+                    }
+                }
+            )
+        }
+
         is AttendanceResult.Error -> {
             AlertDialog(
                 onDismissRequest = onDismiss,

@@ -1,0 +1,245 @@
+﻿<!DOCTYPE html>
+<html lang="tr" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Albayrak Finans PDKS — Personel Devam Kontrol Sistemi ve Kurumsal Yönetim Portalı.">
+    <meta name="robots" content="noindex, nofollow">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; script-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'">
+    <title>Albayrak Finans PDKS · Personel Devam Kontrol Sistemi</title>
+    <link rel="icon" type="image/svg+xml" href="/icon.svg">
+    <link rel="apple-touch-icon" href="/assets/branding/albayrak_pdks_logo.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css?v=9.35">
+    <link rel="stylesheet" href="landing.css?v=9.35">
+</head>
+<body>
+    <div class="toasts" id="toasts" aria-live="polite"></div>
+
+    <!-- ============ GİRİŞ & SCROLL-DRIVEN 3D ANAHTAR TESLİM SAHNESİ (#FFFFFF) ============ -->
+    <main class="auth-scroll-shell" id="authView">
+        <!-- Sahne 0 -> Sahne 1: İlk Açılışta Tam Ortada Sadece Kendisi Gözüken, Kaydırdıkça Sol Üste Yerleşen Şık Albayrak Finans PDKS Logosu -->
+        <div class="landing-brand-floating" id="landingBrandPill">
+            <div class="landing-brand-row">
+                <span class="brand-mark" id="authLogo"><svg viewBox="0 0 153 129" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><g transform="translate(-145, 363) scale(1, -1)"><g transform="translate(197.405, 269.5309)"><path fill="#5F6366" d="M 17.5,-17.24 L 31.726,-31.262 c 2.511,-2.542 5.763,-3.943 9.158,-3.943 3.395,0 6.647,1.401 9.157,3.943 l 44.358,43.655 c 5.438,5.507 5.955,15.036 1.153,21.241 -2.44,3.153 -5.841,5.014 -9.575,5.239 -3.659,0.213 -7.179,-1.171 -9.893,-3.919 L 46.277,5.838 c -2.8,-2.73 -7.1,-2.9 -10.2,-0.55 Q 34.6,6.4 33.5,4.8 L 17.5,-17.24 Z"/></g><g transform="translate(199.7247, 239.8713)"><path fill="#E11D24" fill-rule="evenodd" d="m 0,0 -28.313,28.313 c -2.046,2.046 -5.545,0.597 -5.545,-2.297 V -2.297 c 0,-1.794 1.455,-3.248 3.249,-3.248 H -2.297 C 0.597,-5.545 2.046,-2.046 0,0"/></g><g transform="translate(239.0149, 336.7379)"><path fill="#E11D24" d="m 0,0 -0.127,-0.126 -18.945,19.182 c -6.788,6.874 -17.885,6.874 -24.673,0 l -34.858,-35.039 -10.58,-10.624 c -0.018,-0.018 -0.03,-0.036 -0.048,-0.054 -3.045,-2.998 -4.767,-7.336 -4.191,-12.063 0.805,-6.608 6.241,-11.887 12.867,-12.526 4.142,-0.4 7.956,0.968 10.807,3.423 0.621,0.448 1.22,0.94 1.778,1.505 l 28.399,28.755 c 4.491,4.548 11.833,4.548 16.325,0 l 23.119,-23.409 20.537,20.31 z"/></g></g><path fill="#E11D24" fill-rule="evenodd" d="M 47.36 83.08 A 20.75 20.75 0 1 1 82.40 83.08 Q 75.70 96.30 64.88 110.69 Q 54.06 96.30 47.36 83.08 Z M 55.58 71.96 A 9.30 9.30 0 1 0 74.18 71.96 A 9.30 9.30 0 1 0 55.58 71.96 Z"/></svg></span>
+                <span class="brand-word">Albayrak <b>Finans</b> <em class="brand-pdks-badge">PDKS</em></span>
+            </div>
+            <div class="landing-intro-sub" id="landingIntroSub">
+                <span class="landing-intro-line"></span>
+                <span>PERSONEL DEVAM KONTROL SİSTEMİ</span>
+                <span class="landing-intro-line"></span>
+            </div>
+            <div class="landing-boot-loader" id="landingBootLoader" role="status" aria-live="polite">
+                <span class="landing-boot-track" aria-hidden="true"><span class="landing-boot-bar"></span></span>
+                <span class="sr-only">Arayüz hazırlanıyor</span>
+            </div>
+        </div>
+
+        <!-- Sağ Üst Hızlı Geçiş Butonu -->
+        <div class="landing-topbar-right">
+            <button type="button" class="landing-skip-btn" id="landingSkipBtn">
+                <span>Portal Seçimine Geç</span>
+                <svg class="ic" viewBox="0 0 24 24" data-i="arrow"></svg>
+            </button>
+        </div>
+
+        <!-- Sağ Kenar Minimal Kaydırma İlerleme Çizgisi -->
+        <div class="landing-progress-rail" aria-hidden="true">
+            <div class="landing-progress-bar" id="landingProgressBar"></div>
+        </div>
+
+        <!-- Yapışkan (Sticky) 100vh Saf Beyaz (#FFFFFF) Sahne -->
+        <div class="auth-ScrollStage">
+            <!-- 1080p 60 FPS Beyaz Normalize Edilmiş Kare Sahnesi (<canvas> + Senkron Katman) -->
+            <div class="landing-stage-wrap" id="landingStageWrap" aria-hidden="true">
+                <canvas id="landingCanvas" class="landing-canvas" width="1920" height="1080"></canvas>
+                <img id="landingFrameImg" class="landing-frame-img" src="assets/landing/scroll_frames/frame_000.webp" alt="" decoding="sync" fetchpriority="high">
+            </div>
+
+            <!-- Sahne 0 Alt Minimal Kaydırma İpucu -->
+            <button type="button" class="landing-scroll-cue" id="landingScrollCue">
+                <span class="scroll-mouse" aria-hidden="true"></span>
+                <span>Aşağı kaydırın</span>
+            </button>
+
+            <!-- SAHNE 5: Sağ Yarıya Spring Fiziğiyle Süzülen Portal Seçimi & Giriş Kartı -->
+            <section class="landing-auth-dock" id="landingAuthDock">
+                <div class="auth-card" id="authCardShell">
+                    <!-- ADIM 1: İlk Video Bitince Gelen Portal Rol Seçimi (İK / BT / Admin) -->
+                    <div class="portal-choice-view" id="portalChoiceView">
+                        <header>
+                            <div class="auth-card-eyebrow">Albayrak Finans PDKS</div>
+                            <h2>Giriş birimini seçin</h2>
+                            <p class="muted">Personel Devam Kontrol Sistemi üzerinde işlem yapacağınız yetkili yönetim portalını seçin.</p>
+                        </header>
+
+                        <div class="portal-role-cards" role="list">
+                            <button type="button" class="portal-role-card" data-choose-portal="HR">
+                                <span class="prc-ic red"><svg class="ic" viewBox="0 0 24 24" data-i="users"></svg></span>
+                                <span class="prc-body">
+                                    <b>İnsan Kaynakları (İK)</b>
+                                    <small>Personel ekleme (işe giriş), puantaj, ek mesai ve izin yönetimi</small>
+                                </span>
+                                <svg class="ic prc-arr" viewBox="0 0 24 24" data-i="arrow"></svg>
+                            </button>
+
+                            <button type="button" class="portal-role-card" data-choose-portal="IT">
+                                <span class="prc-ic dark"><svg class="ic" viewBox="0 0 24 24" data-i="shield"></svg></span>
+                                <span class="prc-body">
+                                    <b>Bilgi Teknolojileri (BT)</b>
+                                    <small>30m geofence güvenlik radarı, cihaz eşleme ve parola destek</small>
+                                </span>
+                                <svg class="ic prc-arr" viewBox="0 0 24 24" data-i="arrow"></svg>
+                            </button>
+
+                            <button type="button" class="portal-role-card" data-choose-portal="ADMIN">
+                                <span class="prc-ic info"><svg class="ic" viewBox="0 0 24 24" data-i="key"></svg></span>
+                                <span class="prc-body">
+                                    <b>Sistem Yöneticisi (Admin)</b>
+                                    <small>İK ve BT kullanıcıları oluşturma, modül ve rol yetkilerini seçme</small>
+                                </span>
+                                <svg class="ic prc-arr" viewBox="0 0 24 24" data-i="arrow"></svg>
+                            </button>
+                        </div>
+
+                        <footer class="auth-legal">
+                            Yetkisiz erişim denemeleri 5651 sayılı Kanun kapsamında kayıt altına alınır.
+                        </footer>
+                    </div>
+
+                    <!-- ADIM 2: Kullanıcı Birimi Seçince Ara Video Oynarken Gelen Kullanıcı Adı ve Şifre Ekranı -->
+                    <form class="login-credentials-view" id="loginForm" autocomplete="on" novalidate hidden>
+                        <header>
+                            <div class="login-step-top">
+                                <div class="auth-card-eyebrow" id="selectedPortalEyebrow">Albayrak Finans PDKS</div>
+                                <button type="button" class="portal-back-btn" id="portalBackBtn" title="Birim seçimine dön">
+                                    ← Birim değiştir
+                                </button>
+                            </div>
+                            <h2 id="selectedPortalTitle">Yönetim Portalına Giriş</h2>
+                            <p class="muted" id="selectedPortalSub">Yetkili kullanıcı adı (kurumsal e-posta) ve parolanızla giriş yapın.</p>
+                        </header>
+
+                        <div class="seg seg-lg" id="portalSeg" role="tablist" aria-label="Portal seçimi">
+                            <span class="seg-thumb"></span>
+                            <button type="button" role="tab" class="seg-btn is-active" data-portal="HR" aria-selected="true">
+                                <svg class="ic" viewBox="0 0 24 24" data-i="users"></svg>İK
+                            </button>
+                            <button type="button" role="tab" class="seg-btn" data-portal="IT" aria-selected="false">
+                                <svg class="ic" viewBox="0 0 24 24" data-i="shield"></svg>BT
+                            </button>
+                            <button type="button" role="tab" class="seg-btn" data-portal="ADMIN" aria-selected="false">
+                                <svg class="ic" viewBox="0 0 24 24" data-i="key"></svg>Admin
+                            </button>
+                        </div>
+
+                        <label class="field">
+                            <span>Kullanıcı adı / Kurumsal e-posta</span>
+                            <div class="input"><svg class="ic" viewBox="0 0 24 24" data-i="mail"></svg>
+                                <input id="loginEmail" name="email" type="email" inputmode="email" autocomplete="username" placeholder="ad.soyad@albayrakfinans.com.tr" required></div>
+                        </label>
+                        <label class="field">
+                            <span>Parola</span>
+                            <div class="input"><svg class="ic" viewBox="0 0 24 24" data-i="lock"></svg>
+                                <input id="loginPassword" name="password" type="password" autocomplete="current-password" placeholder="••••••••" required>
+                                <button type="button" class="input-eye" id="togglePass" title="Parolayı göster" aria-label="Parolayı göster"><svg class="ic" viewBox="0 0 24 24" data-i="eye"></svg></button></div>
+                        </label>
+
+                        <p class="form-error" id="loginError" role="alert" hidden></p>
+
+                        <button type="submit" class="btn btn-primary btn-block" id="loginBtn">
+                            <span>Giriş yap</span><svg class="ic" viewBox="0 0 24 24" data-i="arrow"></svg>
+                        </button>
+
+                        <button type="button" class="link-btn" id="demoFill">Demo bilgilerini doldur</button>
+
+                        <footer class="auth-legal">
+                            Yetkisiz erişim denemeleri 5651 sayılı Kanun kapsamında kayıt altına alınır.
+                            <a href="#" id="authKvkk">KVKK Aydınlatma Metni</a>
+                        </footer>
+                    </form>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- ============ UYGULAMA ============ -->
+    <div class="shell" id="appView" hidden>
+        <aside class="side" id="side">
+            <div class="side-brand">
+                <span class="brand-mark" id="sideLogo"></span>
+                <div><b>Albayrak Finans PDKS</b><small id="sidePortal">İK Portalı</small></div>
+            </div>
+            <nav class="nav" id="nav" aria-label="Ana menü"><span class="nav-thumb"></span></nav>
+            <div class="side-foot">
+                <button class="side-user" id="userBtn" type="button">
+                    <span class="avatar" id="userAvatar">ZY</span>
+                    <span class="side-user-txt"><b id="userName">—</b><small id="userTitle">—</small></span>
+                </button>
+                <button class="btn btn-ghost btn-block" id="logoutBtn" type="button"><svg class="ic" viewBox="0 0 24 24" data-i="logout"></svg><span>Çıkış yap</span></button>
+            </div>
+        </aside>
+        <div class="scrim" id="scrim"></div>
+
+        <div class="main">
+            <header class="top">
+                <button class="icon-btn only-mobile" id="menuBtn" aria-label="Menü"><svg class="ic" viewBox="0 0 24 24" data-i="menu"></svg></button>
+                <div class="top-title">
+                    <h1 id="pageTitle">Genel bakış</h1>
+                    <p id="pageSub" class="muted"></p>
+                </div>
+                <div class="top-tools">
+                    <div class="seg" id="rangeSeg" role="group" aria-label="Tarih aralığı">
+                        <span class="seg-thumb"></span>
+                        <button class="seg-btn is-active" data-range="1">Bugün</button>
+                        <button class="seg-btn" data-range="7">7 gün</button>
+                        <button class="seg-btn" data-range="30">30 gün</button>
+                        <button class="seg-btn" data-range="60">60 gün</button>
+                    </div>
+                    <div class="date-filter" id="dateFilterWrap" title="Özel tarih aralığı seçin">
+                        <svg class="ic" viewBox="0 0 24 24" data-i="calendar"></svg>
+                        <input type="date" id="dateFrom" aria-label="Başlangıç tarihi">
+                        <span class="date-sep">–</span>
+                        <input type="date" id="dateTo" aria-label="Bitiş tarihi">
+                        <button type="button" class="date-clear" id="dateClearBtn" title="Tarih filtresini sıfırla" hidden><svg class="ic" viewBox="0 0 24 24" data-i="x"></svg></button>
+                    </div>
+                    <div class="cselect" id="branchWrap">
+                        <button type="button" class="cselect-btn" id="branchBtn" data-act="cselect-toggle" aria-haspopup="listbox" aria-expanded="false">
+                            <svg class="ic" viewBox="0 0 24 24" data-i="building"></svg>
+                            <span class="cselect-label" id="branchLabel">Tüm şubeler</span>
+                            <svg class="ic cselect-caret" viewBox="0 0 24 24" data-i="chevron"></svg>
+                        </button>
+                        <div class="cselect-menu" id="branchMenu" role="listbox" aria-label="Şube seçimi"></div>
+                    </div>
+                    <button class="icon-btn" id="themeBtn" aria-label="Tema"><svg class="ic" viewBox="0 0 24 24" data-i="moon"></svg></button>
+                    <button class="icon-btn" id="kvkkBtn" aria-label="KVKK ve veri erişimi"><svg class="ic" viewBox="0 0 24 24" data-i="lock"></svg></button>
+                    <button class="icon-btn has-dot" id="bellBtn" aria-label="Bildirimler"><svg class="ic" viewBox="0 0 24 24" data-i="bell"></svg></button>
+                </div>
+            </header>
+            <div class="page" id="page" tabindex="-1"></div>
+        </div>
+    </div>
+
+    <!-- Çekmece (personel / talep detayı) -->
+    <aside class="drawer" id="drawer" aria-hidden="true">
+        <div class="drawer-head"><h3 id="drawerTitle">Detay</h3><button class="icon-btn" id="drawerClose" aria-label="Kapat"><svg class="ic" viewBox="0 0 24 24" data-i="x"></svg></button></div>
+        <div class="drawer-body" id="drawerBody"></div>
+    </aside>
+
+    <!-- Modal -->
+    <div class="modal" id="modal" aria-hidden="true">
+        <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+            <div class="modal-head"><h3 id="modalTitle"></h3><button class="icon-btn" id="modalClose" aria-label="Kapat"><svg class="ic" viewBox="0 0 24 24" data-i="x"></svg></button></div>
+            <div class="modal-body" id="modalBody"></div>
+            <div class="modal-foot" id="modalFoot"></div>
+        </div>
+    </div>
+
+    <script src="core.js?v=9.35"></script>
+    <script src="data.js?v=9.35"></script>
+    <script src="app.js?v=9.35"></script>
+    <script src="landing.js?v=9.35"></script>
+</body>
+</html>

@@ -1,12 +1,18 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { toIstanbulDate, toIstanbulDateTime, toIstanbulTime } from "@/lib/timezone";
+import { errorDetail, requireUser, STAFF_ROLES } from "@/lib/api-guard";
+import { parseBssidList } from "@/lib/validators";
+import { toIstanbulDate, toIstanbulDateTime, toIstanbulTime, hhmmFromMin } from "@/lib/timezone";
 import { sseHub } from "@/lib/sse";
+import { computeBranchWifiDiscovery } from "@/lib/wifi-discovery";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const guard = await requireUser(req, STAFF_ROLES);
+  if (!guard.ok) return guard.response;
   try {
+    const todayIso = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Istanbul" }).format(new Date());
     const [
       branches,
       shifts,
@@ -15,7 +21,11 @@ export async function GET() {
       accessLogs,
       alerts,
       accounts,
-      audits
+      audits,
+      accessLogTotal,
+      lateReasons,
+      todayExcuses,
+      wifiDiscovery
     ] = await Promise.all([
       prisma.branch.findMany({ orderBy: { id: "asc" } }),
       prisma.shift.findMany({ orderBy: { id: "asc" } }),
@@ -52,14 +62,34 @@ export async function GET() {
         take: 60
       }),
       prisma.userAccount.findMany({ orderBy: { id: "asc" } }),
-      prisma.auditLog.findMany({ orderBy: { createdAtUtc: "desc" }, take: 50 })
+      prisma.auditLog.findMany({ orderBy: { createdAtUtc: "desc" }, take: 50 }),
+      prisma.accessLog.count(),
+      prisma.dailyAttendance.findMany({
+        where: { lateReasonCode: { not: null } },
+        include: {
+          employee: { select: { id: true, sicil: true, name: true, dept: true, branchCode: true } }
+        },
+        orderBy: [{ workDate: "desc" }, { id: "desc" }],
+        take: 150
+      }),
+      prisma.dailyAttendance.findMany({
+        where: { workDate: todayIso, lateExcusedMin: { gt: 0 } },
+        select: { employeeId: true, lateExcusedMin: true }
+      }),
+      computeBranchWifiDiscovery()
     ]);
+
+    const todayExcuseMap = new Map<number, number>(
+      todayExcuses.map((r) => [r.employeeId, r.lateExcusedMin])
+    );
 
     return NextResponse.json({
       status: "success",
+      accessLogTotal,
       serverTimeUtc: new Date().toISOString(),
       serverTimeIstanbul: toIstanbulDateTime(new Date()),
       branches: branches.map((b) => ({
+        id: b.id,
         code: b.code,
         name: b.name,
         city: b.city,
@@ -71,8 +101,13 @@ export async function GET() {
         lng: b.lng,
         radius: b.radiusMeters,
         wifi: b.wifiSsid,
+        wifiBssid: b.wifiBssid || "",
+        backupWifiBssids: b.backupWifiBssids || "",
+        backupBssidsList: parseBssidList(b.backupWifiBssids),
+        wifiEnforcementMode: b.wifiEnforcementMode || "LEARNING",
         w: b.weight
       })),
+      wifiDiscovery,
       shifts: shifts.map((s) => ({
         id: s.id,
         code: s.code,
@@ -100,6 +135,8 @@ export async function GET() {
         checkIn: e.checkIn,
         checkOut: e.checkOut,
         lateMin: e.lateMin,
+        // Bugünün gerekçeli düşümü, günlük puantaj kaydından okunur (dünkü düşüm sızmasın)
+        lateExcusedMin: todayExcuseMap.get(e.id) ?? 0,
         overtimeMin: e.overtimeMin,
         dist: e.distMeters,
         device: e.deviceModel,
@@ -132,22 +169,52 @@ export async function GET() {
         reviewerName: l.reviewerName,
         createdAtIstanbul: toIstanbulDateTime(l.createdAtUtc)
       })),
-      accessLogs: accessLogs.map((a) => ({
-        id: a.id,
-        empId: a.employeeId,
-        sicil: a.employee.sicil,
-        name: a.employee.name,
-        dept: a.employee.dept,
-        branch: a.branchCode,
-        eventType: a.eventType,
-        source: a.source,
-        distanceMeters: a.distanceMeters,
-        isMockGps: a.isMockGps,
-        note: a.note,
-        timestampUtc: a.timestampUtc.toISOString(),
-        timeIstanbul: toIstanbulTime(a.timestampUtc),
-        dateIstanbul: toIstanbulDate(a.timestampUtc)
+      lateReasons: lateReasons.map((d) => ({
+        id: d.id,
+        empId: d.employeeId,
+        sicil: d.employee.sicil,
+        name: d.employee.name,
+        dept: d.employee.dept,
+        branch: d.employee.branchCode,
+        workDate: d.workDate,
+        checkIn: hhmmFromMin(d.inMin),
+        lateMin: d.lateMin,
+        reasonCode: d.lateReasonCode,
+        reasonNote: d.lateReasonNote,
+        status: d.lateExcuseStatus,
+        excusedMin: d.lateExcusedMin,
+        reviewedBy: d.lateReviewedBy,
+        reviewedAt: d.lateReviewedAtUtc ? toIstanbulDateTime(d.lateReviewedAtUtc) : null
       })),
+      accessLogs: accessLogs.map((a) => {
+        let nearbyWifis: Array<{ bssid: string; ssid?: string; rssi?: number }> = [];
+        try {
+          const parsed = JSON.parse(a.nearbyWifisJson || "[]");
+          if (Array.isArray(parsed)) nearbyWifis = parsed;
+        } catch {
+          nearbyWifis = [];
+        }
+        return {
+          id: a.id,
+          empId: a.employeeId,
+          sicil: a.employee.sicil,
+          name: a.employee.name,
+          dept: a.employee.dept,
+          branch: a.branchCode,
+          eventType: a.eventType,
+          source: a.source,
+          distanceMeters: a.distanceMeters,
+          accuracyMeters: a.accuracyMeters,
+          isMockGps: a.isMockGps,
+          nearbyWifis,
+          matchedBssid: a.matchedBssid,
+          wifiStatus: a.wifiStatus,
+          note: a.note,
+          timestampUtc: a.timestampUtc.toISOString(),
+          timeIstanbul: toIstanbulTime(a.timestampUtc),
+          dateIstanbul: toIstanbulDate(a.timestampUtc)
+        };
+      }),
       alerts: alerts.map((al) => ({
         id: al.code,
         dbId: al.id,
@@ -197,7 +264,7 @@ export async function GET() {
       {
         status: "error",
         message: "PostgreSQL veritabanı başlangıç verileri alınamadı.",
-        detail: String(err)
+        detail: errorDetail(err)
       },
       { status: 500 }
     );

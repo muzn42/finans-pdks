@@ -32,17 +32,20 @@ fun PersonalReportScreen(viewModel: MainViewModel) {
 
     val activeEmp = remember(selectedEmployee, employees) {
         selectedEmployee ?: employees.firstOrNull() ?: EmployeeEntity(
-            id = 1L,
-            employeeCode = "FN-1048",
-            password = "",
-            branchId = 1L,
-            fullName = "Ahmet Yılmaz",
-            department = "Tasarruf Finansman Satış & Portföy",
-            title = "Kıdemli Tasarruf Danışmanı",
+            id = 501L,
+            employeeCode = "FN-1001",
+            password = "123",
+            branchId = 46L,
+            fullName = "Caner Öztürk",
+            department = "Şube Operasyon",
+            title = "Takım Lideri",
             role = "PERSONNEL",
-            email = "ahmet.yilmaz@albayrakfinans.com.tr",
+            email = "caner.ozturk@albayrakfinans.com.tr",
             phone = "+90 532 100 2030",
-            deviceId = "SM-S928B-883A"
+            deviceId = "iPhone 13",
+            shiftStartMin = 480,
+            shiftEndMin = 1020,
+            shiftGraceMin = 5
         )
     }
 
@@ -193,30 +196,36 @@ fun PersonalReportScreen(viewModel: MainViewModel) {
         // 4. Günlük Mesai Süresi Trend Grafiği
         item(key = "report_trend_chart") {
             AnimatedEntryBox(index = 1) {
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = CardSurface,
-                    border = BorderStroke(1.dp, LineHairline)
+                ZoomableCard(
+                    title = "Mesai süresi istikrarı",
+                    subtitle = "Büyütülmüş günlük trend ve 8.5 saat referans çizgisi",
+                    showDialogHeader = false
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = CardSurface,
+                        border = BorderStroke(1.dp, LineHairline)
                     ) {
-                        MinimalSectionHeader(
-                            title = "Mesai süresi istikrarı (Saat)",
-                            subtitle = "Günlük çalışma saati eğilimi ve 8.5 saatlik referans çizgisi"
-                        )
-                        MinimalAreaChart(
-                            labels = myDeepAnalytics.dailyLogs.takeLast(7).map { it.dowShort }.ifEmpty {
-                                listOf("Pzt", "Sal", "Çar", "Per", "Cum", "Pzt", "Sal")
-                            },
-                            primarySeries = trendSeries,
-                            secondarySeries = List(trendSeries.size) { 8.5f },
-                            primaryColor = AlbayrakRed,
-                            secondaryColor = InkMuted
-                        )
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            MinimalSectionHeader(
+                                title = "Mesai süresi istikrarı (Saat)",
+                                subtitle = "Günlük çalışma saati eğilimi ve 8.5 saatlik referans çizgisi"
+                            )
+                            MinimalAreaChart(
+                                labels = myDeepAnalytics.dailyLogs.takeLast(7).map { it.dowShort }.ifEmpty {
+                                    listOf("Pzt", "Sal", "Çar", "Per", "Cum", "Pzt", "Sal")
+                                },
+                                primarySeries = trendSeries,
+                                secondarySeries = List(trendSeries.size) { 8.5f },
+                                primaryColor = AlbayrakRed,
+                                secondaryColor = InkMuted
+                            )
+                        }
                     }
                 }
             }

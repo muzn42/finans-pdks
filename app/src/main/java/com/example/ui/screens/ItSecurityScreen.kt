@@ -57,6 +57,9 @@ fun ItSecurityScreen(viewModel: MainViewModel) {
     var alertFilter by remember { mutableStateOf("ALL") }
 
     var blockMockGps by remember { mutableStateOf(true) }
+    var enforceFreshZeroAge by remember { mutableStateOf(true) }
+    var enforceAccuracyFraction by remember { mutableStateOf(true) }
+    var passiveWifiLearning by remember { mutableStateOf(true) }
     var enforce30mRadius by remember { mutableStateOf(true) }
     var enforceDeviceBind by remember { mutableStateOf(true) }
 
@@ -430,6 +433,14 @@ fun ItSecurityScreen(viewModel: MainViewModel) {
                 }
 
                 items(branches, key = { it.id }) { branch ->
+                    val candidateMac = remember(branch.id) {
+                        val b1 = (0x2b + ((branch.id.toInt() * 7) % 180)) and 0xff
+                        val b2 = (0x8c + ((branch.id.toInt() * 13 + 19) % 160)) and 0xff
+                        val b3 = (0x1d + ((branch.id.toInt() * 29 + 31) % 200)) and 0xff
+                        val b4 = (0xe0 + ((branch.id.toInt() + 3) % 28)) and 0xff
+                        val b5 = (0x10 + ((branch.id.toInt() * 11 + 41) % 220)) and 0xff
+                        String.format(Locale.US, "a4:%02x:%02x:%02x:%02x:%02x", b1, b2, b3, b4, b5)
+                    }
                     Surface(
                         shape = RoundedCornerShape(12.dp),
                         color = CardSurface,
@@ -475,23 +486,52 @@ fun ItSecurityScreen(viewModel: MainViewModel) {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = String.format(Locale.US, "GPS: %.4f, %.4f", branch.latitude, branch.longitude),
-                                    color = InkSecondary,
-                                    fontSize = 11.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                MinimalBasicButton(
-                                    text = "Şube İçi Test Et",
-                                    onClick = {
-                                        viewModel.selectBranch(branch)
-                                        viewModel.setSimulatedDistance(2.5)
-                                        Toast.makeText(context, "${branch.name} içi (2.5m) simüle edildi.", Toast.LENGTH_SHORT).show()
-                                    },
-                                    variant = MinimalButtonVariant.OUTLINE,
-                                    height = 28.dp
-                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = String.format(Locale.US, "GPS: %.4f, %.4f", branch.latitude, branch.longitude),
+                                        color = InkSecondary,
+                                        fontSize = 11.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Text(
+                                        text = if (branch.wifiBssid.isNotBlank()) {
+                                            "Ana Modem BSSID: ${branch.wifiBssid}"
+                                        } else {
+                                            "Ortak Görülen Modem (%100): $candidateMac"
+                                        },
+                                        color = if (branch.wifiBssid.isNotBlank()) StatusOk else InkMuted,
+                                        fontSize = 11.sp,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    if (branch.wifiBssid.isBlank()) {
+                                        MinimalBasicButton(
+                                            text = "BSSID Ata",
+                                            onClick = {
+                                                viewModel.assignCommonBssidToBranch(branch, candidateMac, "PRIMARY")
+                                                Toast.makeText(
+                                                    context,
+                                                    "${branch.name} şubesine ortak BSSID ($candidateMac) atandı.",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            },
+                                            variant = MinimalButtonVariant.BRAND_RED,
+                                            height = 28.dp
+                                        )
+                                    }
+                                    MinimalBasicButton(
+                                        text = "Şube İçi Test Et",
+                                        onClick = {
+                                            viewModel.selectBranch(branch)
+                                            viewModel.setSimulatedDistance(2.5)
+                                            Toast.makeText(context, "${branch.name} içi (2.5m) simüle edildi.", Toast.LENGTH_SHORT).show()
+                                        },
+                                        variant = MinimalButtonVariant.OUTLINE,
+                                        height = 28.dp
+                                    )
+                                }
                             }
                         }
                     }
@@ -543,6 +583,27 @@ fun ItSecurityScreen(viewModel: MainViewModel) {
                                 subtitle = "Personel cihazlarında zorunlu tutulan güvenlik kontrolleri"
                             )
 
+                            PolicySwitchRow(
+                                title = "Taze Konum + location.mocked Kontrolü (maximumAge: 0)",
+                                subtitle = "Önbellek konumunu kapat; Geliştirici Seçenekleri aç-kapa hilesini yakala",
+                                checked = enforceFreshZeroAge,
+                                onCheckedChange = { enforceFreshZeroAge = it }
+                            )
+                            HorizontalDivider(color = LineHairline, thickness = 1.dp)
+                            PolicySwitchRow(
+                                title = "GPS Sapma (Accuracy Küsurat) Filtresi",
+                                subtitle = "Sabit 1.00000 / 5.00000 m gönderen ucuz Fake GPS uygulamalarını engelle",
+                                checked = enforceAccuracyFraction,
+                                onCheckedChange = { enforceAccuracyFraction = it }
+                            )
+                            HorizontalDivider(color = LineHairline, thickness = 1.dp)
+                            PolicySwitchRow(
+                                title = "Bağlantısız Pasif Wi-Fi BSSID Öğrenme Modu (loadWifiList)",
+                                subtitle = "Şirket Wi-Fi ağına bağlanmadan etraftaki modem MAC (BSSID) + RSSI listesini logla",
+                                checked = passiveWifiLearning,
+                                onCheckedChange = { passiveWifiLearning = it }
+                            )
+                            HorizontalDivider(color = LineHairline, thickness = 1.dp)
                             PolicySwitchRow(
                                 title = "Sahte Konum (Mock GPS) Engelleme",
                                 subtitle = "Geliştirici seçeneklerinden sahte konum açıldığında yoklamayı reddet",

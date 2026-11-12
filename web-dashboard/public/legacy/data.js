@@ -106,6 +106,7 @@
             const late = A.clamp(1 - base - 0.045 - 0.012, 0.015, 0.14), absent = 0.014 + r() * 0.014, leave = 0.028 + r() * 0.02;
             DAYS.push({
                 idx: i,
+                dayIndex: i,
                 iso,
                 label,
                 fullDate,
@@ -130,10 +131,10 @@
         let status = 'PRESENT', inMin = null, late = 0, outMin = null, otMin = 0;
         if (r < 0.068) {
             status = 'LATE';
-            inMin = 9 * 60 + 4 + Math.floor(rnd() * 52);
-            late = inMin - 9 * 60;
+            inMin = 8 * 60 + 35 + 1 + Math.floor(rnd() * 52);
+            late = inMin - (8 * 60 + 35);
             outMin = 17 * 60 + 30 + Math.floor(rnd() * 45);
-            otMin = Math.max(0, outMin - 18 * 60);
+            otMin = Math.max(0, outMin - (17 * 60 + 30));
         } else if (r < 0.10) {
             status = 'LEAVE';
         } else if (r < 0.122) {
@@ -141,7 +142,7 @@
         } else {
             inMin = 8 * 60 + 5 + Math.floor((rnd() + rnd()) / 2 * 52);
             outMin = 17 * 60 + 30 + Math.floor(rnd() * 115);
-            otMin = Math.max(0, outMin - 18 * 60);
+            otMin = Math.max(0, outMin - (17 * 60 + 30));
         }
         const name = FN[(i * 7 + Math.floor(rnd() * 5)) % FN.length] + ' ' + LN[(i * 11 + 3) % LN.length];
         // Her personelin karakteristik "en çok geç kaldığı gün" ve "en çok mesai yaptığı gün" eğilimi
@@ -190,7 +191,13 @@
     function empAnalytics(empId, opts) {
         const e = EMPLOYEES.find(x => x.id === empId) || EMPLOYEES[0];
         const selDays = resolveDays(opts);
-        const cacheKey = `${e.id}_${selDays[0].iso}_${selDays[selDays.length - 1].iso}_${e.status}_${e.lateMin}`;
+        const sh = shiftOf(e);
+        const lateTh = sh.lateThreshold;
+        // Gece vardiyası (bitiş < başlangıç) gece yarısını aşar: çıkış dakikaları +1440 taşınır
+        const overnight = sh.endMin <= sh.startMin;
+        const endAbs = overnight ? sh.endMin + 1440 : sh.endMin;
+        const hhmmDay = m => hhmm(((Math.round(m) % 1440) + 1440) % 1440);
+        const cacheKey = `${e.id}_${selDays[0].iso}_${selDays[selDays.length - 1].iso}_${e.status}_${e.lateMin}_${e.lateExcusedMin || 0}_${sh.id || 0}_${sh.startMin}_${sh.graceMin}_${sh.endMin}`;
         if (analyticsCache.has(cacheKey)) return analyticsCache.get(cacheKey);
 
         const logs = [];
@@ -214,21 +221,25 @@
         selDays.forEach((day, idx) => {
             const isToday = day.iso === DAYS[DAYS.length - 1].iso;
             const r = A.rng(e.id * 997 + day.idx * 31);
-            let st = 'PRESENT', inM = 8 * 60 + 25, outM = 17 * 60 + 35, lMin = 0, oMin = 0, dist = +(3.2 + r() * 18).toFixed(1);
+            let st = 'PRESENT', inM = lateTh - 5, outM = sh.endMin + 5, lMin = 0, oMin = 0, dist = +(3.2 + r() * 18).toFixed(1);
 
             if (isToday) {
                 st = e.status;
                 if (st === 'PRESENT' || st === 'LATE') {
-                    inM = e.inMin || (8 * 60 + 26);
-                    lMin = e.lateMin || 0;
+                    inM = e.inMin || (lateTh - 4);
+                    // Vardiya şablonu değiştirildiğinde analiz anında yansır; onaylı saatlik izin
+                    // mahsubu sunucuda yapıldığı için sunucu değerinden büyük sonuç üretilmez.
+                    const lateExcused = e.lateExcusedMin || 0;
+                    const candLate = Math.max(0, inM - lateTh - lateExcused);
+                    lMin = e.lateMin ? Math.min(candLate, Math.max(0, e.lateMin - lateExcused)) : 0;
                     // Bugünün ek mesaisi veya beklenen çıkış saati
                     const otChance = r() + (day.dow === e.proneOtDow ? 0.35 : 0) + (e.workHabitBias > 0.55 ? 0.28 : 0);
                     if (otChance > 0.68) {
                         oMin = 20 + Math.floor(r() * 85) + (e.workHabitBias > 0.7 ? 25 : 0);
-                        outM = 18 * 60 + oMin;
+                        outM = endAbs + oMin;
                     } else {
                         oMin = e.overtimeMin || 0;
-                        outM = 17 * 60 + 32 + Math.floor(r() * 24) + oMin;
+                        outM = endAbs + 2 + Math.floor(r() * 24) + oMin;
                     }
                     dist = e.dist != null ? e.dist : dist;
                 }
@@ -242,20 +253,20 @@
                 } else if (roll < 0.036 + lateThreshold) {
                     st = 'LATE';
                     lMin = 6 + Math.floor(r() * 38) + (day.dow === e.proneLateDow ? 11 : 0) + (e.workHabitBias < 0.2 ? 14 : 0);
-                    inM = 9 * 60 + lMin;
+                    inM = lateTh + lMin;
                 } else {
                     st = 'PRESENT';
-                    inM = 8 * 60 + 6 + Math.floor(r() * 48);
+                    inM = lateTh - 24 + Math.floor(r() * 24);
                 }
 
                 if (st === 'PRESENT' || st === 'LATE') {
                     const otRoll = r() + (day.dow === e.proneOtDow ? 0.32 : 0) + (e.workHabitBias > 0.5 ? 0.25 : -0.1);
                     if (otRoll > 0.62) {
                         oMin = 18 + Math.floor(r() * 78) + (day.dow === e.proneOtDow ? 22 : 0) + (e.workHabitBias > 0.75 ? 30 : 0);
-                        outM = 18 * 60 + oMin;
+                        outM = endAbs + oMin;
                     } else {
                         oMin = 0;
-                        outM = 17 * 60 + 30 + Math.floor(r() * 25);
+                        outM = endAbs + Math.floor(r() * 25);
                     }
                 }
             }
@@ -275,7 +286,7 @@
             } else {
                 activeDays++;
                 if (st === 'PRESENT') presentDays++; else lateDaysCount++;
-                const wMin = Math.max(240, outM - inM - 60); // 1 saat öğle arası
+                const wMin = Math.max(240, outM - inM - sh.breakMin); // vardiya şablonundaki mola süresi
                 const netM = oMin - lMin;
 
                 totalLateMin += lMin;
@@ -314,7 +325,7 @@
                     dowShort: day.dowShort,
                     status: st,
                     checkIn: hhmm(inM),
-                    checkOut: hhmm(outM),
+                    checkOut: hhmmDay(outM),
                     lateMin: lMin,
                     overtimeMin: oMin,
                     netMin: netM,
@@ -349,8 +360,8 @@
                 avgOtMin: b.otCount ? Math.round(b.otMin / b.otCount) : 0,
                 avgOvertimeMin: b.otCount ? Math.round(b.otMin / b.otCount) : 0,
                 netMin: b.otMin - b.lateMin,
-                avgIn: b.days ? hhmm(Math.round(b.inSum / cnt)) : '08:25',
-                avgOut: b.days ? hhmm(Math.round(b.outSum / cnt)) : '17:35',
+                avgIn: b.days ? hhmm(Math.round(b.inSum / cnt)) : hhmm(lateTh - 5),
+                avgOut: b.days ? hhmmDay(b.outSum / cnt) : hhmm(sh.endMin + 5),
                 avgWorkH: b.days ? +(b.workMin / cnt / 60).toFixed(1) : 8.5
             };
         });
@@ -386,10 +397,10 @@
             avgWorkH: activeDays ? +(totalWorkMin / activeDays / 60).toFixed(1) : 8.5,
             totalWorkH: +(totalWorkMin / 60).toFixed(1),
             avgCheckIn: activeDays ? hhmm(Math.round(inMinSum / activeDays)) : '08:26',
-            avgCheckOut: activeDays ? hhmm(Math.round(outMinSum / activeDays)) : '17:42',
+            avgCheckOut: activeDays ? hhmmDay(outMinSum / activeDays) : '17:42',
             earliestCheckIn: earliestIn < 9999 ? hhmm(earliestIn) : '08:05',
             latestCheckIn: latestIn > 0 ? hhmm(latestIn) : '08:55',
-            latestCheckOut: latestOut > 0 ? hhmm(latestOut) : '18:30',
+            latestCheckOut: latestOut > 0 ? hhmmDay(latestOut) : '18:30',
             avgDist: activeDays ? +(distSum / activeDays).toFixed(1) : 5.4,
             maxDist: maxDist > 0 ? maxDist : 14.2,
             geofenceRate: activeDays ? +(geofenceOk / activeDays * 100).toFixed(1) : 100,
@@ -418,7 +429,9 @@
         const selDays = resolveDays(opts);
         const firstId = src.length ? src[0].id : 0;
         const lastId = src.length ? src[src.length - 1].id : 0;
-        const lbKey = `${src.length}_${firstId}_${lastId}_${selDays[0].iso}_${selDays[selDays.length - 1].iso}_${EMPLOYEES.length}`;
+        const shiftSig = SHIFTS.map(s => `${s.id}.${s.startMin}.${s.graceMin}.${s.endMin}.${s.breakMin}`).join('|');
+        const assignSig = src.reduce((a, e) => a + ((e.shiftId || 0) * ((e.id % 97) + 1)), 0);
+        const lbKey = `${src.length}_${firstId}_${lastId}_${selDays[0].iso}_${selDays[selDays.length - 1].iso}_${EMPLOYEES.length}_${shiftSig}_${assignSig}`;
         if (leaderboardCache.has(lbKey)) return leaderboardCache.get(lbKey);
 
         const list = src.map(e => empAnalytics(e.id, opts));
@@ -437,20 +450,21 @@
     }
 
     /* ---- İzin / mazeret talepleri ---- */
-    const LEAVE_TYPES = ['Yıllık izin', 'Mazeret izni', 'Saha görevi', 'Sağlık raporu'];
+    const LEAVE_TYPES = ['Saatlik izin', 'Yıllık izin', 'Mazeret izni', 'Saha görevi', 'Sağlık raporu'];
     const LEAVES = [];
+    const LATE_REASONS = [];
     (function () {
         const r = A.rng(77), st = ['pending', 'pending', 'pending', 'pending', 'pending', 'pending', 'approved', 'approved', 'approved', 'approved', 'approved', 'approved', 'approved', 'approved', 'rejected', 'rejected', 'rejected', 'rejected'];
         const reasons = ['Ailevi nedenlerle', 'Hastane randevusu', 'Müşteri ziyareti (saha)', 'Tapu işlemleri', 'Çocuğun okul toplantısı', 'Dinlenme izni', 'Doktor raporu ekte', 'Eğitim programı'];
         st.forEach((s, i) => {
-            const e = EMPLOYEES[Math.floor(r() * 60) + 3], t = LEAVE_TYPES[Math.floor(r() * 4)], days = t === 'Yıllık izin' ? 2 + Math.floor(r() * 5) : t === 'Sağlık raporu' ? 1 + Math.floor(r() * 3) : 1;
+            const e = EMPLOYEES[Math.floor(r() * 60) + 3], t = LEAVE_TYPES[Math.floor(r() * LEAVE_TYPES.length)], days = t === 'Saatlik izin' ? 0.2 : t === 'Yıllık izin' ? 2 + Math.floor(r() * 5) : t === 'Sağlık raporu' ? 1 + Math.floor(r() * 3) : 1;
             const d = new Date(2026, 9, 20); d.setDate(d.getDate() + Math.floor(r() * 9) - 2);
             LEAVES.push({ id: i + 1, empId: e.id, type: t, days, from: A.pad(d.getDate()) + '.' + A.pad(d.getMonth() + 1) + '.' + d.getFullYear(), reason: reasons[Math.floor(r() * reasons.length)], status: s, ago: (1 + Math.floor(r() * 46)) + ' sa önce' });
         });
     })();
 
     /* ---- BT: uyarılar, destek talepleri, cihazlar, denetim ---- */
-    const ALERT_TYPES = { MOCK_GPS: 'Sahte konum', GEOFENCE: '30 m dışı deneme', DEVICE: 'Farklı cihaz', ROOT: 'Root/Jailbreak', BRUTE: 'Çoklu hatalı parola' };
+    const ALERT_TYPES = { MOCK_GPS: 'Sahte konum (Mock GPS)', GEOFENCE: '30 m sınır aşımı', DEVICE: 'Farklı cihaz', ROOT: 'Kurumsal Wi-Fi / Root ihlali', BRUTE: 'Mesai dışı / hatalı giriş' };
     const ALERTS = [];
     (function () {
         const r = A.rng(31), kinds = ['MOCK_GPS', 'GEOFENCE', 'DEVICE', 'GEOFENCE', 'BRUTE', 'ROOT', 'GEOFENCE', 'MOCK_GPS', 'DEVICE', 'GEOFENCE', 'BRUTE', 'GEOFENCE', 'DEVICE', 'ROOT'];
@@ -570,45 +584,414 @@
 
     const API_BASE = '/api/v1/employees';
 
+    function refreshTodayInDays() {
+        const last = DAYS[DAYS.length - 1];
+        if (!last || !EMPLOYEES.length) return;
+        const N = EMPLOYEES.length || 1;
+        const onTime = EMPLOYEES.filter(e => e.status === 'PRESENT').length;
+        const late = EMPLOYEES.filter(e => e.status === 'LATE').length;
+        const leave = EMPLOYEES.filter(e => e.status === 'LEAVE').length;
+        const absent = EMPLOYEES.filter(e => e.status === 'ABSENT').length;
+        const lateEmps = EMPLOYEES.filter(e => e.status === 'LATE' || (e.lateMin || 0) > 0);
+        const avgLateMin = lateEmps.length
+            ? lateEmps.reduce((s, e) => s + (e.lateMin || 0), 0) / lateEmps.length
+            : 0;
+        const totalOtH = EMPLOYEES.reduce((s, e) => s + (e.overtimeMin || 0), 0) / 60;
+        last.onTime = onTime / N;
+        last.late = late / N;
+        last.leave = leave / N;
+        last.absent = absent / N;
+        last.lateMin = +(avgLateMin.toFixed(1));
+        last.overtimeH = +(totalOtH.toFixed(1));
+    }
+
+    function normalizeAlertType(rawType) {
+        const s = String(rawType || '').toLocaleUpperCase('tr-TR');
+        if (s === 'MOCK_GPS' || s.includes('SAHTE') || s.includes('MOCK')) return 'MOCK_GPS';
+        if (s === 'GEOFENCE' || s.includes('30M') || s.includes('30 M') || s.includes('GEOFENCE') || s.includes('SINIR')) return 'GEOFENCE';
+        if (s === 'DEVICE' || s.includes('CİHAZ') || s.includes('CIHAZ')) return 'DEVICE';
+        if (s === 'ROOT' || s.includes('WI-FI') || s.includes('WIFI') || s.includes('ROOT') || s.includes('JAILBREAK')) return 'ROOT';
+        return 'BRUTE';
+    }
+
+    function normalizeAuditCat(role, action) {
+        const a = String(action || '').toLocaleLowerCase('tr-TR');
+        const r = String(role || '').toUpperCase();
+        if (a.includes('güvenlik') || a.includes('sahte') || a.includes('alarm') || a.includes('engel')) return 'SECURITY';
+        if (a.includes('cihaz') || a.includes('eşleme')) return 'DEVICE';
+        if (a.includes('izin') || a.includes('personel') || a.includes('vardiya') || r === 'HR') return 'HR';
+        if (a.includes('parola') || a.includes('kullanıcı') || a.includes('hesap') || r === 'ADMIN') return 'ACCOUNT';
+        return 'SYSTEM';
+    }
+
     function syncEmployeesFromBackend(onSync) {
-        if (typeof fetch !== 'function' || (typeof location !== 'undefined' && location.protocol === 'file:')) return;
-        fetch(API_BASE + '?size=2000', { headers: { 'Accept': 'application/json' } })
-            .then(r => (r.ok ? r.json() : null))
-            .then(data => {
-                if (!data || !Array.isArray(data.items) || !data.items.length) return;
-                const previousEmployees = EMPLOYEES.slice();
-                EMPLOYEES.length = 0;
-                data.items.forEach(item => {
-                    EMPLOYEES.push(Object.assign({
-                        id: item.id,
-                        sicil: item.sicil,
-                        name: item.name,
-                        dept: item.dept,
-                        title: item.title,
-                        branch: item.branch || 'ŞB-001',
-                        status: item.status || 'PRESENT',
-                        inMin: item.inMin != null ? item.inMin : null,
-                        outMin: item.outMin != null ? item.outMin : null,
-                        checkIn: item.checkIn || (item.inMin != null ? hhmm(item.inMin) : null),
-                        checkOut: item.checkOut || (item.outMin != null ? hhmm(item.outMin) : null),
-                        lateMin: item.lateMin || 0,
-                        overtimeMin: item.overtimeMin || 0,
-                        dist: item.dist != null ? item.dist : null,
-                        tone: item.tone || (1 + (item.id % 5)),
-                        proneLateDow: item.proneLateDow || 1,
-                        proneOtDow: item.proneOtDow || 3,
-                        workHabitBias: item.workHabitBias != null ? item.workHabitBias : 0.65,
-                        email: item.email || '',
-                        phone: item.phone || '',
-                        startDate: item.startDate || '2026-10-20',
-                        isNewHire: !!item.isNewHire
-                    }));
+        return syncAllFromPostgres({ force: true }).then(() => {
+            if (typeof onSync === 'function') onSync(EMPLOYEES);
+            return EMPLOYEES;
+        });
+    }
+
+    /* =========================================================================
+       PostgreSQL 18 + Prisma gerçek veri katmanı (/api/v1/bootstrap + SSE)
+       Web panelindeki tüm ekranlar bu katmandan beslenir; demo üretimi yalnızca
+       API erişilemediğinde yedek olarak kalır.
+       ========================================================================= */
+    const SHIFTS = [];
+    const ACCESS_LOGS = [];
+    const WIFI_DISCOVERY = [];
+    const SYNC = { ok: false, inFlight: false, lastSync: null, error: null, sse: 'idle', events: [], accessLogTotal: 0 };
+
+    function deterministicMacJs(branchIdx, slot) {
+        const b0 = 0xa4;
+        const b1 = (0x2b + ((branchIdx * 7) % 180)) & 0xff;
+        const b2 = (0x8c + ((branchIdx * 13 + slot * 19) % 160)) & 0xff;
+        const b3 = (0x1d + ((branchIdx * 29 + slot * 31) % 200)) & 0xff;
+        const b4 = (0xe0 + ((branchIdx + slot * 3) % 28)) & 0xff;
+        const b5 = (0x10 + ((branchIdx * 11 + slot * 41) % 220)) & 0xff;
+        return [b0, b1, b2, b3, b4, b5].map(x => x.toString(16).padStart(2, '0')).join(':');
+    }
+
+    function seedFallbackWifiDiscovery() {
+        WIFI_DISCOVERY.length = 0;
+        const neighborSsids = [
+            'TurkTelekom_Fiber_Esnaf',
+            'Superonline_WiFi_YanBina',
+            'VodafoneNet_Komsu_5G',
+            'Kablonet_IsMerkezi_24G',
+            'Eczane_Misafir_WiFi',
+            'Noterlik_Ofis_Fiber'
+        ];
+        BRANCHES.forEach((b, idx) => {
+            const brEmps = EMPLOYEES.filter(e => e.branch === b.code && (e.status === 'PRESENT' || e.status === 'LATE'));
+            const active = brEmps.length ? brEmps : EMPLOYEES.filter(e => e.branch === b.code).slice(0, 6);
+            const total = Math.max(1, active.length);
+            const primaryMac = b.wifiBssid || deterministicMacJs(idx + 1, 1);
+            const backupMac = (b.backupWifiBssids || '').split(',')[0].trim() || deterministicMacJs(idx + 1, 2);
+            WIFI_DISCOVERY.push({
+                branchCode: b.code,
+                branchName: b.name,
+                city: b.city,
+                bssid: primaryMac,
+                ssid: b.wifi || ('ALBAYRAK_' + (idx + 1) + '_WIFI'),
+                avgRssi: -48 - (idx % 7),
+                maxRssi: -44,
+                uniqueEmployeeCount: total,
+                totalBranchCheckInEmployees: total,
+                commonalityPct: 100,
+                scanHitCount: total * 3,
+                employeeSample: active.slice(0, 5).map(e => ({ id: e.id, sicil: e.sicil, name: e.name })),
+                assignmentStatus: b.wifiBssid && b.wifiBssid.toLowerCase() === primaryMac ? 'PRIMARY' : 'UNASSIGNED',
+                recommendedRole: 'PRIMARY'
+            });
+            const bkCount = Math.max(1, Math.round(total * 0.8));
+            WIFI_DISCOVERY.push({
+                branchCode: b.code,
+                branchName: b.name,
+                city: b.city,
+                bssid: backupMac,
+                ssid: neighborSsids[idx % neighborSsids.length],
+                avgRssi: -68 - (idx % 8),
+                maxRssi: -63,
+                uniqueEmployeeCount: bkCount,
+                totalBranchCheckInEmployees: total,
+                commonalityPct: Math.round((bkCount / total) * 100),
+                scanHitCount: bkCount * 2,
+                employeeSample: active.slice(0, 4).map(e => ({ id: e.id, sicil: e.sicil, name: e.name })),
+                assignmentStatus: (b.backupWifiBssids || '').toLowerCase().includes(backupMac) ? 'BACKUP' : 'UNASSIGNED',
+                recommendedRole: 'BACKUP'
+            });
+        });
+    }
+    seedFallbackWifiDiscovery();
+
+    /* Personelin atanmış vardiya şablonu (yoksa 08:30 – 17:30 standart) */
+    function shiftOf(e) {
+        const id = e && e.shiftId != null ? +e.shiftId : null;
+        const s = id != null ? SHIFTS.find(x => +x.id === id) : null;
+        const startMin = s && s.startMin != null ? +s.startMin : (e && e.shiftStartMin != null ? +e.shiftStartMin : 510);
+        const endMin = s && s.endMin != null ? +s.endMin : (e && e.shiftEndMin != null ? +e.shiftEndMin : 1050);
+        const graceMin = s && s.graceMin != null ? +s.graceMin : 5;
+        const breakMin = s && s.breakMin != null ? +s.breakMin : 60;
+        return {
+            id,
+            code: (s && s.code) || '',
+            name: (s && s.name) || (e && e.shiftName) || 'Standart Vardiya',
+            startMin,
+            endMin,
+            graceMin,
+            breakMin,
+            lateThreshold: startMin + graceMin
+        };
+    }
+
+    const trDate = iso => {
+        if (!iso) return '';
+        const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
+        return m ? `${m[3]}.${m[2]}.${m[1]}` : String(iso);
+    };
+    const legacyStatus = s => String(s || 'PENDING').toLowerCase();
+
+    function mapEmployeeRow(item, idx) {
+        const seedIdx = idx != null ? idx : Math.max(0, (+item.id || 1) - 501);
+        const defaultBias = item.status === 'LATE'
+            ? 0.16
+            : (item.overtimeMin || 0) > 30
+            ? 0.78
+            : ((seedIdx * 17) % 100) / 100;
+        return {
+            id: item.id,
+            sicil: item.sicil,
+            name: item.name,
+            dept: item.dept,
+            title: item.title,
+            branch: item.branch || 'ŞB-001',
+            shiftId: item.shiftId || null,
+            shiftName: item.shiftName || '',
+            shiftStartMin: item.shiftStartMin != null ? item.shiftStartMin : 510,
+            shiftEndMin: item.shiftEndMin != null ? item.shiftEndMin : 1050,
+            status: item.status || 'PRESENT',
+            inMin: item.inMin != null ? item.inMin : null,
+            outMin: item.outMin != null ? item.outMin : null,
+            checkIn: item.checkIn || (item.inMin != null ? hhmm(item.inMin) : null),
+            checkOut: item.checkOut || (item.outMin != null ? hhmm(item.outMin) : null),
+            lateMin: item.lateMin || 0,
+            lateExcusedMin: item.lateExcusedMin || 0,
+            overtimeMin: item.overtimeMin || 0,
+            dist: item.dist != null ? item.dist : null,
+            device: item.device || 'Kurumsal Mobil Cihaz',
+            os: item.os || 'Android 14',
+            ver: item.ver || '2.4.1',
+            bound: item.bound !== false,
+            tone: item.tone || (1 + (seedIdx % 5)),
+            proneLateDow: item.proneLateDow || (1 + ((seedIdx * 3) % 5)),
+            proneOtDow: item.proneOtDow || (1 + ((seedIdx * 2 + 2) % 5)),
+            workHabitBias: item.workHabitBias != null ? item.workHabitBias : defaultBias,
+            email: item.email || '',
+            phone: item.phone || '',
+            startDate: item.hireDate || item.startDate || '2026-10-20',
+            leaveUsed: item.leaveUsed != null ? item.leaveUsed : 0,
+            leaveTotal: item.leaveTotal != null ? item.leaveTotal : 14,
+            isNewHire: !!item.isNewHire
+        };
+    }
+
+    function applyBootstrap(d) {
+        if (!d || d.status !== 'success') return false;
+        const previousEmployees = EMPLOYEES.slice();
+
+        if (Array.isArray(d.branches) && d.branches.length) {
+            BRANCHES.length = 0;
+            d.branches.forEach((b, i) => BRANCHES.push({
+                id: b.id != null ? b.id : i + 1,
+                code: b.code,
+                name: b.name,
+                city: b.city || '',
+                district: b.district || '',
+                address: b.address || '',
+                phone: b.phone || '',
+                googleMapUrl: b.googleMapUrl || '',
+                lat: +b.lat,
+                lng: +b.lng,
+                radius: b.radius != null ? +b.radius : 30,
+                wifi: b.wifi || '',
+                wifiBssid: b.wifiBssid || '',
+                backupWifiBssids: b.backupWifiBssids || '',
+                backupBssidsList: Array.isArray(b.backupBssidsList) ? b.backupBssidsList : [],
+                wifiEnforcementMode: b.wifiEnforcementMode || 'LEARNING',
+                w: b.w != null ? +b.w : (b.code === 'ŞB-001' ? 0.16 : 0.01585)
+            }));
+        }
+
+        if (Array.isArray(d.wifiDiscovery) && d.wifiDiscovery.length) {
+            WIFI_DISCOVERY.length = 0;
+            d.wifiDiscovery.forEach(w => WIFI_DISCOVERY.push(Object.assign({}, w)));
+        } else {
+            seedFallbackWifiDiscovery();
+        }
+
+        SHIFTS.length = 0;
+        (d.shifts || []).forEach(s => SHIFTS.push(Object.assign({}, s)));
+
+        if (Array.isArray(d.employees) && d.employees.length) {
+            EMPLOYEES.length = 0;
+            d.employees.forEach((item, idx) => EMPLOYEES.push(mapEmployeeRow(item, idx)));
+            syncEmployeeReferences(previousEmployees);
+
+            // Cihaz tablosunu da PostgreSQL personel cihaz kayıtlarından besle
+            const prevDeviceStatus = new Map(DEVICES.map(dv => [dv.empId, dv.status]));
+            DEVICES.length = 0;
+            EMPLOYEES.forEach((e, idx) => {
+                const st = prevDeviceStatus.get(e.id) || (e.bound === false ? 'PENDING' : 'BOUND');
+                DEVICES.push({
+                    id: 'DV-' + (7001 + idx),
+                    empId: e.id,
+                    model: e.device || MODELS[idx % MODELS.length],
+                    os: e.os || 'Android 14',
+                    ver: e.ver || '2.4.1',
+                    seen: (idx % 38) + 1,
+                    status: st,
+                    mask: 'a' + ((e.id * 3) % 9) + 'f…' + (10 + ((e.id * 7) % 89))
                 });
-                syncEmployeeReferences(previousEmployees);
-                clearAnalyticsCache();
-                if (typeof onSync === 'function') onSync(EMPLOYEES);
+            });
+        }
+
+        if (Array.isArray(d.leaves)) {
+            LEAVES.length = 0;
+            d.leaves.forEach(l => LEAVES.push({
+                id: l.dbId != null ? l.dbId : l.id,
+                code: l.id,
+                empId: l.empId,
+                type: l.type,
+                days: l.days,
+                from: trDate(l.start),
+                to: trDate(l.end),
+                reason: l.note || '',
+                status: legacyStatus(l.status),
+                ago: l.createdAtIstanbul || '',
+                isHourly: !!l.isHourly,
+                startClock: l.startClock,
+                endClock: l.endClock,
+                durationMin: l.durationMin,
+                sicil: l.sicil,
+                name: l.name
+            }));
+        }
+
+        if (Array.isArray(d.lateReasons)) {
+            LATE_REASONS.length = 0;
+            d.lateReasons.forEach(r => LATE_REASONS.push({
+                id: r.id,
+                empId: r.empId,
+                sicil: r.sicil,
+                name: r.name,
+                dept: r.dept,
+                branch: r.branch,
+                workDate: r.workDate,
+                workDateTr: trDate(r.workDate),
+                checkIn: r.checkIn || '—',
+                lateMin: r.lateMin || 0,
+                reasonCode: r.reasonCode || '',
+                reasonNote: r.reasonNote || '',
+                status: r.status || 'PENDING',
+                excusedMin: r.excusedMin || 0,
+                reviewedBy: r.reviewedBy || '',
+                reviewedAt: r.reviewedAt || ''
+            }));
+        }
+
+        if (Array.isArray(d.alerts)) {
+            ALERTS.length = 0;
+            d.alerts.forEach((a, i) => ALERTS.push({
+                id: a.dbId != null ? a.dbId : i + 1,
+                dbId: a.dbId,
+                code: a.id,
+                type: normalizeAlertType(a.type),
+                rawType: a.type,
+                sev: a.sev,
+                empId: a.empId,
+                branch: a.branch,
+                ago: a.time,
+                dist: a.dist,
+                status: a.status,
+                resolved: a.status === 'RESOLVED' || a.status === 'CLOSED'
+            }));
+        }
+
+        if (Array.isArray(d.accessLogs)) {
+            ACCESS_LOGS.length = 0;
+            d.accessLogs.forEach(a => ACCESS_LOGS.push(Object.assign({}, a)));
+        }
+        SYNC.accessLogTotal = d.accessLogTotal != null ? d.accessLogTotal : ACCESS_LOGS.length;
+
+        if (Array.isArray(d.audits) && d.audits.length) {
+            AUDIT.length = 0;
+            d.audits.forEach(a => AUDIT.push({
+                t: a.time,
+                who: a.actor || 'Sistem',
+                act: a.action,
+                target: a.target || '',
+                cat: normalizeAuditCat(a.role, a.action)
+            }));
+        }
+
+        refreshTodayInDays();
+        clearAnalyticsCache();
+        SYNC.ok = true;
+        SYNC.error = null;
+        SYNC.lastSync = new Date().toISOString();
+        try { g.dispatchEvent(new CustomEvent('atf:sync', { detail: { source: 'bootstrap' } })); } catch (_) {}
+        return true;
+    }
+
+    let syncPromise = null;
+    function syncAllFromPostgres(opts) {
+        if (typeof fetch !== 'function') return Promise.resolve(false);
+        if (typeof location !== 'undefined' && location.protocol === 'file:') return Promise.resolve(false);
+        if (syncPromise && !(opts && opts.force)) return syncPromise;
+        SYNC.inFlight = true;
+        syncPromise = fetch('/api/v1/bootstrap', { cache: 'no-store', headers: { Accept: 'application/json' } })
+            .then(r => (r.ok ? r.json() : Promise.reject(new Error('PostgreSQL yanıtı: HTTP ' + r.status))))
+            .then(d => applyBootstrap(d))
+            .catch(err => {
+                SYNC.error = String((err && err.message) || err);
+                return false;
             })
-            .catch(() => {});
+            .finally(() => {
+                SYNC.inFlight = false;
+                syncPromise = null;
+            });
+        return syncPromise;
+    }
+
+    let sseSource = null, sseRefetchTimer = null, sseWatchdog = null, sseStartedAt = 0;
+    function startRealtimeStream(force) {
+        if (typeof EventSource !== 'function') return;
+        // Takılı kalan (CONNECTING) veya kapanmış akışları yeniden kur.
+        const stuck = sseSource && sseSource.readyState === 0 && (Date.now() - sseStartedAt > 10000);
+        if (sseSource && sseSource.readyState !== 2 && !stuck && !force) return;
+        if (sseSource) {
+            try { sseSource.close(); } catch (_) {}
+            sseSource = null;
+        }
+        SYNC.sse = 'connecting';
+        sseStartedAt = Date.now();
+        try {
+            const es = new EventSource('/api/v1/events/stream');
+            sseSource = es;
+            clearTimeout(sseWatchdog);
+            sseWatchdog = setTimeout(() => {
+                if (sseSource === es && es.readyState !== 1) {
+                    try { es.close(); } catch (_) {}
+                    if (sseSource === es) sseSource = null;
+                    SYNC.sse = 'retry';
+                    setTimeout(() => startRealtimeStream(true), 5000);
+                }
+            }, 10000);
+            es.addEventListener('connected', () => { clearTimeout(sseWatchdog); SYNC.sse = 'open'; });
+            es.addEventListener('pdks_event', e => {
+                SYNC.sse = 'open';
+                let evt = null;
+                try { evt = JSON.parse(e.data); } catch (_) {}
+                if (evt) {
+                    SYNC.events = [evt].concat(SYNC.events).slice(0, 40);
+                    if (A.toast && document.body.classList.contains('in-app')) {
+                        A.toast('[Canlı] ' + (evt.title || 'PDKS') + ': ' + (evt.message || ''), evt.severity || 'info');
+                    }
+                    try { g.dispatchEvent(new CustomEvent('atf:live-event', { detail: evt })); } catch (_) {}
+                }
+                clearTimeout(sseRefetchTimer);
+                sseRefetchTimer = setTimeout(() => { syncAllFromPostgres({ force: true }); }, 320);
+            });
+            es.onerror = () => {
+                SYNC.sse = 'retry';
+                if (es.readyState === 2) {
+                    sseSource = null;
+                    setTimeout(() => startRealtimeStream(true), 4000);
+                }
+            };
+        } catch (_) {
+            SYNC.sse = 'off';
+        }
     }
 
     function addEmployee(o, onSync) {
@@ -624,7 +1007,7 @@
             name: o.name,
             dept: o.dept || DEPTS[0],
             title: o.title || TITLES[0],
-            branch: o.branch || 'HQ',
+            branch: o.branch || 'ŞB-001',
             status,
             inMin,
             outMin,
@@ -652,6 +1035,7 @@
             status: o.deviceBound === false ? 'PENDING' : 'BOUND',
             mask: 'n' + (nextId % 9) + 'f…' + (nextId % 90 + 10)
         });
+        refreshTodayInDays();
         clearAnalyticsCache();
         persistLocalState();
 
@@ -685,9 +1069,11 @@
                         if (idx >= 0) {
                             rekeyEmployeeReferences(EMPLOYEES[idx].id, res.employee.id);
                             EMPLOYEES[idx] = Object.assign({}, EMPLOYEES[idx], res.employee);
+                            refreshTodayInDays();
                             clearAnalyticsCache();
                             if (typeof onSync === 'function') onSync(EMPLOYEES[idx]);
                         }
+                        syncAllFromPostgres({ force: true });
                     }
                 })
                 .catch(() => {});
@@ -739,6 +1125,7 @@
             dist
         });
         EMPLOYEES[idx] = updated;
+        refreshTodayInDays();
         clearAnalyticsCache();
         persistLocalState();
 
@@ -760,9 +1147,11 @@
                         const i2 = EMPLOYEES.findIndex(x => x.id === updated.id);
                         if (i2 >= 0) {
                             EMPLOYEES[i2] = Object.assign({}, EMPLOYEES[i2], res.employee);
+                            refreshTodayInDays();
                             clearAnalyticsCache();
                             if (typeof onSync === 'function') onSync(EMPLOYEES[i2]);
                         }
+                        syncAllFromPostgres({ force: true });
                     }
                 })
                 .catch(() => {});
@@ -779,6 +1168,7 @@
                 if (list[i].empId === removed.id) list.splice(i, 1);
             }
         });
+        refreshTodayInDays();
         clearAnalyticsCache();
         persistLocalState();
 
@@ -796,6 +1186,7 @@
                 .then(r => (r.ok ? r.json() : null))
                 .then(res => {
                     if (res && typeof onSync === 'function') onSync(removed);
+                    syncAllFromPostgres({ force: true });
                 })
                 .catch(() => {});
         }
@@ -804,7 +1195,8 @@
 
     g.ATF.DATA = {
         BRANCHES, DEPTS, TITLES, EMPLOYEES, DAYS, LEAVES, LEAVE_TYPES, ALERTS, ALERT_TYPES,
-        TICKETS, TICKET_TYPES, DEVICES, AUDIT, hhmm, fmtDurMin, resolveDays, empAnalytics, computeLeaderboards,
-        addEmployee, updateEmployee, deleteEmployee, syncEmployeesFromBackend, clearAnalyticsCache
+        TICKETS, TICKET_TYPES, DEVICES, AUDIT, SHIFTS, ACCESS_LOGS, LATE_REASONS, WIFI_DISCOVERY, SYNC, hhmm, fmtDurMin, resolveDays, shiftOf,
+        empAnalytics, computeLeaderboards, addEmployee, updateEmployee, deleteEmployee,
+        syncEmployeesFromBackend, syncAllFromPostgres, startRealtimeStream, clearAnalyticsCache
     };
 })(window);

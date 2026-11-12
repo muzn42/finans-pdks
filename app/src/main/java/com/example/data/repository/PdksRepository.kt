@@ -8,8 +8,11 @@ import com.example.data.local.EmployeeEntity
 import com.example.data.local.NotificationEntity
 import com.example.data.local.SecurityAlertEntity
 import com.example.location.LocationHelper
+import com.example.location.NearbyWifiAP
 import com.example.notification.NotificationHelper
 import kotlinx.coroutines.flow.Flow
+import org.json.JSONArray
+import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -18,6 +21,7 @@ import java.util.Locale
 sealed class AttendanceResult {
     data class Success(val record: AttendanceRecordEntity, val message: String) : AttendanceResult()
     data class DistanceExceeded(val distanceMeters: Double, val allowedRadius: Double, val message: String) : AttendanceResult()
+    data class MockLocationDetected(val message: String) : AttendanceResult()
     data class Error(val errorMessage: String) : AttendanceResult()
 }
 
@@ -83,7 +87,7 @@ class PdksRepository(
 
     /**
      * İşe Giriş / Çıkış İşlemini Gerçekleştirir.
-     * 5 metre kuralı ve otomatik İK/BT bildirim sistemi burada işletilir.
+     * 30 metre kuralı, sahte konum/geliştirici seçenekleri koruması ve otomatik İK/BT bildirim sistemi burada işletilir.
      */
     suspend fun processAttendance(
         employee: EmployeeEntity,
@@ -91,8 +95,11 @@ class PdksRepository(
         type: String, // "GİRİŞ" veya "ÇIKIŞ"
         userLat: Double,
         userLng: Double,
+        accuracyMeters: Float = 3.4521f,
         isMock: Boolean,
         isSimulated: Boolean,
+        hasRealFix: Boolean = true,
+        nearbyWifis: List<NearbyWifiAP> = emptyList(),
         note: String = ""
     ): AttendanceResult {
         val distance = LocationHelper.calculateDistanceMeters(
@@ -115,6 +122,75 @@ class PdksRepository(
         val dateFormat = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault())
         val formattedTime = timeFormat.format(Date(now))
         val formattedDate = dateFormat.format(Date(now))
+
+        // Gerçek GPS modunda konum sabitlenmeden yoklama kabul edilmez.
+        if (!isSimulated && !hasRealFix) {
+            return AttendanceResult.Error(
+                "Gerçek GPS konumu henüz sabitlenmedi. Açık alanda konumun alınmasını bekleyip tekrar deneyin."
+            )
+        }
+
+        // SAHTE KONUM (MOCK GPS) & GELİŞTİRİCİ SEÇENEKLERİ KESİN ENGELİ — mesafe kontrolünden ÖNCE çalışır.
+        // Paket taraması ağır olabildiğinden IO dispatcher'ında yapılır.
+        val mockSecurity = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            LocationHelper.inspectDeviceMockSecurity(context)
+        }
+        val suspiciousAccuracy = !isSimulated && LocationHelper.isSuspiciousAccuracy(accuracyMeters)
+        val shouldBlockMockOrDev = isMock ||
+                suspiciousAccuracy ||
+                mockSecurity.isMockLocationDetected ||
+                mockSecurity.isAllowMockSettingEnabled ||
+                mockSecurity.detectedMockApps.isNotEmpty() ||
+                (!isSimulated && mockSecurity.isDeveloperOptionsEnabled)
+
+        if (shouldBlockMockOrDev) {
+            val reasonDetail = mockSecurity.summaryMessage
+            val mockMessage =
+                "Sahte Konum / Geliştirici Seçenekleri Engeli: Personel (${employee.fullName}) $formattedTime itibarıyla $type işlemini denedi ancak işlem reddedildi. Neden: $reasonDetail"
+
+            dao.insertSecurityAlert(
+                SecurityAlertEntity(
+                    timestamp = now,
+                    employeeId = employee.id,
+                    employeeName = employee.fullName,
+                    branchName = branch.name,
+                    alertType = "MOCK_LOCATION",
+                    message = mockMessage,
+                    distanceMeters = distance,
+                    severity = "HIGH"
+                )
+            )
+
+            val mockNotifTitle = "🚫 Sahte Konum Engellendi: ${employee.fullName}"
+            val mockNotifMsg =
+                "${employee.fullName} (${branch.name}) sahte konum / geliştirici seçenekleri açıkken $type denemesi yaptı. İşlem anında engellendi ($reasonDetail)."
+
+            dao.insertNotification(
+                NotificationEntity(
+                    timestamp = now,
+                    targetDepartment = "IT",
+                    title = mockNotifTitle,
+                    message = mockNotifMsg,
+                    category = "MOCK_LOCATION",
+                    employeeName = employee.fullName,
+                    branchName = branch.name,
+                    distanceMeters = distance
+                )
+            )
+
+            NotificationHelper.postSystemNotification(
+                context = context,
+                notificationId = (now % 10000).toInt(),
+                channelId = NotificationHelper.CHANNEL_ALERTS_ID,
+                title = mockNotifTitle,
+                message = mockNotifMsg,
+                isAlert = true
+            )
+
+            return AttendanceResult.MockLocationDetected(
+                message = "${mockSecurity.summaryTitle}\n\n$reasonDetail\n\nGiriş/çıkış işlemi kesin olarak reddedildi ve durum yüksek öncelikli güvenlik ihlali olarak İK ve BT birimlerine bildirildi.\n\nLütfen Cihaz Ayarları > Geliştirici Seçenekleri ekranından Sahte Konum / Geliştirici Seçeneklerini kapatıp tekrar deneyin."
+            )
+        }
 
         if (!isWithinAllowed) {
             // 30 METRE AŞILDI! GÜVENLİK UYARISI OLUŞTUR VE İŞLEMİ REDDET
@@ -169,24 +245,81 @@ class PdksRepository(
         }
 
         // 30 METRE İÇERİSİNDE - İŞLEM ONAYLANDI
-        // Mesai ve Gecikme Hesaplaması (Mesai başlangıç 09:00, bitiş 18:00)
+        // Mesai ve gecikme hesabı, PostgreSQL shifts tablosundan gelen personel
+        // vardiyasına göre yapılır (varsayılan: 08:30 – 17:30, 5 dk tolerans).
         var lateMinutes = 0
         var overtimeMinutes = 0
+        val standardStartMinutes = employee.shiftStartMin + employee.shiftGraceMin
+        val standardEndMinutes = employee.shiftEndMin
         if (type == "GİRİŞ") {
             val totalMinutes = currentHour * 60 + currentMinute
-            val standardStartMinutes = 9 * 60 // 09:00
             if (totalMinutes > standardStartMinutes) {
                 lateMinutes = totalMinutes - standardStartMinutes
             }
         } else if (type == "ÇIKIŞ") {
             val totalMinutes = currentHour * 60 + currentMinute
-            val standardEndMinutes = 18 * 60 // 18:00
             if (totalMinutes > standardEndMinutes) {
                 overtimeMinutes = totalMinutes - standardEndMinutes
             }
         }
 
-        val ipMock = if (isSimulated) "10.14.88.24 (Simüle Ağ)" else "10.14.88.19 (Şube Yerel Ağı)"
+        // Bağlantısız Pasif Wi-Fi BSSID Tarama Listesi (loadPassiveNearbyWifiList):
+        // Telefonun şube modemiyle bağlanmasına gerek yoktur; etraftaki modemlerin MAC (BSSID) + RSSI listesini toplar.
+        val scannedWifis = if (nearbyWifis.isNotEmpty()) {
+            nearbyWifis
+        } else {
+            LocationHelper.loadPassiveNearbyWifiList(context)
+        }
+        val nearbyWifisJson = runCatching {
+            val arr = JSONArray()
+            scannedWifis.forEach { ap ->
+                arr.put(
+                    JSONObject().apply {
+                        put("bssid", ap.bssid)
+                        put("ssid", ap.ssid)
+                        put("rssi", ap.rssi)
+                        put("frequency", ap.frequency)
+                    }
+                )
+            }
+            arr.toString()
+        }.getOrDefault("[]")
+
+        // Şubede ZORUNLU (STRICT) BSSID doğrulaması aktifse ve şube BSSID tanımlıysa çapraz kontrol yap
+        val primaryBssid = branch.wifiBssid.trim().lowercase()
+        val backupBssids = branch.backupWifiBssids
+            .split(",", ";", " ")
+            .map { it.trim().lowercase() }
+            .filter { it.length == 17 }
+        if (!isSimulated && branch.wifiEnforcementMode.equals("STRICT", ignoreCase = true) &&
+            (primaryBssid.isNotEmpty() || backupBssids.isNotEmpty())
+        ) {
+            val matched = scannedWifis.any { ap ->
+                val b = ap.bssid.lowercase()
+                b == primaryBssid || backupBssids.contains(b)
+            }
+            if (!matched) {
+                val wifiAlertMsg =
+                    "Şube Wi-Fi (BSSID) Çapraz Kontrol İhlali: ${employee.fullName} GPS olarak ${branch.name} sınırında görünüyor ancak etraftaki Wi-Fi taramasında şube modemi (${primaryBssid.ifEmpty { backupBssids.firstOrNull().orEmpty() }}) bulunamadı!"
+                dao.insertSecurityAlert(
+                    SecurityAlertEntity(
+                        timestamp = now,
+                        employeeId = employee.id,
+                        employeeName = employee.fullName,
+                        branchName = branch.name,
+                        alertType = "WIFI_BSSID_MISMATCH",
+                        message = wifiAlertMsg,
+                        distanceMeters = distance,
+                        severity = "HIGH"
+                    )
+                )
+                return AttendanceResult.Error(
+                    "Şube Wi-Fi Sinyali (BSSID) Doğrulanamadı!\n\nTelefonunuzun herhangi bir ağa bağlanmasına gerek yoktur ancak şube modeminin sinyalini görebilmesi için Wi-Fi özelliğinin açık olması gerekir.\n\nLütfen Wi-Fi'yi açıp şube içinde tekrar deneyin."
+                )
+            }
+        }
+
+        val ipMock = if (isSimulated) "10.14.88.24 (Simüle Ağ)" else "10.14.88.19 (Pasif Wi-Fi BSSID Tarama)"
         val record = AttendanceRecordEntity(
             employeeId = employee.id,
             employeeName = employee.fullName,
@@ -203,12 +336,15 @@ class PdksRepository(
             ipAddress = ipMock,
             deviceModel = employee.deviceId,
             isMockLocation = isMock,
-            note = if (note.isNotBlank()) note else "30 metre kuralına uygun başarılı işlem (${"%.1f".format(distance)}m)",
+            note = if (note.isNotBlank()) note else "30 metre kuralına uygun başarılı işlem (${"%.1f".format(distance)}m · ${scannedWifis.size} Wi-Fi BSSID tarandı)",
             lateMinutes = lateMinutes,
-            overtimeMinutes = overtimeMinutes
+            overtimeMinutes = overtimeMinutes,
+            accuracyMeters = accuracyMeters,
+            nearbyWifisJson = nearbyWifisJson
         )
 
-        dao.insertAttendanceRecord(record)
+        val insertedId = dao.insertAttendanceRecord(record)
+        val savedRecord = record.copy(id = insertedId)
 
         // OTOMATİK BİLDİRİM SİSTEMİ: İK ve Personel Bildirimi
         val notifTitle = "Mesai ${record.recordType}: ${employee.fullName}"
@@ -240,8 +376,14 @@ class PdksRepository(
         )
 
         return AttendanceResult.Success(
-            record = record,
+            record = savedRecord,
             message = "Tebrikler! ${record.recordType} işlemi başarıyla kaydedildi.\nŞube Mesafesi: ${"%.1f".format(distance)} metre (İzin verilen: ${allowedRadius}m)\nKayıt Saati: $formattedTime\n\nOtomatik Bildirim: İK ve BT birimlerine başarıyla iletildi."
         )
+    }
+
+    /* Personelin geç giriş gerekçesini kayda işler (şablon kodu + serbest açıklama) */
+    suspend fun updateLateReason(recordId: Long, code: String, note: String): AttendanceRecordEntity? {
+        dao.updateLateReason(recordId, code, note)
+        return dao.getRecordById(recordId)
     }
 }

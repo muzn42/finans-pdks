@@ -4,10 +4,19 @@ import { LoginSchema } from "@/lib/validators";
 import {
   AUTH_COOKIE_NAME,
   getRequestUser,
+  hashPassword,
   JwtUserPayload,
+  needsRehash,
   signJwtToken,
   verifyPassword
 } from "@/lib/auth";
+import { errorDetail } from "@/lib/api-guard";
+import {
+  clearFailures,
+  clientIp,
+  lockRemainingSeconds,
+  registerFailure
+} from "@/lib/rate-limit";
 
 export async function GET(req: NextRequest) {
   try {
@@ -15,7 +24,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ status: "success", user });
   } catch (err) {
     return NextResponse.json(
-      { status: "error", message: "Oturum doğrulanamadı.", detail: String(err) },
+      { status: "error", message: "Oturum doğrulanamadı.", detail: errorDetail(err) },
       { status: 500 }
     );
   }
@@ -31,8 +40,23 @@ export async function POST(req: NextRequest) {
     }
 
     const { email, password, portal } = parsed.data;
+    const normalizedEmail = email.toLowerCase();
+    const ip = clientIp(req.headers);
+    const limitKeys = [`web:ip:${ip}`, `web:acc:${normalizedEmail}`];
+
+    const lockedFor = Math.max(...limitKeys.map((k) => lockRemainingSeconds(k)));
+    if (lockedFor > 0) {
+      return NextResponse.json(
+        {
+          status: "error",
+          message: `Çok fazla hatalı deneme. ${Math.ceil(lockedFor / 60)} dakika sonra tekrar deneyin.`
+        },
+        { status: 429, headers: { "Retry-After": String(lockedFor) } }
+      );
+    }
+
     const account = await prisma.userAccount.findUnique({
-      where: { email: email.toLowerCase() }
+      where: { email: normalizedEmail }
     });
 
     const isPasswordValid = account
@@ -40,13 +64,14 @@ export async function POST(req: NextRequest) {
       : false;
 
     if (!account || !isPasswordValid) {
+      limitKeys.forEach((k) => registerFailure(k));
       await prisma.auditLog.create({
         data: {
           actorName: email,
           actorRole: "GUEST",
           action: "Başarısız oturum açma denemesi",
           target: portal || "WEB_AUTH",
-          ipAddress: req.headers.get("x-forwarded-for") || "127.0.0.1"
+          ipAddress: ip
         }
       });
       return NextResponse.json(
@@ -58,6 +83,13 @@ export async function POST(req: NextRequest) {
     if (!account.active) {
       return NextResponse.json(
         { status: "error", message: "Bu yönetici hesabı pasif durumdadır." },
+        { status: 403 }
+      );
+    }
+
+    if (account.role === "PERSONNEL") {
+      return NextResponse.json(
+        { status: "error", message: "Personel hesapları yönetim paneline giriş yapamaz." },
         { status: 403 }
       );
     }
@@ -74,7 +106,7 @@ export async function POST(req: NextRequest) {
           actorRole: account.role,
           action: `Yetkisiz portal giriş denemesi (${portal})`,
           target: account.email,
-          ipAddress: req.headers.get("x-forwarded-for") || "127.0.0.1"
+          ipAddress: ip
         }
       });
       return NextResponse.json(
@@ -84,6 +116,15 @@ export async function POST(req: NextRequest) {
         },
         { status: 403 }
       );
+    }
+
+    limitKeys.forEach((k) => clearFailures(k));
+
+    if (needsRehash(account.passwordHash)) {
+      const upgraded = await hashPassword(password);
+      await prisma.userAccount
+        .update({ where: { id: account.id }, data: { passwordHash: upgraded } })
+        .catch(() => {});
     }
 
     let perms: string[] = [];
@@ -113,20 +154,20 @@ export async function POST(req: NextRequest) {
         actorRole: account.role,
         action: "Yönetim portalına giriş yapıldı (JWT)",
         target: `${account.role} Portalı`,
-        ipAddress: req.headers.get("x-forwarded-for") || "127.0.0.1"
+        ipAddress: ip
       }
     });
 
+    // Web paneli oturumu httpOnly çerezle taşır; token yanıt gövdesinde döndürülmez (XSS ile çalınamaz).
     const res = NextResponse.json({
       status: "success",
-      token,
       user: userPayload
     });
 
     res.cookies.set(AUTH_COOKIE_NAME, token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
+      sameSite: "strict",
       path: "/",
       maxAge: 60 * 60 * 12
     });
@@ -134,7 +175,11 @@ export async function POST(req: NextRequest) {
     return res;
   } catch (err) {
     return NextResponse.json(
-      { status: "error", message: "Giriş işlemi sırasında sunucu hatası oluştu.", detail: String(err) },
+      {
+        status: "error",
+        message: "Giriş işlemi sırasında sunucu hatası oluştu.",
+        detail: errorDetail(err)
+      },
       { status: 500 }
     );
   }

@@ -9,23 +9,81 @@ const ACTIVE_SECRET =
 
 export const AUTH_COOKIE_NAME = "atf_pdks_token";
 
-export async function hashPassword(password: string, salt = "atf-pdks-2026-salt"): Promise<string> {
-  const enc = new TextEncoder();
-  const digest = await crypto.subtle.digest("SHA-256", enc.encode(`${salt}:${password}`));
-  const hex = Array.from(new Uint8Array(digest))
+/** PBKDF2-SHA256 iterasyon sayısı (OWASP 2023 önerisi: ≥ 210.000). */
+const PBKDF2_ITERATIONS = 210_000;
+
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes)
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
-  return `sha256$${salt}$${hex}`;
 }
 
-export async function verifyPassword(password: string, storedHash: string): Promise<boolean> {
-  if (!storedHash.startsWith("sha256$")) {
-    return storedHash === password;
+/** Zamanlama saldırılarına karşı sabit süreli karşılaştırma. */
+export function timingSafeEqualStr(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
   }
+  return diff === 0;
+}
+
+async function pbkdf2Hex(password: string, saltHex: string, iterations: number): Promise<string> {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, [
+    "deriveBits"
+  ]);
+  const saltBytes = new Uint8Array(saltHex.match(/.{2}/g)?.map((h) => parseInt(h, 16)) ?? []);
+  const bits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", hash: "SHA-256", salt: saltBytes, iterations },
+    key,
+    256
+  );
+  return bytesToHex(new Uint8Array(bits));
+}
+
+/** Parolayı rastgele tuzlu PBKDF2-SHA256 ile özetler: `pbkdf2$<iter>$<salt>$<hash>`. */
+export async function hashPassword(password: string): Promise<string> {
+  const saltHex = bytesToHex(crypto.getRandomValues(new Uint8Array(16)));
+  const hashHex = await pbkdf2Hex(password, saltHex, PBKDF2_ITERATIONS);
+  return `pbkdf2$${PBKDF2_ITERATIONS}$${saltHex}$${hashHex}`;
+}
+
+async function legacySha256(password: string, salt: string): Promise<string> {
+  const enc = new TextEncoder();
+  const digest = await crypto.subtle.digest("SHA-256", enc.encode(`${salt}:${password}`));
+  return `sha256$${salt}$${bytesToHex(new Uint8Array(digest))}`;
+}
+
+/**
+ * Parolayı doğrular. Desteklenen biçimler:
+ * - `pbkdf2$…` (güncel)
+ * - `sha256$…` (eski seed biçimi; başarılı girişte {@link needsRehash} ile yükseltilir)
+ * Düz metin parola kayıtları artık kabul edilmez.
+ */
+export async function verifyPassword(password: string, storedHash: string): Promise<boolean> {
+  if (!password || !storedHash) return false;
   const parts = storedHash.split("$");
-  const salt = parts[1] || "atf-pdks-2026-salt";
-  const expected = await hashPassword(password, salt);
-  return expected === storedHash;
+
+  if (parts[0] === "pbkdf2" && parts.length === 4) {
+    const iterations = Number(parts[1]);
+    if (!Number.isInteger(iterations) || iterations < 1) return false;
+    const actual = await pbkdf2Hex(password, parts[2], iterations);
+    return timingSafeEqualStr(actual, parts[3]);
+  }
+
+  if (parts[0] === "sha256" && parts.length === 3) {
+    const expected = await legacySha256(password, parts[1]);
+    return timingSafeEqualStr(expected, storedHash);
+  }
+
+  return false;
+}
+
+/** Kayıt eski/zayıf biçimdeyse true döner (girişte yeniden özetlenmeli). */
+export function needsRehash(storedHash: string): boolean {
+  const parts = storedHash.split("$");
+  return parts[0] !== "pbkdf2" || Number(parts[1]) < PBKDF2_ITERATIONS;
 }
 
 export interface JwtUserPayload {

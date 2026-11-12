@@ -1,9 +1,12 @@
 import { NextRequest } from "next/server";
+import { requireUser, STAFF_ROLES } from "@/lib/api-guard";
 import { sseHub } from "@/lib/sse";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+  const guard = await requireUser(req, STAFF_ROLES);
+  if (!guard.ok) return guard.response;
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream({
@@ -17,6 +20,14 @@ export async function GET(req: NextRequest) {
           // İstemci ayrıldı
         }
       };
+
+      // Bazı kurumsal proxy / tarayıcı tamponları 4 KB altındaki ilk parçayı bekletir.
+      // İlk olaydan önce yorum satırı dolgusu göndererek akışı hemen açarız.
+      try {
+        controller.enqueue(encoder.encode(`: ${" ".repeat(4096)}\n\n`));
+      } catch {
+        // Yoksay
+      }
 
       send("connected", {
         status: "ok",

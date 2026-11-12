@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { ANY_ROLE, errorDetail, IT_ROLES, requireUser } from "@/lib/api-guard";
 import { prisma } from "@/lib/prisma";
+import { normalizeBssid, parseBssidList } from "@/lib/validators";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -24,17 +26,24 @@ const BranchCreateSchema = z.object({
   lat: z.coerce.number().min(-90).max(90),
   lng: z.coerce.number().min(-180).max(180),
   radius: z.coerce.number().min(10).max(200).default(30),
-  wifi: z.string().trim().min(3).max(64)
+  wifi: z.string().trim().min(3).max(64),
+  wifiBssid: z.string().trim().max(32).optional().default(""),
+  backupWifiBssids: z.union([z.string(), z.array(z.string())]).optional().default(""),
+  wifiEnforcementMode: z.enum(["LEARNING", "STRICT"]).optional().default("LEARNING")
 });
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  // Mobil uygulama (PERSONNEL) şube koordinatlarını okuyabilmeli.
+  const guard = await requireUser(req, ANY_ROLE);
+  if (!guard.ok) return guard.response;
   try {
-    const rows = await prisma.branch.findMany({ orderBy: { id: "asc" } });
-    return NextResponse.json({
-      status: "success",
-      count: rows.length,
-      branches: rows.map((b) => ({
-        id: b.id,
+    const rows = await prisma.branch.findMany({ orderBy: { code: "asc" } });
+    const mapped = rows.map((b, idx) => {
+      const m = String(b.code).match(/(\d+)$/);
+      const numId = m ? Math.max(1, Number(m[1])) : idx + 1;
+      return {
+        id: numId,
+        dbId: b.id,
         code: b.code,
         branch_code: b.code,
         branchCode: b.code,
@@ -42,7 +51,7 @@ export async function GET() {
         city: b.city,
         district: b.district,
         address: b.address,
-        phone: b.phone,
+        phone: b.phone || "444 88 61",
         googleMapUrl: b.googleMapUrl,
         lat: b.lat,
         lng: b.lng,
@@ -53,18 +62,38 @@ export async function GET() {
         radiusMeters: b.radiusMeters,
         wifi: b.wifiSsid,
         wifi_ssid: b.wifiSsid,
-        wifiSsid: b.wifiSsid
-      }))
+        wifiSsid: b.wifiSsid,
+        wifiBssid: b.wifiBssid || "",
+        backupWifiBssids: b.backupWifiBssids || "",
+        backupBssidsList: parseBssidList(b.backupWifiBssids),
+        wifiEnforcementMode: b.wifiEnforcementMode || "LEARNING",
+        is_default: b.code === "ŞB-001" || numId === 1,
+        isDefault: b.code === "ŞB-001" || numId === 1
+      };
     });
+
+    const { searchParams } = new URL(req.url);
+    if (searchParams.get("wrap") === "1" || searchParams.get("format") === "object") {
+      return NextResponse.json({
+        status: "success",
+        count: mapped.length,
+        branches: mapped
+      });
+    }
+
+    // Android Retrofit PdksApiService.getBranches() doğrudan JSON dizi (List<BranchDto>) bekler.
+    return NextResponse.json(mapped);
   } catch (err) {
     return NextResponse.json(
-      { status: "error", message: "Şube listesi alınamadı.", detail: String(err) },
+      { status: "error", message: "Şube listesi alınamadı.", detail: errorDetail(err) },
       { status: 500 }
     );
   }
 }
 
 export async function POST(req: NextRequest) {
+  const guard = await requireUser(req, IT_ROLES);
+  if (!guard.ok) return guard.response;
   try {
     const body = await req.json();
     const parsed = BranchCreateSchema.safeParse(body);
@@ -79,6 +108,18 @@ export async function POST(req: NextRequest) {
     }
 
     const d = parsed.data;
+    const primaryBssid = d.wifiBssid ? normalizeBssid(d.wifiBssid) : "";
+    if (d.wifiBssid && !primaryBssid) {
+      return NextResponse.json(
+        {
+          status: "error",
+          message: "Ana modem MAC (BSSID) adresi geçersiz (örn. a4:2b:8c:1d:e5:9f)."
+        },
+        { status: 400 }
+      );
+    }
+    const backupBssids = parseBssidList(d.backupWifiBssids).filter((x) => x !== primaryBssid);
+
     const created = await prisma.branch.upsert({
       where: { code: d.code.toUpperCase() },
       update: {
@@ -93,7 +134,10 @@ export async function POST(req: NextRequest) {
         lat: d.lat,
         lng: d.lng,
         radiusMeters: d.radius,
-        wifiSsid: d.wifi
+        wifiSsid: d.wifi,
+        wifiBssid: primaryBssid,
+        backupWifiBssids: backupBssids.join(", "),
+        wifiEnforcementMode: d.wifiEnforcementMode
       },
       create: {
         code: d.code.toUpperCase(),
@@ -109,6 +153,9 @@ export async function POST(req: NextRequest) {
         lng: d.lng,
         radiusMeters: d.radius,
         wifiSsid: d.wifi,
+        wifiBssid: primaryBssid,
+        backupWifiBssids: backupBssids.join(", "),
+        wifiEnforcementMode: d.wifiEnforcementMode,
         weight: 0.02
       }
     });
@@ -117,8 +164,8 @@ export async function POST(req: NextRequest) {
       data: {
         actorName: "BT Yönetimi",
         actorRole: "IT",
-        action: "Yeni şube & 30m geofence tanımlandı",
-        target: `${created.code} · ${created.name}`,
+        action: "Yeni şube, 30m geofence & BSSID tanımlandı",
+        target: `${created.code} · ${created.name}${primaryBssid ? ` (${primaryBssid})` : ""}`,
         ipAddress: req.headers.get("x-forwarded-for") || "127.0.0.1"
       }
     });
@@ -134,14 +181,17 @@ export async function POST(req: NextRequest) {
           lat: created.lat,
           lng: created.lng,
           radius: created.radiusMeters,
-          wifi: created.wifiSsid
+          wifi: created.wifiSsid,
+          wifiBssid: created.wifiBssid,
+          backupWifiBssids: created.backupWifiBssids,
+          wifiEnforcementMode: created.wifiEnforcementMode
         }
       },
       { status: 201 }
     );
   } catch (err) {
     return NextResponse.json(
-      { status: "error", message: "Şube kaydedilemedi.", detail: String(err) },
+      { status: "error", message: "Şube kaydedilemedi.", detail: errorDetail(err) },
       { status: 500 }
     );
   }

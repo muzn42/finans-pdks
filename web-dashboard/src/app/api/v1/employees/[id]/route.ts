@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { errorDetail, HR_ROLES, requireUser, STAFF_ROLES } from "@/lib/api-guard";
 import { prisma } from "@/lib/prisma";
 import { EmployeeUpdateSchema } from "@/lib/validators";
 import { calculateAttendanceMetrics, hhmmFromMin, minFromHhmm } from "@/lib/pdks-engine";
@@ -53,9 +54,11 @@ function serializeEmployee(e: NonNullable<Awaited<ReturnType<typeof findEmployee
 }
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
+  const guard = await requireUser(req, STAFF_ROLES);
+  if (!guard.ok) return guard.response;
   try {
     const { id } = await context.params;
     const emp = await findEmployeeByIdentifier(id);
@@ -71,7 +74,7 @@ export async function GET(
     });
   } catch (err) {
     return NextResponse.json(
-      { status: "error", message: "Personel bilgisi alınamadı.", detail: String(err) },
+      { status: "error", message: "Personel bilgisi alınamadı.", detail: errorDetail(err) },
       { status: 500 }
     );
   }
@@ -182,7 +185,7 @@ async function handleUpdate(
     });
   } catch (err) {
     return NextResponse.json(
-      { status: "error", message: "Personel güncellenemedi.", detail: String(err) },
+      { status: "error", message: "Personel güncellenemedi.", detail: errorDetail(err) },
       { status: 500 }
     );
   }
@@ -192,6 +195,8 @@ export async function PUT(
   req: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
+  const guard = await requireUser(req, HR_ROLES);
+  if (!guard.ok) return guard.response;
   return handleUpdate(req, context);
 }
 
@@ -199,6 +204,8 @@ export async function PATCH(
   req: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
+  const guard = await requireUser(req, HR_ROLES);
+  if (!guard.ok) return guard.response;
   return handleUpdate(req, context);
 }
 
@@ -206,6 +213,8 @@ export async function DELETE(
   req: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
+  const guard = await requireUser(req, HR_ROLES);
+  if (!guard.ok) return guard.response;
   try {
     const { id } = await context.params;
     const existing = await findEmployeeByIdentifier(id);
@@ -244,7 +253,7 @@ export async function DELETE(
     });
   } catch (err) {
     return NextResponse.json(
-      { status: "error", message: "Personel silinemedi.", detail: String(err) },
+      { status: "error", message: "Personel silinemedi.", detail: errorDetail(err) },
       { status: 500 }
     );
   }

@@ -20,6 +20,14 @@ data class LoginResponseDto(
 )
 
 @JsonClass(generateAdapter = true)
+data class NearbyWifiDto(
+    @Json(name = "bssid") val bssid: String,
+    @Json(name = "ssid") val ssid: String = "",
+    @Json(name = "rssi") val rssi: Int = -60,
+    @Json(name = "frequency") val frequency: Int? = null
+)
+
+@JsonClass(generateAdapter = true)
 data class AttendanceRecordDto(
     @Json(name = "id") val id: Long? = null,
     @Json(name = "employeeId") val employeeId: Long,
@@ -31,12 +39,16 @@ data class AttendanceRecordDto(
     @Json(name = "userLatitude") val userLatitude: Double,
     @Json(name = "userLongitude") val userLongitude: Double,
     @Json(name = "distanceMeters") val distanceMeters: Double,
+    @Json(name = "accuracyMeters") val accuracyMeters: Float = 3.4521f,
     @Json(name = "isWithin5Meters") val isWithin5Meters: Boolean,
     @Json(name = "isMockLocation") val isMockLocation: Boolean = false,
+    @Json(name = "nearbyWifis") val nearbyWifis: List<NearbyWifiDto> = emptyList(),
     @Json(name = "deviceModel") val deviceModel: String = "",
     @Json(name = "note") val note: String = "",
     @Json(name = "lateMinutes") val lateMinutes: Int = 0,
     @Json(name = "overtimeMinutes") val overtimeMinutes: Int = 0,
+    @Json(name = "lateReasonCode") val lateReasonCode: String? = null,
+    @Json(name = "lateReasonNote") val lateReasonNote: String? = null,
     @Json(name = "formattedTime") val formattedTime: String? = null,
     @Json(name = "formattedDate") val formattedDate: String? = null,
     @Json(name = "ipAddress") val ipAddress: String? = null
@@ -80,6 +92,9 @@ data class BranchDto(
     @Json(name = "longitude") val longitude: Double,
     @Json(name = "radiusMeters") val radiusMeters: Double = 30.0,
     @Json(name = "wifiSsid") val wifiSsid: String? = null,
+    @Json(name = "wifiBssid") val wifiBssid: String? = null,
+    @Json(name = "backupWifiBssids") val backupWifiBssids: String? = null,
+    @Json(name = "wifiEnforcementMode") val wifiEnforcementMode: String? = null,
     @Json(name = "phone") val phone: String? = "444 88 61",
     @Json(name = "isDefault") val isDefault: Boolean? = false
 )

@@ -20,6 +20,9 @@ data class BranchEntity(
     val longitude: Double,
     val radiusMeters: Double = 30.0, // Varsayılan 30 metre kuralı
     val wifiSsid: String = "FINANS_CORP_SECURE",
+    val wifiBssid: String = "", // Ana şube modemi MAC adresi (örn. a4:2b:8c:1d:e5:9f)
+    val backupWifiBssids: String = "", // Yan dükkan / yedek modem MAC adresleri
+    val wifiEnforcementMode: String = "LEARNING", // LEARNING (Öğrenme) | STRICT (Zorunlu)
     val phone: String = "0212 555 0100",
     val isDefault: Boolean = false
 )
@@ -39,7 +42,11 @@ data class EmployeeEntity(
     val password: String = "123456",
     val isKvkkConsentGiven: Boolean = true,
     val kvkkConsentTimestamp: Long? = 1714000000000L,
-    val profileImageUrl: String = ""
+    val profileImageUrl: String = "",
+    // PostgreSQL shifts tablosundan gelen vardiya penceresi (dakika cinsinden)
+    val shiftStartMin: Int = 510, // 08:30
+    val shiftEndMin: Int = 1050, // 17:30
+    val shiftGraceMin: Int = 5
 )
 
 @Entity(tableName = "attendance_records")
@@ -64,7 +71,11 @@ data class AttendanceRecordEntity(
     val lateMinutes: Int = 0, // 09:00'dan sonraki gecikme dakikası
     val overtimeMinutes: Int = 0, // 18:00'dan sonraki fazla mesai dakikası
     val verificationMethod: String = "ONE_TAP_GEOFENCE", // ONE_TAP_GEOFENCE, NFC, QR
-    val securityStatus: String = "VERIFIED" // VERIFIED, FLAGGED, EXCUSED
+    val securityStatus: String = "VERIFIED", // VERIFIED, FLAGGED, EXCUSED
+    val lateReasonCode: String = "", // Geç giriş gerekçe şablonu (örn. TRAFIK)
+    val lateReasonNote: String = "", // "Diğer" seçildiğinde personelin yazdığı açıklama
+    val accuracyMeters: Float = 3.4521f,
+    val nearbyWifisJson: String = "[]" // Pasif taramayla görülen modem MAC (BSSID) + RSSI listesi
 )
 
 @Entity(tableName = "security_alerts")

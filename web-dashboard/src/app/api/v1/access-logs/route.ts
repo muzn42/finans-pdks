@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
+import { errorDetail, requireUser, STAFF_ROLES } from "@/lib/api-guard";
+
+/** Geçiş simülatörü (kart/QR/geofence) yalnızca İK, BT ve Admin tarafından kullanılabilir. */
+const SIMULATOR_ROLES = ["HR", "IT", "ADMIN"] as const;
 import { prisma } from "@/lib/prisma";
-import { AccessLogCreateSchema } from "@/lib/validators";
+import {
+  AccessLogCreateSchema,
+  isSuspiciousGpsAccuracy,
+  normalizeBssid,
+  parseBssidList
+} from "@/lib/validators";
 import { calculateAttendanceMetrics, hhmmFromMin, minFromHhmm } from "@/lib/pdks-engine";
 import { toIstanbulDate, toIstanbulTime } from "@/lib/timezone";
 import { sseHub } from "@/lib/sse";
@@ -16,7 +25,23 @@ const EVENT_LABELS: Record<string, string> = {
   CHECK_OUT: "Akşam Çıkış (Check-Out)"
 };
 
+function parseNearbyWifisJson(raw: string | null | undefined): Array<{
+  bssid: string;
+  ssid?: string;
+  rssi?: number;
+}> {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 export async function GET(req: NextRequest) {
+  const guard = await requireUser(req, STAFF_ROLES);
+  if (!guard.ok) return guard.response;
   try {
     const { searchParams } = new URL(req.url);
     const empId = searchParams.get("employeeId");
@@ -48,7 +73,11 @@ export async function GET(req: NextRequest) {
         eventLabel: EVENT_LABELS[a.eventType] || a.eventType,
         source: a.source,
         distanceMeters: a.distanceMeters,
+        accuracyMeters: a.accuracyMeters,
         isMockGps: a.isMockGps,
+        nearbyWifis: parseNearbyWifisJson(a.nearbyWifisJson),
+        matchedBssid: a.matchedBssid,
+        wifiStatus: a.wifiStatus,
         note: a.note,
         timestampUtc: a.timestampUtc.toISOString(),
         timeIstanbul: toIstanbulTime(a.timestampUtc),
@@ -57,13 +86,15 @@ export async function GET(req: NextRequest) {
     });
   } catch (err) {
     return NextResponse.json(
-      { status: "error", message: "AccessLogs kayıtları alınamadı.", detail: String(err) },
+      { status: "error", message: "AccessLogs kayıtları alınamadı.", detail: errorDetail(err) },
       { status: 500 }
     );
   }
 }
 
 export async function POST(req: NextRequest) {
+  const guard = await requireUser(req, SIMULATOR_ROLES);
+  if (!guard.ok) return guard.response;
   try {
     const body = await req.json();
     const parsed = AccessLogCreateSchema.safeParse(body);
@@ -91,9 +122,78 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 1. Sahte GPS (Mock Location) veya 30m Geofence İhlal Kontrolü
-    if (data.isMockGps || data.distanceMeters > 30.0) {
-      const alertType = data.isMockGps ? "Sahte GPS (Mock)" : "30m sınır aşımı";
+    const targetBranchCode = data.branchCode || emp.branchCode;
+    const branch = await prisma.branch.findUnique({
+      where: { code: targetBranchCode }
+    });
+    const allowedRadius = branch?.radiusMeters ?? 30.0;
+
+    // 1. Taze Konum + location.mocked + GPS Accuracy (Sapma Küsuratı) + 30m Geofence Kontrolü
+    const isMockFlag = Boolean(data.isMockGps || data.locationMocked);
+    const isStaleFix = (data.locationAgeMs ?? 0) > 15000 && data.source === "MOBILE_GEOFENCE";
+    const isFakeAccuracy =
+      data.source === "MOBILE_GEOFENCE" &&
+      data.accuracyMeters !== undefined &&
+      isSuspiciousGpsAccuracy(data.accuracyMeters);
+    const isOutOfGeofence = data.distanceMeters > allowedRadius;
+
+    // 2. Bağlantısız Pasif Wi-Fi BSSID Çapraz Kontrolü (loadWifiList / nearbyWifis)
+    const nearbyWifis = (data.nearbyWifis || []).map((w) => ({
+      bssid: normalizeBssid(w.bssid),
+      ssid: w.ssid || "",
+      rssi: typeof w.rssi === "number" ? w.rssi : -65
+    })).filter((w) => Boolean(w.bssid));
+
+    const primaryBssid = normalizeBssid(branch?.wifiBssid);
+    const backupBssids = parseBssidList(branch?.backupWifiBssids);
+    const branchEnforcement = branch?.wifiEnforcementMode || "LEARNING";
+
+    let matchedBssid: string | null = null;
+    let wifiStatus = "LEARNING";
+
+    if (primaryBssid && nearbyWifis.some((w) => w.bssid === primaryBssid)) {
+      matchedBssid = primaryBssid;
+      wifiStatus = "VERIFIED_PRIMARY";
+    } else if (backupBssids.length > 0) {
+      const hitBackup = nearbyWifis.find((w) => backupBssids.includes(w.bssid));
+      if (hitBackup) {
+        matchedBssid = hitBackup.bssid;
+        wifiStatus = "VERIFIED_BACKUP";
+      }
+    }
+
+    if (!matchedBssid) {
+      if (primaryBssid || backupBssids.length > 0) {
+        wifiStatus = branchEnforcement === "STRICT" ? "BLOCKED_BSSID" : "UNVERIFIED_LOGGED";
+      } else {
+        wifiStatus = "LEARNING";
+      }
+    }
+
+    const isStrictWifiMismatch =
+      data.source === "MOBILE_GEOFENCE" &&
+      branchEnforcement === "STRICT" &&
+      Boolean(primaryBssid || backupBssids.length > 0) &&
+      !matchedBssid;
+
+    if (isMockFlag || isFakeAccuracy || isStaleFix || isOutOfGeofence || isStrictWifiMismatch) {
+      let alertType = "30m sınır aşımı";
+      let blockReason = `${data.distanceMeters.toFixed(1)}m > ${allowedRadius.toFixed(1)}m şube sınırı aşıldı.`;
+
+      if (isMockFlag) {
+        alertType = "Sahte GPS (Mock)";
+        blockReason = "location.mocked === true (Sahte konum / Geliştirici Seçenekleri hilesi yakalandı).";
+      } else if (isFakeAccuracy) {
+        alertType = "Sahte GPS (Sabit Accuracy)";
+        blockReason = `Yapay GPS sapma değeri tespit edildi (accuracy: ${Number(data.accuracyMeters).toFixed(5)} m — küsuratsız sabit tam sayı).`;
+      } else if (isStaleFix) {
+        alertType = "Sahte GPS (Önbellek Konumu)";
+        blockReason = `Taze olmayan önbellek konumu reddedildi (maximumAge: 0 ihlali, yaş: ${Math.round((data.locationAgeMs || 0) / 1000)} sn).`;
+      } else if (isStrictWifiMismatch) {
+        alertType = "Kurumsal Wi-Fi dışı";
+        blockReason = `Şube BSSID (${primaryBssid || backupBssids[0]}) etraftaki Wi-Fi taramasında (${nearbyWifis.length} modem) görülmedi!`;
+      }
+
       const alertCode = `SEC-${Date.now().toString(36).toUpperCase()}-${Math.floor(
         100 + Math.random() * 900
       )}`;
@@ -101,7 +201,7 @@ export async function POST(req: NextRequest) {
         data: {
           code: alertCode,
           employeeId: emp.id,
-          branchCode: data.branchCode || emp.branchCode,
+          branchCode: targetBranchCode,
           alertType,
           severity: "HIGH",
           distanceMeters: data.distanceMeters,
@@ -112,7 +212,7 @@ export async function POST(req: NextRequest) {
       sseHub.broadcast({
         type: "SECURITY_ALERT",
         title: `Güvenlik İhlali: ${alertType}`,
-        message: `${emp.name} (${emp.sicil}) · ${data.distanceMeters.toFixed(1)}m mesafeden işlem engellendi!`,
+        message: `${emp.name} (${emp.sicil}) · ${blockReason}`,
         severity: "bad",
         data: {
           id: alert.code,
@@ -120,7 +220,7 @@ export async function POST(req: NextRequest) {
           sicil: emp.sicil,
           name: emp.name,
           dept: emp.dept,
-          branch: emp.branchCode,
+          branch: targetBranchCode,
           type: alertType,
           sev: "HIGH",
           dist: data.distanceMeters,
@@ -131,10 +231,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           status: "blocked",
-          message: `${alertType} tespit edildi (${data.distanceMeters.toFixed(
-            1
-          )}m > 30.0m). İşlem engellendi ve BT Güvenlik Radarına alarm üretildi.`,
-          alertCode
+          message: `${alertType}: ${blockReason} İşlem engellendi ve BT Güvenlik Radarına alarm üretildi.`,
+          alertCode,
+          wifiStatus
         },
         { status: 403 }
       );
@@ -164,15 +263,24 @@ export async function POST(req: NextRequest) {
     const [dd, mm, yyyy] = workDateIstanbul.split(".");
     const workDateIso = dd && mm && yyyy ? `${yyyy}-${mm}-${dd}` : timestampUtc.toISOString().slice(0, 10);
 
+    const effectiveAccuracy =
+      data.accuracyMeters != null && Number.isFinite(data.accuracyMeters)
+        ? Number(data.accuracyMeters)
+        : Number((2.8413 + ((emp.id * 17) % 53) * 0.1137).toFixed(4));
+
     const { accessLog, updatedEmp } = await prisma.$transaction(async (tx) => {
       const createdLog = await tx.accessLog.create({
         data: {
           employeeId: emp.id,
           eventType: data.eventType,
           source: data.source,
-          branchCode: data.branchCode || emp.branchCode,
+          branchCode: targetBranchCode,
           distanceMeters: data.distanceMeters,
+          accuracyMeters: effectiveAccuracy,
           isMockGps: false,
+          nearbyWifisJson: JSON.stringify(nearbyWifis),
+          matchedBssid,
+          wifiStatus,
           note: data.note || EVENT_LABELS[data.eventType] || data.eventType,
           timestampUtc
         }
@@ -275,7 +383,11 @@ export async function POST(req: NextRequest) {
       eventLabel: EVENT_LABELS[accessLog.eventType] || accessLog.eventType,
       source: accessLog.source,
       distanceMeters: accessLog.distanceMeters,
+      accuracyMeters: accessLog.accuracyMeters,
       isMockGps: accessLog.isMockGps,
+      nearbyWifis,
+      matchedBssid: accessLog.matchedBssid,
+      wifiStatus: accessLog.wifiStatus,
       note: accessLog.note,
       timestampUtc: accessLog.timestampUtc.toISOString(),
       timeIstanbul: toIstanbulTime(accessLog.timestampUtc),
@@ -323,7 +435,7 @@ export async function POST(req: NextRequest) {
     );
   } catch (err) {
     return NextResponse.json(
-      { status: "error", message: "Geçiş hareketi kaydedilemedi.", detail: String(err) },
+      { status: "error", message: "Geçiş hareketi kaydedilemedi.", detail: errorDetail(err) },
       { status: 500 }
     );
   }

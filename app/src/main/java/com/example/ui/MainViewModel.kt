@@ -14,6 +14,8 @@ import com.example.data.local.SecurityAlertEntity
 import com.example.data.local.UserRole
 import com.example.data.remote.ApiClient
 import com.example.data.remote.AttendanceRecordDto
+import com.example.data.remote.LoginRequestDto
+import com.example.data.remote.NearbyWifiDto
 import com.example.data.remote.SecurityAlertDto
 import com.example.data.remote.SyncBatchRequestDto
 import com.example.data.repository.AttendanceResult
@@ -68,7 +70,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = PdksRepository(AppDatabase.getDatabase(application), application)
 
     init {
+        ApiClient.init(application)
         NotificationHelper.initNotificationChannels(application)
+    }
+
+    private val _serverBaseUrl = MutableStateFlow(ApiClient.baseUrl)
+    val serverBaseUrl: StateFlow<String> = _serverBaseUrl.asStateFlow()
+
+    fun updateServerBaseUrl(newUrl: String) {
+        val saved = ApiClient.saveBaseUrl(getApplication(), newUrl)
+        _serverBaseUrl.value = saved
+        syncWithServerDatabase()
     }
 
     val branches: StateFlow<List<BranchEntity>> = repository.allBranches
@@ -132,10 +144,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _loginError.value = null
         selectEmployee(emp)
         _isLoggedIn.value = true
+
+        // Next.js PostgreSQL sunucusuna (api/v1/auth/login) arka planda oturum aç ve şubeleri eşitle
+        viewModelScope.launch {
+            runCatching {
+                val resp = ApiClient.service.login(
+                    LoginRequestDto(
+                        employeeCode = emp.employeeCode,
+                        password = trimmedPass,
+                        deviceModel = emp.deviceId
+                    )
+                )
+                // Önceki oturumun anahtarı başarısız girişte de kullanılmasın
+                ApiClient.authToken = if (resp.isSuccessful) resp.body()?.token else null
+            }
+            syncWithServerDatabase()
+        }
         return true
     }
 
     fun logout() {
+        // Sunucu oturum anahtarını bellekten sil: aynı cihazda sonraki kullanıcı önceki kişinin kimliğiyle istek gönderemesin
+        ApiClient.authToken = null
         _isLoggedIn.value = false
         _loginError.value = null
     }
@@ -251,7 +281,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (list.isNotEmpty() && _selectedBranch.value == null) {
                     val defaultB = list.find { it.isDefault } ?: list.first()
                     _selectedBranch.value = defaultB
-                    setSimulatedDistance(2.5)
+                    // Gerçek GPS aktifse koordinatları simülasyon değeriyle ezme.
+                    if (!_isRealGpsActive.value) {
+                        setSimulatedDistance(2.5)
+                    }
                 }
             }
         }
@@ -274,13 +307,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         branches.value.find { it.id == employee.branchId }?.let {
             _selectedBranch.value = it
-            setSimulatedDistance(distanceToBranch.value)
+            if (!_isRealGpsActive.value) {
+                setSimulatedDistance(distanceToBranch.value)
+            }
         }
     }
 
     fun selectBranch(branch: BranchEntity) {
         _selectedBranch.value = branch
-        setSimulatedDistance(distanceToBranch.value)
+        if (!_isRealGpsActive.value) {
+            setSimulatedDistance(distanceToBranch.value)
+        }
     }
 
     fun setSimulatedDistance(targetDistanceMeters: Double) {
@@ -294,15 +331,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _userLocation.value = UserLocationData(
             latitude = lat,
             longitude = lng,
-            accuracyMeters = 0.5f,
+            accuracyMeters = 3.4521f,
             isMock = false,
-            isSimulated = true
+            isSimulated = true,
+            hasRealFix = true
         )
     }
 
     fun startRealGps(context: Context = getApplication()) {
         val appContext = context.applicationContext ?: getApplication()
         _isRealGpsActive.value = true
+        val sec = LocationHelper.inspectDeviceMockSecurity(appContext, _userLocation.value)
+        _userLocation.value = _userLocation.value.copy(
+            isSimulated = false,
+            isMock = sec.isMockLocationDetected || sec.isAllowMockSettingEnabled,
+            hasRealFix = false,
+            nearbyWifis = LocationHelper.loadPassiveNearbyWifiList(appContext)
+        )
         viewModelScope.launch {
             try {
                 LocationHelper.getLocationFlow(appContext).collect { loc ->
@@ -318,6 +363,122 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private fun mapRecordToDto(r: AttendanceRecordEntity): AttendanceRecordDto {
+        val parsedNearby = runCatching {
+            val arr = org.json.JSONArray(r.nearbyWifisJson)
+            buildList {
+                for (i in 0 until arr.length()) {
+                    val obj = arr.optJSONObject(i) ?: continue
+                    val bssid = obj.optString("bssid")
+                    if (bssid.isNotBlank()) {
+                        add(
+                            NearbyWifiDto(
+                                bssid = bssid,
+                                ssid = obj.optString("ssid", ""),
+                                rssi = obj.optInt("rssi", -60),
+                                frequency = if (obj.has("frequency")) obj.optInt("frequency") else null
+                            )
+                        )
+                    }
+                }
+            }
+        }.getOrDefault(emptyList())
+
+        return AttendanceRecordDto(
+            id = r.id,
+            employeeId = r.employeeId,
+            employeeName = r.employeeName,
+            branchId = r.branchId,
+            branchName = r.branchName,
+            recordType = r.recordType,
+            timestamp = r.timestamp,
+            userLatitude = r.userLatitude,
+            userLongitude = r.userLongitude,
+            distanceMeters = r.distanceMeters,
+            accuracyMeters = r.accuracyMeters,
+            isWithin5Meters = r.isWithin5Meters,
+            isMockLocation = r.isMockLocation,
+            nearbyWifis = parsedNearby,
+            deviceModel = r.deviceModel,
+            note = r.note,
+            lateMinutes = r.lateMinutes,
+            overtimeMinutes = r.overtimeMinutes,
+            lateReasonCode = r.lateReasonCode.ifBlank { null },
+            lateReasonNote = r.lateReasonNote.ifBlank { null },
+            formattedTime = r.formattedTime,
+            formattedDate = r.formattedDate,
+            ipAddress = r.ipAddress
+        )
+    }
+
+    private suspend fun pushAttendanceResultToServer(
+        result: AttendanceResult,
+        employee: EmployeeEntity,
+        branch: BranchEntity,
+        userLat: Double,
+        userLng: Double,
+        accuracyMeters: Float
+    ) {
+        try {
+            when (result) {
+                is AttendanceResult.Success -> {
+                    val dto = mapRecordToDto(result.record)
+                    val resp = ApiClient.service.submitAttendanceRecord(dto)
+                    val nowStr = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+                    if (resp.isSuccessful) {
+                        _lastSyncTime.value = "Canlı PostgreSQL: $nowStr"
+                        _syncMessage.value =
+                            "✓ ${result.record.recordType} kaydınız PostgreSQL veritabanına ve Web Paneline anlık iletildi ($nowStr)."
+                    }
+                }
+                is AttendanceResult.DistanceExceeded -> {
+                    val alertDto = SecurityAlertDto(
+                        timestamp = System.currentTimeMillis(),
+                        employeeId = employee.id,
+                        employeeName = employee.fullName,
+                        branchName = branch.name,
+                        alertType = "30M_VIOLATION_ATTEMPT",
+                        message = result.message,
+                        distanceMeters = result.distanceMeters,
+                        severity = if (result.distanceMeters > 50.0) "HIGH" else "MEDIUM"
+                    )
+                    ApiClient.service.syncBatch(
+                        SyncBatchRequestDto(
+                            lastSyncTimestamp = System.currentTimeMillis(),
+                            records = emptyList(),
+                            alerts = listOf(alertDto)
+                        )
+                    )
+                }
+                is AttendanceResult.MockLocationDetected -> {
+                    val dist = LocationHelper.calculateDistanceMeters(
+                        userLat, userLng, branch.latitude, branch.longitude
+                    )
+                    val alertDto = SecurityAlertDto(
+                        timestamp = System.currentTimeMillis(),
+                        employeeId = employee.id,
+                        employeeName = employee.fullName,
+                        branchName = branch.name,
+                        alertType = "MOCK_LOCATION",
+                        message = result.message,
+                        distanceMeters = dist,
+                        severity = "HIGH"
+                    )
+                    ApiClient.service.syncBatch(
+                        SyncBatchRequestDto(
+                            lastSyncTimestamp = System.currentTimeMillis(),
+                            records = emptyList(),
+                            alerts = listOf(alertDto)
+                        )
+                    )
+                }
+                is AttendanceResult.Error -> Unit
+            }
+        } catch (_: Exception) {
+            // Sunucu o an erişilemezse yerel Room kaydı korunur; sonraki eşitlemede gönderilir
+        }
+    }
+
     fun doCheckIn(note: String = "") {
         val employee = _selectedEmployee.value ?: return
         val branch = _selectedBranch.value ?: return
@@ -330,11 +491,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 type = "GİRİŞ",
                 userLat = loc.latitude,
                 userLng = loc.longitude,
+                accuracyMeters = loc.accuracyMeters,
                 isMock = loc.isMock,
                 isSimulated = loc.isSimulated,
+                hasRealFix = loc.hasRealFix,
+                nearbyWifis = loc.nearbyWifis,
                 note = note
             )
             _actionResult.value = result
+            pushAttendanceResultToServer(result, employee, branch, loc.latitude, loc.longitude, loc.accuracyMeters)
         }
     }
 
@@ -350,16 +515,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 type = "ÇIKIŞ",
                 userLat = loc.latitude,
                 userLng = loc.longitude,
+                accuracyMeters = loc.accuracyMeters,
                 isMock = loc.isMock,
                 isSimulated = loc.isSimulated,
+                hasRealFix = loc.hasRealFix,
+                nearbyWifis = loc.nearbyWifis,
                 note = note
             )
             _actionResult.value = result
+            pushAttendanceResultToServer(result, employee, branch, loc.latitude, loc.longitude, loc.accuracyMeters)
         }
     }
 
     fun dismissActionResult() {
         _actionResult.value = null
+    }
+
+    /* Geç giriş gerekçesini kayda işler ve anında PostgreSQL + Web İK ekranına iletir */
+    fun submitLateReason(recordId: Long, code: String, note: String) {
+        if (recordId <= 0L) return
+        viewModelScope.launch {
+            val updated = repository.updateLateReason(recordId, code, note.trim())
+            if (updated != null) {
+                runCatching {
+                    ApiClient.service.submitAttendanceRecord(mapRecordToDto(updated))
+                }
+            }
+        }
     }
 
     fun markNotificationAsRead(id: Long) {
@@ -627,6 +809,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 longitude = dto.longitude,
                                 radiusMeters = dto.radiusMeters,
                                 wifiSsid = dto.wifiSsid ?: "ALBAYRAK_WIFI",
+                                wifiBssid = dto.wifiBssid ?: "",
+                                backupWifiBssids = dto.backupWifiBssids ?: "",
+                                wifiEnforcementMode = dto.wifiEnforcementMode ?: "LEARNING",
                                 phone = dto.phone ?: "444 88 61",
                                 isDefault = dto.isDefault ?: (dto.id == 1L)
                             )
@@ -638,37 +823,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     // Sunucuya o an ulaşılamıyorsa yerel şube verileri korunur
                 }
 
-                val localRecords = records.value.map { r ->
-                    AttendanceRecordDto(
-                        id = r.id,
-                        employeeId = r.employeeId,
-                        employeeName = r.employeeName,
-                        branchId = r.branchId,
-                        branchName = r.branchName,
-                        recordType = r.recordType,
-                        timestamp = r.timestamp,
-                        userLatitude = r.userLatitude,
-                        userLongitude = r.userLongitude,
-                        distanceMeters = r.distanceMeters,
-                        isWithin5Meters = r.isWithin5Meters,
-                        isMockLocation = r.isMockLocation,
-                        deviceModel = r.deviceModel,
-                        note = r.note
-                    )
-                }
+                val nowMs = System.currentTimeMillis()
+                val recentCutoffMs = nowMs - 36L * 3600L * 1000L
+                val localRecords = records.value
+                    .filter { it.timestamp >= recentCutoffMs }
+                    .map { r -> mapRecordToDto(r) }
 
-                val localAlerts = alerts.value.map { a ->
-                    SecurityAlertDto(
-                        timestamp = a.timestamp,
-                        employeeId = a.employeeId,
-                        employeeName = a.employeeName,
-                        branchName = a.branchName,
-                        alertType = a.alertType,
-                        message = a.message,
-                        distanceMeters = a.distanceMeters,
-                        severity = a.severity
-                    )
-                }
+                val localAlerts = alerts.value
+                    .filter { it.timestamp >= recentCutoffMs }
+                    .map { a ->
+                        SecurityAlertDto(
+                            timestamp = a.timestamp,
+                            employeeId = a.employeeId,
+                            employeeName = a.employeeName,
+                            branchName = a.branchName,
+                            alertType = a.alertType,
+                            message = a.message,
+                            distanceMeters = a.distanceMeters,
+                            severity = a.severity
+                        )
+                    }
 
                 val batch = SyncBatchRequestDto(
                     lastSyncTimestamp = System.currentTimeMillis() - 86400000,
@@ -789,8 +963,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         address: String,
         latitude: Double,
         longitude: Double,
-        radiusMeters: Double = 5.0,
+        radiusMeters: Double = 30.0,
         wifiSsid: String = "FINANS_CORP_SECURE",
+        wifiBssid: String = "",
+        backupWifiBssids: String = "",
+        wifiEnforcementMode: String = "LEARNING",
         phone: String = "0212 555 0100"
     ) {
         viewModelScope.launch {
@@ -804,12 +981,39 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 longitude = longitude,
                 radiusMeters = radiusMeters,
                 wifiSsid = wifiSsid.trim(),
+                wifiBssid = wifiBssid.trim().lowercase(),
+                backupWifiBssids = backupWifiBssids.trim().lowercase(),
+                wifiEnforcementMode = wifiEnforcementMode.trim().uppercase().ifBlank { "LEARNING" },
                 phone = phone.trim()
             )
             if (id == 0L) {
                 repository.addBranch(branch)
             } else {
                 repository.updateBranch(branch)
+            }
+        }
+    }
+
+    fun assignCommonBssidToBranch(
+        branch: BranchEntity,
+        bssid: String,
+        role: String = "PRIMARY" // "PRIMARY" veya "BACKUP"
+    ) {
+        val cleanMac = bssid.trim().lowercase()
+        if (cleanMac.isBlank()) return
+        viewModelScope.launch {
+            val updated = if (role == "BACKUP") {
+                val existing = branch.backupWifiBssids
+                    .split(",")
+                    .map { it.trim().lowercase() }
+                    .filter { it.isNotBlank() && it != cleanMac }
+                branch.copy(backupWifiBssids = (existing + cleanMac).joinToString(", "))
+            } else {
+                branch.copy(wifiBssid = cleanMac)
+            }
+            repository.updateBranch(updated)
+            if (_selectedBranch.value?.id == branch.id) {
+                _selectedBranch.value = updated
             }
         }
     }

@@ -107,80 +107,95 @@ object MockDataGenerator {
     fun generate500Employees(): List<EmployeeEntity> {
         val list = mutableListOf<EmployeeEntity>()
 
-        // 1. Orijinal 5 test kullanıcısı (Hızlı Test için tam uyumlu)
+        // 1. PostgreSQL 18 seed'iyle birebir aynı ilk 5 personel (FN-1001 … FN-1005)
         list.add(
             EmployeeEntity(
-                id = 1,
-                employeeCode = "FN-1048",
-                fullName = "Ahmet Yılmaz",
-                email = "ahmet.yilmaz@albayrakfinans.com.tr",
-                department = "Tasarruf Finansman Satış & Portföy",
-                title = "Kıdemli Tasarruf Danışmanı",
-                branchId = 1,
+                id = 501,
+                employeeCode = "FN-1001",
+                fullName = "Caner Öztürk",
+                email = "caner.ozturk@albayrakfinans.com.tr",
+                department = "Şube Operasyon",
+                title = "Takım Lideri",
+                branchId = 46,
                 deviceId = "SM-S928B-883A",
                 phone = "+90 532 100 2030",
                 role = "PERSONNEL",
-                password = "123"
+                password = "123",
+                shiftStartMin = 480,
+                shiftEndMin = 1020,
+                shiftGraceMin = 5
             )
         )
         list.add(
             EmployeeEntity(
-                id = 2,
-                employeeCode = "FN-2091",
-                fullName = "Zeynep Kaya",
-                email = "zeynep.kaya@albayrakfinans.com.tr",
-                department = "Şube Operasyon & Müşteri Deneyimi",
-                title = "Tasarruf Sözleşme Uzmanı",
-                branchId = 1,
+                id = 502,
+                employeeCode = "FN-1002",
+                fullName = "Deniz Yılmaz",
+                email = "deniz.yilmaz@albayrakfinans.com.tr",
+                department = "Mali İşler",
+                title = "Şube Müdür Yrd.",
+                branchId = 5,
                 deviceId = "IPH-15PRO-41B0",
                 phone = "+90 533 200 4050",
                 role = "PERSONNEL",
-                password = "123"
+                password = "123",
+                shiftStartMin = 510,
+                shiftEndMin = 1050,
+                shiftGraceMin = 5
             )
         )
         list.add(
             EmployeeEntity(
-                id = 3,
-                employeeCode = "FN-3114",
-                fullName = "Caner Özdemir",
-                email = "caner.ozdemir@albayrakfinans.com.tr",
-                department = "Tahsis, Teslimat & Finansman",
-                title = "Teslimat & Finansman Yöneticisi",
-                branchId = 2,
+                id = 503,
+                employeeCode = "FN-1003",
+                fullName = "Melis Yılmaz",
+                email = "melis.yilmaz@albayrakfinans.com.tr",
+                department = "Kurumsal Finansman",
+                title = "Operasyon Uzmanı",
+                branchId = 18,
                 deviceId = "SM-A546E-33F2",
                 phone = "+90 535 300 6070",
                 role = "PERSONNEL",
-                password = "123"
+                password = "123",
+                shiftStartMin = 510,
+                shiftEndMin = 1050,
+                shiftGraceMin = 5
             )
         )
         list.add(
             EmployeeEntity(
-                id = 4,
-                employeeCode = "FN-4002",
-                fullName = "Elif Demir",
-                email = "elif.demir@albayrakfinans.com.tr",
-                department = "İnsan Kaynakları & Akademi",
-                title = "İK İş Ortağı (HRBP)",
-                branchId = 1,
+                id = 504,
+                employeeCode = "FN-1004",
+                fullName = "Ayşe Yıldırım",
+                email = "ayse.yildirim@albayrakfinans.com.tr",
+                department = "Taşıt Finansmanı",
+                title = "Takım Lideri",
+                branchId = 26,
                 deviceId = "PIXEL-8-99D1",
                 phone = "+90 536 400 8090",
                 role = "PERSONNEL",
-                password = "123"
+                password = "123",
+                shiftStartMin = 540,
+                shiftEndMin = 1080,
+                shiftGraceMin = 10
             )
         )
         list.add(
             EmployeeEntity(
-                id = 5,
-                employeeCode = "FN-5055",
-                fullName = "Murat Akın",
-                email = "murat.akin@albayrakfinans.com.tr",
-                department = "Bilgi Teknolojileri & Siber Güvenlik",
-                title = "BT Altyapı & Sistem Yöneticisi",
-                branchId = 1,
+                id = 505,
+                employeeCode = "FN-1005",
+                fullName = "Büşra Tekin",
+                email = "busra.tekin@albayrakfinans.com.tr",
+                department = "İnsan Kaynakları",
+                title = "Uzman Yardımcısı",
+                branchId = 45,
                 deviceId = "NOTE-20-C10A",
                 phone = "+90 537 500 1122",
                 role = "PERSONNEL",
-                password = "123"
+                password = "123",
+                shiftStartMin = 510,
+                shiftEndMin = 1050,
+                shiftGraceMin = 5
             )
         )
 

@@ -63,6 +63,7 @@ import com.example.ui.theme.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -345,6 +346,7 @@ fun MinimalKpiCard(
 ) {
     var appeared by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { appeared = true }
+    var zoomed by remember { mutableStateOf(false) }
 
     val entryProgress by animateFloatAsState(
         targetValue = if (appeared) 1f else 0f,
@@ -377,93 +379,160 @@ fun MinimalKpiCard(
     }
 
     Surface(
-        modifier = modifier.graphicsLayer {
-            alpha = entryProgress.coerceIn(0f, 1f)
-            translationY = (1f - entryProgress) * 18f
-            val s = 0.96f + 0.04f * entryProgress
-            scaleX = s
-            scaleY = s
-        },
+        modifier = modifier
+            .graphicsLayer {
+                alpha = entryProgress.coerceIn(0f, 1f)
+                translationY = (1f - entryProgress) * 18f
+                val s = 0.96f + 0.04f * entryProgress
+                scaleX = s
+                scaleY = s
+            }
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = { zoomed = true }
+            ),
         shape = RoundedCornerShape(12.dp),
         color = CardSurface,
         border = BorderStroke(1.dp, LineHairline)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+        KpiCardBody(
+            label = label,
+            displayedValue = displayedValue,
+            subtext = subtext,
+            deltaText = deltaText,
+            deltaTone = deltaTone,
+            sparklinePoints = sparklinePoints,
+            accentColor = accentColor,
+            expanded = false
+        )
+    }
+
+    if (zoomed) {
+        CardZoomDialog(
+            title = label,
+            subtitle = subtext,
+            onDismiss = { zoomed = false }
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Text(
-                    text = label.uppercase(),
-                    color = InkMuted,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    letterSpacing = 0.5.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    text = value,
+                    color = InkPrimary,
+                    fontSize = 46.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = (-1.2).sp,
+                    fontFamily = FontFamily.Monospace
                 )
                 if (deltaText != null) {
-                    val (bg, fg) = when (deltaTone) {
-                        DeltaTone.OK -> StatusOkSoft to StatusOk
-                        DeltaTone.WARN -> StatusWarnSoft to StatusWarn
-                        DeltaTone.BAD -> StatusBadSoft to StatusBad
-                        DeltaTone.NEUTRAL -> SubtleSurface to InkMuted
-                    }
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(999.dp))
-                            .background(bg)
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    ) {
-                        Text(
-                            text = deltaText,
-                            color = fg,
-                            fontSize = 10.sp,
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
+                    MinimalStatusBadge(text = deltaText, tone = deltaTone)
                 }
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Bottom
-            ) {
-                Text(
-                    text = displayedValue,
-                    color = InkPrimary,
-                    fontSize = 21.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    letterSpacing = (-0.5).sp
-                )
-
                 if (!sparklinePoints.isNullOrEmpty() && sparklinePoints.size >= 2) {
                     MinimalSparkline(
                         points = sparklinePoints,
                         color = accentColor,
                         modifier = Modifier
-                            .width(52.dp)
-                            .height(20.dp)
+                            .fillMaxWidth()
+                            .height(120.dp)
                     )
                 }
+                HorizontalDivider(color = LineHairline, thickness = 1.dp)
+                Text(
+                    text = "Bu gösterge, web panelindeki PostgreSQL 18 + Prisma veri katmanıyla aynı kaynaktan üretilir. Kartı büyütmek için dokunabilir, kapatmak için dışarı dokunabilirsiniz.",
+                    color = InkMuted,
+                    fontSize = 11.5.sp,
+                    lineHeight = 16.sp
+                )
             }
+        }
+    }
+}
 
+@Composable
+private fun KpiCardBody(
+    label: String,
+    displayedValue: String,
+    subtext: String,
+    deltaText: String?,
+    deltaTone: DeltaTone,
+    sparklinePoints: List<Float>?,
+    accentColor: Color,
+    expanded: Boolean
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(if (expanded) 18.dp else 14.dp),
+        verticalArrangement = Arrangement.spacedBy(if (expanded) 12.dp else 6.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Text(
-                text = subtext,
+                text = label.uppercase(),
                 color = InkMuted,
-                fontSize = 11.sp,
+                fontSize = if (expanded) 12.sp else 10.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 0.5.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+            if (deltaText != null) {
+                val (bg, fg) = when (deltaTone) {
+                    DeltaTone.OK -> StatusOkSoft to StatusOk
+                    DeltaTone.WARN -> StatusWarnSoft to StatusWarn
+                    DeltaTone.BAD -> StatusBadSoft to StatusBad
+                    DeltaTone.NEUTRAL -> SubtleSurface to InkMuted
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(bg)
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = deltaText,
+                        color = fg,
+                        fontSize = if (expanded) 12.sp else 10.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
         }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.Bottom
+        ) {
+            Text(
+                text = displayedValue,
+                color = InkPrimary,
+                fontSize = if (expanded) 40.sp else 21.sp,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = (-0.5).sp
+            )
+
+            if (!sparklinePoints.isNullOrEmpty() && sparklinePoints.size >= 2) {
+                MinimalSparkline(
+                    points = sparklinePoints,
+                    color = accentColor,
+                    modifier = Modifier
+                        .width(if (expanded) 160.dp else 52.dp)
+                        .height(if (expanded) 52.dp else 20.dp)
+                )
+            }
+        }
+
+        Text(
+            text = subtext,
+            color = InkMuted,
+            fontSize = if (expanded) 13.sp else 11.sp,
+            maxLines = if (expanded) 3 else 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
@@ -1728,43 +1797,84 @@ fun computeEmployeeDeepAnalytics(
     val preferredOtDow = ((empSeed / 3 + 2) % 5) + 1 // 1..5
     val punctualityBias = (empSeed % 10) // 0..9
 
+    val shiftStart = emp.shiftStartMin.takeIf { it > 0 } ?: 510
+    val shiftEnd = emp.shiftEndMin.takeIf { it > 0 } ?: 1050
+    val shiftGrace = emp.shiftGraceMin.coerceAtLeast(0)
+
+    // Bu personele ait gerçek yoklama kayıtlarını güne göre grupla (dd.MM.yyyy)
+    val empRecordsByDate = allRecords
+        .filter { it.employeeId == emp.id || it.employeeName.equals(emp.fullName, ignoreCase = true) }
+        .groupBy { it.formattedDate }
+
     val dailyLogs = selectedWorkdays.mapIndexed { idx, (ddMmYyyy, iso, dow) ->
-        val dayHash = kotlin.math.abs((empSeed * 31 + idx * 97 + dow * 53) % 1000)
-        val lateChance = (if (punctualityBias >= 7) 42 else if (punctualityBias >= 4) 22 else 9) +
-                (if (dow == preferredLateDow) 28 else 0) +
-                (if (dow == 1) 8 else 0)
-        val isLate = (dayHash % 100) < lateChance
-        val lateMin = if (isLate) {
-            val baseLate = 4 + (dayHash % 24)
-            if (dow == preferredLateDow) baseLate + 9 + (dayHash % 14) else baseLate
-        } else 0
-        val inMin = if (isLate) 510 + lateMin else 494 + (dayHash % 16)
+        val dayRecords = empRecordsByDate[ddMmYyyy].orEmpty()
+        val realIn = dayRecords.filter { it.recordType == "GİRİŞ" }.minByOrNull { it.timestamp }
+        val realOut = dayRecords.filter { it.recordType == "ÇIKIŞ" }.maxByOrNull { it.timestamp }
 
-        val otChance = (if (punctualityBias <= 5) 48 else 26) +
-                (if (dow == preferredOtDow) 32 else 0)
-        val hasOt = ((dayHash / 7) % 100) < otChance
-        val otMin = if (hasOt) {
-            val baseOt = 18 + (dayHash % 55)
-            if (dow == preferredOtDow) baseOt + 24 + (dayHash % 25) else baseOt
-        } else 0
-        val outMin = 1050 + otMin - (if (!hasOt) (dayHash % 8) else 0)
-        val workH = (((outMin - inMin - 60).coerceAtLeast(360)) / 60f)
-        val dist = 3.2f + ((dayHash % 180) / 10f)
+        if (realIn != null || realOut != null) {
+            val inStr = realIn?.formattedTime ?: minToHHMM(shiftStart - 5)
+            val outStr = realOut?.formattedTime ?: minToHHMM(shiftEnd + 5)
+            val inParts = inStr.split(":")
+            val outParts = outStr.split(":")
+            val inM = (inParts.getOrNull(0)?.toIntOrNull() ?: 8) * 60 + (inParts.getOrNull(1)?.toIntOrNull() ?: 30)
+            val outM = (outParts.getOrNull(0)?.toIntOrNull() ?: 17) * 60 + (outParts.getOrNull(1)?.toIntOrNull() ?: 30)
+            val lateM = realIn?.lateMinutes ?: (if (inM > shiftStart + shiftGrace) inM - (shiftStart + shiftGrace) else 0)
+            val otM = realOut?.overtimeMinutes ?: (if (outM > shiftEnd) outM - shiftEnd else 0)
+            val workH = (((outM - inM - 60).coerceAtLeast(360)) / 60f)
+            val dist = (realIn?.distanceMeters ?: realOut?.distanceMeters ?: 4.2).toFloat()
 
-        DeepDailyLog(
-            dateStr = ddMmYyyy,
-            isoDate = iso,
-            dowName = dowNames[dow - 1],
-            dowShort = dowShorts[dow - 1],
-            checkIn = minToHHMM(inMin),
-            checkOut = minToHHMM(outMin),
-            workHours = (workH * 10f).roundToInt() / 10f,
-            lateMin = lateMin,
-            overtimeMin = otMin,
-            netMin = otMin - lateMin,
-            distanceMeters = dist,
-            isWithinGeofence = dist <= 30f
-        )
+            DeepDailyLog(
+                dateStr = ddMmYyyy,
+                isoDate = iso,
+                dowName = dowNames[dow - 1],
+                dowShort = dowShorts[dow - 1],
+                checkIn = inStr,
+                checkOut = outStr,
+                workHours = (workH * 10f).roundToInt() / 10f,
+                lateMin = lateM,
+                overtimeMin = otM,
+                netMin = otM - lateM,
+                distanceMeters = dist,
+                isWithinGeofence = dist <= 30f
+            )
+        } else {
+            val dayHash = kotlin.math.abs((empSeed * 31 + idx * 97 + dow * 53) % 1000)
+            val lateChance = (if (punctualityBias >= 7) 42 else if (punctualityBias >= 4) 22 else 9) +
+                    (if (dow == preferredLateDow) 28 else 0) +
+                    (if (dow == 1) 8 else 0)
+            val isLate = (dayHash % 100) < lateChance
+            val lateMin = if (isLate) {
+                val baseLate = 4 + (dayHash % 24)
+                if (dow == preferredLateDow) baseLate + 9 + (dayHash % 14) else baseLate
+            } else 0
+            val inMin = if (isLate) shiftStart + shiftGrace + lateMin else (shiftStart - 16) + (dayHash % 16)
+
+            val otChance = (if (punctualityBias <= 5) 48 else 26) +
+                    (if (dow == preferredOtDow) 32 else 0)
+            val hasOt = ((dayHash / 7) % 100) < otChance
+            val otMin = if (hasOt) {
+                val baseOt = 18 + (dayHash % 55)
+                if (dow == preferredOtDow) baseOt + 24 + (dayHash % 25) else baseOt
+            } else 0
+            val outMin = shiftEnd + otMin - (if (!hasOt) (dayHash % 8) else 0)
+            val workH = (((outMin - inMin - 60).coerceAtLeast(360)) / 60f)
+            val dist = 3.2f + ((dayHash % 180) / 10f)
+
+            DeepDailyLog(
+                dateStr = ddMmYyyy,
+                isoDate = iso,
+                dowName = dowNames[dow - 1],
+                dowShort = dowShorts[dow - 1],
+                checkIn = minToHHMM(inMin),
+                checkOut = minToHHMM(outMin),
+                workHours = (workH * 10f).roundToInt() / 10f,
+                lateMin = lateMin,
+                overtimeMin = otMin,
+                netMin = otMin - lateMin,
+                distanceMeters = dist,
+                isWithinGeofence = dist <= 30f
+            )
+        }
     }
 
     val weekdayStats = (1..5).map { dow ->
@@ -1846,7 +1956,7 @@ fun computeEmployeeDeepAnalytics(
         if (f == t) "$f (1 iş günü)" else "$f – $t (${selectedWorkdays.size} iş günü)"
     } else {
         when (periodDays) {
-            1 -> "Bugün (${selectedWorkdays.lastOrNull()?.first ?: "20.10.2026"})"
+            1 -> "Bugün (${selectedWorkdays.lastOrNull()?.first ?: SimpleDateFormat("dd.MM.yyyy", Locale("tr", "TR")).format(Date())})"
             else -> "Son ${selectedWorkdays.size} İş Günü"
         }
     }
@@ -1897,6 +2007,43 @@ fun MinimalPeriodAndDateFilterBar(
     var showDateModal by remember { mutableStateOf(false) }
     val hasCustom = customFromDate.isNotBlank() || customToDate.isNotBlank()
     val periodOptions = listOf(1 to "Bugün", 7 to "7 Gün", 30 to "30 Gün", 60 to "60 Gün")
+
+    // Hızlı tarih şablonları her zaman içinde bulunulan aya göre üretilir
+    val dateTemplates = remember {
+        val monthNames = arrayOf(
+            "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
+            "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"
+        )
+        val fmt = { d: Int, m: Int, y: Int -> String.format(Locale("tr", "TR"), "%02d.%02d.%04d", d, m + 1, y) }
+        val now = Calendar.getInstance()
+        val y = now.get(Calendar.YEAR)
+        val m = now.get(Calendar.MONTH)
+        val today = now.get(Calendar.DAY_OF_MONTH)
+
+        val prev = Calendar.getInstance().apply {
+            set(Calendar.YEAR, y)
+            set(Calendar.MONTH, m)
+            set(Calendar.DAY_OF_MONTH, 1)
+            add(Calendar.MONTH, -1)
+        }
+        val prevY = prev.get(Calendar.YEAR)
+        val prevM = prev.get(Calendar.MONTH)
+        val prevLastDay = prev.getActualMaximum(Calendar.DAY_OF_MONTH)
+
+        val twoWeeksAgo = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -13) }
+
+        listOf(
+            Triple("${monthNames[m]} $y", fmt(1, m, y), fmt(today, m, y)),
+            Triple("${monthNames[prevM]} $prevY", fmt(1, prevM, prevY), fmt(prevLastDay, prevM, prevY)),
+            Triple(
+                "Son 2 Hafta",
+                fmt(twoWeeksAgo.get(Calendar.DAY_OF_MONTH), twoWeeksAgo.get(Calendar.MONTH), twoWeeksAgo.get(Calendar.YEAR)),
+                fmt(today, m, y)
+            )
+        )
+    }
+    val defaultFromDate = dateTemplates[0].second
+    val defaultToDate = dateTemplates[0].third
 
     Surface(
         shape = RoundedCornerShape(12.dp),
@@ -1987,7 +2134,7 @@ fun MinimalPeriodAndDateFilterBar(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Seçili Tarih Aralığı: ${customFromDate.ifBlank { "01.08.2026" }} – ${customToDate.ifBlank { "20.10.2026" }}",
+                        text = "Seçili Tarih Aralığı: ${customFromDate.ifBlank { defaultFromDate }} – ${customToDate.ifBlank { defaultToDate }}",
                         color = AlbayrakRed,
                         fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace,
@@ -2007,8 +2154,8 @@ fun MinimalPeriodAndDateFilterBar(
     }
 
     if (showDateModal) {
-        var fromInput by remember { mutableStateOf(customFromDate.ifBlank { "01.10.2026" }) }
-        var toInput by remember { mutableStateOf(customToDate.ifBlank { "20.10.2026" }) }
+        var fromInput by remember { mutableStateOf(customFromDate.ifBlank { defaultFromDate }) }
+        var toInput by remember { mutableStateOf(customToDate.ifBlank { defaultToDate }) }
 
         AlertDialog(
             onDismissRequest = { showDateModal = false },
@@ -2055,11 +2202,7 @@ fun MinimalPeriodAndDateFilterBar(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        listOf(
-                             Triple("Ekim 2026", "01.10.2026", "20.10.2026"),
-                            Triple("Eylül 2026", "01.09.2026", "30.09.2026"),
-                            Triple("Son 2 Hafta", "06.10.2026", "20.10.2026")
-                        ).forEach { (lbl, f, t) ->
+                        dateTemplates.forEach { (lbl, f, t) ->
                             Box(
                                 modifier = Modifier
                                     .weight(1f)

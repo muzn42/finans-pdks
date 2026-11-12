@@ -56,13 +56,16 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.example.data.local.BranchEntity
 import com.example.data.repository.AttendanceResult
+import com.example.location.LocationHelper
 import com.example.location.UserLocationData
 import com.example.ui.MainViewModel
 import com.example.ui.components.*
 import com.example.ui.theme.*
 import com.example.util.SoundEffectPlayer
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.cos
@@ -80,10 +83,17 @@ fun PersonnelScreen(viewModel: MainViewModel) {
     val userLocation by viewModel.userLocation.collectAsState()
     val records by viewModel.records.collectAsState()
     val actionResult by viewModel.actionResult.collectAsState()
+    val serverBaseUrl by viewModel.serverBaseUrl.collectAsState()
+    val lastSyncTime by viewModel.lastSyncTime.collectAsState()
+    val syncMessage by viewModel.syncMessage.collectAsState()
 
     var showExcuseModal by remember { mutableStateOf(false) }
     var showBranchSelectorModal by remember { mutableStateOf(false) }
+    var showServerConfigModal by remember { mutableStateOf(false) }
     var noteInput by remember { mutableStateOf("") }
+
+    // Geç giriş gerekçesi: aynı kayıt için "Daha Sonra" denildiyse tekrar açılmaz
+    var lateReasonDismissedId by remember { mutableStateOf(0L) }
 
     // Patlama / Dalga (Burst) Animasyon Tetikleyicisi
     val burstProgress = remember { Animatable(0f) }
@@ -124,6 +134,27 @@ fun PersonnelScreen(viewModel: MainViewModel) {
             viewModel.startRealGps(context)
         } else {
             Toast.makeText(context, "Gerçek GPS için konum izni gereklidir.", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // Uygulama açılışında gerçek GPS'i otomatik başlat; izin yoksa bir kez iste.
+    // Simülasyon modu (isSimulated) ayrıdır ve bu izin akışından etkilenmez.
+    LaunchedEffect(Unit) {
+        val fineGranted = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        val coarseGranted = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        if (fineGranted || coarseGranted) {
+            viewModel.startRealGps(context)
+        } else {
+            locationPermissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+            )
         }
     }
 
@@ -172,7 +203,103 @@ fun PersonnelScreen(viewModel: MainViewModel) {
         }
     }
 
-    // Son işlem geri bildirimi ve kurumsal harmonik ses efekti
+    // Geliştirici Seçenekleri / Sahte Konum (Mock GPS) canlı güvenlik denetimi
+    var mockSecurityReport by remember {
+        mutableStateOf(LocationHelper.inspectDeviceMockSecurity(context, userLocation))
+    }
+    var showDevMockWarningDialog by remember { mutableStateOf(false) }
+    var lastWarnedState by remember { mutableStateOf(false) }
+
+    LaunchedEffect(userLocation) {
+        while (true) {
+            // Paket taraması ve ayar okumaları ana iş parçacığını meşgul etmesin.
+            val report = withContext(Dispatchers.IO) {
+                LocationHelper.inspectDeviceMockSecurity(context, userLocation)
+            }
+            mockSecurityReport = report
+            if (report.hasSecurityWarning && !lastWarnedState) {
+                lastWarnedState = true
+                showDevMockWarningDialog = true
+                SoundEffectPlayer.playWarningTone(context)
+            } else if (!report.hasSecurityWarning) {
+                lastWarnedState = false
+                showDevMockWarningDialog = false
+            }
+            delay(1500L)
+        }
+    }
+
+    val openDeveloperSettings = {
+        runCatching {
+            val intent = Intent(android.provider.Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+        }.onFailure {
+            runCatching {
+                val fallback = Intent(android.provider.Settings.ACTION_SETTINGS).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(fallback)
+            }
+        }
+    }
+
+    if (showDevMockWarningDialog && mockSecurityReport.hasSecurityWarning) {
+        AlertDialog(
+            onDismissRequest = { showDevMockWarningDialog = false },
+            title = {
+                Text(
+                    text = mockSecurityReport.summaryTitle,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 16.sp,
+                    color = StatusBad
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = mockSecurityReport.summaryMessage,
+                        fontSize = 13.5.sp,
+                        lineHeight = 19.sp,
+                        color = InkPrimary
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = StatusBadSoft,
+                        border = BorderStroke(1.dp, StatusBad.copy(alpha = 0.35f))
+                    ) {
+                        Text(
+                            text = "Kurumsal PDKS Güvenlik Kuralı: Geliştirici Seçenekleri veya Sahte Konum açıkken yapılan yoklama denemeleri otomatik olarak reddedilir ve İK / BT birimlerine güvenlik ihlali olarak raporlanır.",
+                            fontSize = 11.5.sp,
+                            lineHeight = 16.sp,
+                            color = StatusBad,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(10.dp)
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDevMockWarningDialog = false
+                        openDeveloperSettings()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = StatusBad)
+                ) {
+                    Text("Geliştirici Ayarlarını Aç", color = Color.White, fontSize = 12.sp)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDevMockWarningDialog = false }) {
+                    Text("Anladım", color = InkSecondary)
+                }
+            }
+        )
+    }
+
+    // Son işlem geri bildirimi ve kurumsal harmonik ses efekti + sonuç dialogu
     LaunchedEffect(actionResult) {
         actionResult?.let { res ->
             val msg = when (res) {
@@ -188,13 +315,49 @@ fun PersonnelScreen(viewModel: MainViewModel) {
                     SoundEffectPlayer.playWarningTone(context)
                     res.message
                 }
+                is AttendanceResult.MockLocationDetected -> {
+                    SoundEffectPlayer.playWarningTone(context)
+                    res.message
+                }
                 is AttendanceResult.Error -> {
                     SoundEffectPlayer.playWarningTone(context)
                     res.errorMessage
                 }
             }
             Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-            viewModel.dismissActionResult()
+        }
+    }
+
+    // Geç girişte önce gerekçe ekranı gösterilir; diğer sonuçlarda standart sonuç dialogu açılır.
+    val lateReasonRecord = (actionResult as? AttendanceResult.Success)?.record?.takeIf {
+        it.recordType == "GİRİŞ" &&
+                it.lateMinutes > 0 &&
+                it.lateReasonCode.isBlank() &&
+                it.id > 0L &&
+                it.id != lateReasonDismissedId
+    }
+
+    actionResult?.let { res ->
+        if (lateReasonRecord != null) {
+            LateReasonDialog(
+                lateMinutes = lateReasonRecord.lateMinutes,
+                checkInTime = lateReasonRecord.formattedTime,
+                onDismiss = {
+                    lateReasonDismissedId = lateReasonRecord.id
+                    viewModel.dismissActionResult()
+                },
+                onSubmit = { code, note ->
+                    viewModel.submitLateReason(lateReasonRecord.id, code, note)
+                    lateReasonDismissedId = lateReasonRecord.id
+                    viewModel.dismissActionResult()
+                    Toast.makeText(context, "Geç giriş gerekçeniz kaydedildi.", Toast.LENGTH_SHORT).show()
+                }
+            )
+        } else {
+            AttendanceResultDialog(
+                result = res,
+                onDismiss = { viewModel.dismissActionResult() }
+            )
         }
     }
 
@@ -205,6 +368,65 @@ fun PersonnelScreen(viewModel: MainViewModel) {
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+        // 0. GELİŞTİRİCİ SEÇENEKLERİ / SAHTE KONUM GÜVENLİK UYARI KARTI
+        if (mockSecurityReport.hasSecurityWarning) {
+            item(key = "mock_dev_security_warning") {
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = StatusBadSoft,
+                    border = BorderStroke(1.5.dp, StatusBad)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = "Güvenlik Uyarısı",
+                                tint = StatusBad,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text(
+                                text = mockSecurityReport.summaryTitle,
+                                color = StatusBad,
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                        }
+                        Text(
+                            text = mockSecurityReport.summaryMessage,
+                            color = InkPrimary,
+                            fontSize = 12.sp,
+                            lineHeight = 17.sp
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            Button(
+                                onClick = { openDeveloperSettings() },
+                                colors = ButtonDefaults.buttonColors(containerColor = StatusBad),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = "Geliştirici Ayarlarını Kapat",
+                                    color = Color.White,
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // 1. ANA YOKLAMA KARTI (Çok Katmanlı Kuantum Giriş / Çıkış Buton Animasyonu)
         item(key = "punch_orb_card") {
             Surface(
@@ -401,29 +623,88 @@ fun PersonnelScreen(viewModel: MainViewModel) {
             )
         }
 
-        // 3. Hızlı İşlemler (Mazeret & Sunucu Eşitleme)
+        // 3. Hızlı İşlemler (Mazeret & Sunucu Eşitleme + PostgreSQL Sunucu Adresi)
         item(key = "quick_actions") {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                MinimalBasicButton(
-                    text = "Mazeret / Not Bildir",
-                    onClick = { showExcuseModal = true },
-                    variant = MinimalButtonVariant.OUTLINE,
-                    icon = Icons.Default.EditNote,
-                    modifier = Modifier.weight(1f)
-                )
-                MinimalBasicButton(
-                    text = "Sunucu ile Eşitle",
-                    onClick = {
-                        viewModel.syncWithServerDatabase()
-                        Toast.makeText(context, "Kayıtlar merkezi sunucu ile eşitleniyor...", Toast.LENGTH_SHORT).show()
-                    },
-                    variant = MinimalButtonVariant.OUTLINE,
-                    icon = Icons.Default.Sync,
-                    modifier = Modifier.weight(1f)
-                )
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    MinimalBasicButton(
+                        text = "Mazeret / Not Bildir",
+                        onClick = { showExcuseModal = true },
+                        variant = MinimalButtonVariant.OUTLINE,
+                        icon = Icons.Default.EditNote,
+                        modifier = Modifier.weight(1f)
+                    )
+                    MinimalBasicButton(
+                        text = "Sunucu ile Eşitle",
+                        onClick = {
+                            viewModel.syncWithServerDatabase()
+                            Toast.makeText(context, "Kayıtlar merkezi PostgreSQL sunucusu ile eşitleniyor...", Toast.LENGTH_SHORT).show()
+                        },
+                        variant = MinimalButtonVariant.OUTLINE,
+                        icon = Icons.Default.Sync,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(11.dp),
+                    color = CardSurface,
+                    border = BorderStroke(1.dp, LineHairline),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showServerConfigModal = true }
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 9.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(7.dp)
+                                        .clip(CircleShape)
+                                        .background(StatusOk)
+                                )
+                                Text(
+                                    text = "PostgreSQL Sunucu: $serverBaseUrl",
+                                    color = InkPrimary,
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            Text(
+                                text = "Adresi Değiştir",
+                                color = AlbayrakRed,
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Text(
+                            text = syncMessage ?: "$lastSyncTime · Giriş/çıkış yapıldığında Web Paneline anlık (SSE) düşer.",
+                            color = InkMuted,
+                            fontSize = 10.5.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
             }
         }
 
@@ -702,6 +983,18 @@ fun PersonnelScreen(viewModel: MainViewModel) {
                     onClick = { showBranchSelectorModal = false },
                     variant = MinimalButtonVariant.OUTLINE
                 )
+            }
+        )
+    }
+
+    if (showServerConfigModal) {
+        ServerConnectionConfigDialog(
+            currentUrl = serverBaseUrl,
+            onDismiss = { showServerConfigModal = false },
+            onSaveUrl = { newUrl ->
+                viewModel.updateServerBaseUrl(newUrl)
+                showServerConfigModal = false
+                Toast.makeText(context, "Sunucu adresi güncellendi: $newUrl", Toast.LENGTH_SHORT).show()
             }
         )
     }
@@ -1100,7 +1393,8 @@ private fun BranchAndUserLiveMapCard(
     onOpenGoogleMaps: (BranchEntity) -> Unit
 ) {
     var mapStyleIdx by remember { mutableIntStateOf(0) } // 0: Sokak Haritası, 1: 30m Uydu Radarı
-    var mapZoomLevel by remember { mutableFloatStateOf(1f) } // 0.75f .. 1.6f
+    var mapZoomLevel by remember { mutableFloatStateOf(1f) } // 0.75f .. 1.6f (radar görünümü)
+    var streetZoomDelta by remember { mutableIntStateOf(0) } // Sokak haritası: otomatik sığdırmaya göre ek zoom
 
     val infiniteTransition = rememberInfiniteTransition(label = "map_beacon")
     val beaconPulse by infiniteTransition.animateFloat(
@@ -1281,7 +1575,7 @@ private fun BranchAndUserLiveMapCard(
             )
 
             // İnteraktif Harita Canvas (Şube Pin + 30m Geofence Çemberi + Personel Canlı Pin)
-            Box(
+            BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(225.dp)
@@ -1289,84 +1583,53 @@ private fun BranchAndUserLiveMapCard(
                     .border(1.dp, LineHairline, RoundedCornerShape(14.dp))
             ) {
                 val statusPinColor = if (isWithinRadius) StatusOk else StatusBad
+                val isStreetMode = mapStyleIdx == 0
+                val geofenceRadiusMeters = LocationHelper.STRICT_GEOFENCE_RADIUS_METERS
+                val mapWidthDp = maxWidth.value
+                val mapHeightDp = maxHeight.value
+                val branchLat = branch?.latitude ?: userLocation.latitude
+                val branchLon = branch?.longitude ?: userLocation.longitude
+                val userLat = userLocation.latitude
+                val userLon = userLocation.longitude
+
+                // Gerçek koordinatlara göre şube çemberi + personeli birlikte sığdıran görünüm
+                val streetViewport = remember(
+                    branchLat, branchLon, userLat, userLon, mapWidthDp, mapHeightDp, streetZoomDelta
+                ) {
+                    StreetMapProjection.fitViewport(
+                        branchLat = branchLat,
+                        branchLon = branchLon,
+                        userLat = userLat,
+                        userLon = userLon,
+                        radiusMeters = geofenceRadiusMeters,
+                        widthDp = mapWidthDp,
+                        heightDp = mapHeightDp,
+                        paddingHorizontalDp = 72f,
+                        paddingVerticalDp = 130f,
+                        verticalBiasDp = 14f,
+                        zoomDelta = streetZoomDelta
+                    )
+                }
+
+                if (isStreetMode) {
+                    // 1. SOKAK & CADDE HARİTASI — gerçek OpenStreetMap altlığı
+                    OsmTileLayer(viewport = streetViewport)
+                }
 
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     val w = size.width
                     val h = size.height
-                    val cx = w * 0.46f
-                    val cy = h * 0.52f
+                    val edge = 14.dp.toPx()
 
-                    if (mapStyleIdx == 0) {
-                        // 1. SOKAK & CADDE HARİTASI GÖRÜNÜMÜ
-                        drawRect(color = Color(0xFFEEF2F6))
-
-                        // Park / Yeşil Alan Blokları
-                        drawRoundRect(
-                            color = Color(0xFFDCECE2),
-                            topLeft = Offset(w * 0.04f, h * 0.08f),
-                            size = Size(w * 0.24f, h * 0.30f),
-                            cornerRadius = CornerRadius(12f, 12f)
-                        )
-                        drawRoundRect(
-                            color = Color(0xFFDCECE2),
-                            topLeft = Offset(w * 0.72f, h * 0.62f),
-                            size = Size(w * 0.23f, h * 0.30f),
-                            cornerRadius = CornerRadius(12f, 12f)
-                        )
-
-                        // Mimari Bina Adaları
-                        val blocks = listOf(
-                            Offset(w * 0.32f, h * 0.08f) to Size(w * 0.28f, h * 0.22f),
-                            Offset(w * 0.66f, h * 0.08f) to Size(w * 0.28f, h * 0.26f),
-                            Offset(w * 0.05f, h * 0.56f) to Size(w * 0.26f, h * 0.34f),
-                            Offset(w * 0.36f, h * 0.68f) to Size(w * 0.30f, h * 0.24f)
-                        )
-                        blocks.forEach { (topLeft, blockSize) ->
-                            drawRoundRect(
-                                color = Color(0xFFE2E8F0),
-                                topLeft = topLeft,
-                                size = blockSize,
-                                cornerRadius = CornerRadius(8f, 8f)
-                            )
-                        }
-
-                        // Tali Sokaklar ve Ana Caddeler
-                        val roadColor = Color.White
-                        val roadBorder = Color(0xFFCBD5E1)
-                        // Yatay Ana Bulvar
-                        drawLine(
-                            color = roadBorder,
-                            start = Offset(0f, cy),
-                            end = Offset(w, cy),
-                            strokeWidth = 22.dp.toPx()
-                        )
-                        drawLine(
-                            color = roadColor,
-                            start = Offset(0f, cy),
-                            end = Offset(w, cy),
-                            strokeWidth = 18.dp.toPx()
-                        )
-                        // Dikey Ana Cadde
-                        drawLine(
-                            color = roadBorder,
-                            start = Offset(cx, 0f),
-                            end = Offset(cx, h),
-                            strokeWidth = 20.dp.toPx()
-                        )
-                        drawLine(
-                            color = roadColor,
-                            start = Offset(cx, 0f),
-                            end = Offset(cx, h),
-                            strokeWidth = 16.dp.toPx()
-                        )
-                        // Çapraz Bağlantı Yolu
-                        drawLine(
-                            color = roadColor,
-                            start = Offset(w * 0.1f, h * 0.9f),
-                            end = Offset(w * 0.9f, h * 0.15f),
-                            strokeWidth = 10.dp.toPx()
-                        )
+                    val branchPt = if (isStreetMode) {
+                        streetViewport.toLocalDp(branchLat, branchLon) * density
                     } else {
+                        Offset(w * 0.46f, h * 0.52f)
+                    }
+                    val cx = branchPt.x
+                    val cy = branchPt.y
+
+                    if (!isStreetMode) {
                         // 2. 30m UYDU RADAR GÖRÜNÜMÜ
                         drawRect(color = AlbayrakDarkSurface)
                         val gridStep = 28.dp.toPx()
@@ -1410,8 +1673,13 @@ private fun BranchAndUserLiveMapCard(
                         }
                     }
 
-                    // 30m Geofence Güvenlik Alanı Çemberi
-                    val geofenceRadiusPx = (48.dp.toPx() * mapZoomLevel).coerceIn(32.dp.toPx(), 84.dp.toPx())
+                    // 30m Geofence Güvenlik Alanı Çemberi (sokak modunda gerçek metre ölçeğinde)
+                    val geofenceRadiusPx = if (isStreetMode) {
+                        (geofenceRadiusMeters /
+                            StreetMapProjection.metersPerUnit(branchLat, streetViewport.zoom)).toFloat() * density
+                    } else {
+                        (48.dp.toPx() * mapZoomLevel).coerceIn(32.dp.toPx(), 84.dp.toPx())
+                    }
                     drawCircle(
                         color = if (isWithinRadius) StatusOk.copy(alpha = 0.16f) else AlbayrakRed.copy(alpha = 0.14f),
                         radius = geofenceRadiusPx,
@@ -1427,12 +1695,21 @@ private fun BranchAndUserLiveMapCard(
                         )
                     )
 
-                    // Personel Konumunun Şube Merkezine Göre Harita Üzerindeki Noktası
-                    val normalizedRatio = (animatedDist / 30f).coerceIn(0.05f, 2.1f)
-                    val userOffsetPx = geofenceRadiusPx * normalizedRatio
-                    val angleRad = Math.toRadians(28.0) // Kuzeydoğu - Doğu yönü
-                    val ux = (cx + userOffsetPx * cos(angleRad).toFloat()).coerceIn(24.dp.toPx(), w - 24.dp.toPx())
-                    val uy = (cy - userOffsetPx * sin(angleRad).toFloat()).coerceIn(24.dp.toPx(), h - 24.dp.toPx())
+                    // Personel Konumunun Harita Üzerindeki Noktası
+                    val ux: Float
+                    val uy: Float
+                    if (isStreetMode) {
+                        // Gerçek GPS koordinatı → harita pikseli (yakınlaştırınca kenara sabitlenir)
+                        val userPt = streetViewport.toLocalDp(userLat, userLon) * density
+                        ux = userPt.x.coerceIn(edge, w - edge)
+                        uy = userPt.y.coerceIn(edge, h - edge)
+                    } else {
+                        val normalizedRatio = (animatedDist / 30f).coerceIn(0.05f, 2.1f)
+                        val userOffsetPx = geofenceRadiusPx * normalizedRatio
+                        val angleRad = Math.toRadians(28.0) // Kuzeydoğu - Doğu yönü
+                        ux = (cx + userOffsetPx * cos(angleRad).toFloat()).coerceIn(24.dp.toPx(), w - 24.dp.toPx())
+                        uy = (cy - userOffsetPx * sin(angleRad).toFloat()).coerceIn(24.dp.toPx(), h - 24.dp.toPx())
+                    }
 
                     // Şube ile Personel Arası Mesafe Vektör Çizgisi
                     drawLine(
@@ -1544,7 +1821,13 @@ private fun BranchAndUserLiveMapCard(
                     Box(
                         modifier = Modifier
                             .size(30.dp)
-                            .clickable { mapZoomLevel = (mapZoomLevel + 0.2f).coerceAtMost(1.6f) },
+                            .clickable {
+                                if (isStreetMode) {
+                                    if (streetViewport.zoom < StreetMapProjection.MAX_ZOOM) streetZoomDelta += 1
+                                } else {
+                                    mapZoomLevel = (mapZoomLevel + 0.2f).coerceAtMost(1.6f)
+                                }
+                            },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -1558,7 +1841,13 @@ private fun BranchAndUserLiveMapCard(
                     Box(
                         modifier = Modifier
                             .size(30.dp)
-                            .clickable { mapZoomLevel = (mapZoomLevel - 0.2f).coerceAtLeast(0.75f) },
+                            .clickable {
+                                if (isStreetMode) {
+                                    if (streetViewport.zoom > StreetMapProjection.MIN_ZOOM) streetZoomDelta -= 1
+                                } else {
+                                    mapZoomLevel = (mapZoomLevel - 0.2f).coerceAtLeast(0.75f)
+                                }
+                            },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -1568,6 +1857,21 @@ private fun BranchAndUserLiveMapCard(
                             modifier = Modifier.size(16.dp)
                         )
                     }
+                }
+
+                // OpenStreetMap lisans atfı (ODbL zorunluluğu)
+                if (isStreetMode) {
+                    Text(
+                        text = "© OpenStreetMap katkıcıları",
+                        color = InkSecondary,
+                        fontSize = 8.sp,
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(bottom = 40.dp, end = 6.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(CardSurface.copy(alpha = 0.8f))
+                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                    )
                 }
 
                 // Alt Koordinat & Google Haritalar'da Aç Şeridi

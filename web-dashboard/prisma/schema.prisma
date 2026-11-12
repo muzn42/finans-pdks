@@ -18,9 +18,12 @@ model Branch {
   googleMapUrl String     @default("") @map("google_map_url")
   lat          Float
   lng          Float
-  radiusMeters Float      @default(30.0) @map("radius_meters")
-  wifiSsid     String     @map("wifi_ssid")
-  weight       Float      @default(0.1)
+  radiusMeters        Float      @default(30.0) @map("radius_meters")
+  wifiSsid            String     @map("wifi_ssid")
+  wifiBssid           String     @default("") @map("wifi_bssid") // Ana şube modemi MAC (BSSID) - örn. a4:2b:8c:1d:e5:9f
+  backupWifiBssids    String     @default("") @map("backup_wifi_bssids") // Yedek / yan dükkan modem MAC adresleri (virgülle ayrılmış)
+  wifiEnforcementMode String     @default("LEARNING") @map("wifi_enforcement_mode") // LEARNING (Öğrenme Modu - logla) | STRICT (Zorunlu BSSID)
+  weight              Float      @default(0.1)
   createdAtUtc DateTime   @default(now()) @map("created_at_utc") @db.Timestamptz(3)
   employees    Employee[]
 
@@ -59,6 +62,7 @@ model Employee {
   checkIn         String?           @map("check_in")
   checkOut        String?           @map("check_out")
   lateMin         Int               @default(0) @map("late_min")
+  lateExcusedMin  Int               @default(0) @map("late_excused_min") // İK'nın haklı bulup gecikmeden düştüğü dakika
   overtimeMin     Int               @default(0) @map("overtime_min")
   distMeters      Float             @default(8.5) @map("dist_meters")
   deviceModel     String            @default("Samsung S24") @map("device_model")
@@ -89,14 +93,19 @@ model AccessLog {
   employeeId     Int      @map("employee_id")
   employee       Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   eventType      String   @map("event_type") // CHECK_IN | LUNCH_OUT | LUNCH_IN | BREAK_OUT | BREAK_IN | CHECK_OUT
-  source         String   @default("MOBILE_GEOFENCE") // MOBILE_GEOFENCE | QR_TURNSTILE | WEB_MANUAL
+  source         String   @default("MOBILE_GEOFENCE") // MOBILE_GEOFENCE | WEB_MANUAL (konum doğrulama)
   branchCode     String   @map("branch_code")
-  distanceMeters Float    @default(6.4) @map("distance_meters")
-  isMockGps      Boolean  @default(false) @map("is_mock_gps")
-  note           String?
-  timestampUtc   DateTime @default(now()) @map("timestamp_utc") @db.Timestamptz(3)
+  distanceMeters  Float    @default(6.4) @map("distance_meters")
+  accuracyMeters  Float    @default(3.4521) @map("accuracy_meters")
+  isMockGps       Boolean  @default(false) @map("is_mock_gps")
+  nearbyWifisJson String   @default("[]") @map("nearby_wifis_json") // [{ bssid, ssid, rssi }] pasif tarama listesi
+  matchedBssid    String?  @map("matched_bssid")
+  wifiStatus      String   @default("LEARNING") @map("wifi_status") // VERIFIED_PRIMARY | VERIFIED_BACKUP | LEARNING | UNVERIFIED
+  note            String?
+  timestampUtc    DateTime @default(now()) @map("timestamp_utc") @db.Timestamptz(3)
 
   @@index([employeeId, timestampUtc(sort: Desc)])
+  @@index([branchCode, timestampUtc(sort: Desc)])
   @@index([timestampUtc(sort: Desc)])
   @@map("access_logs")
 }
@@ -115,6 +124,12 @@ model DailyAttendance {
   overtimeMin    Int       @default(0) @map("overtime_min")
   breakMin       Int       @default(60) @map("break_min")
   hourlyLeaveMin Int       @default(0) @map("hourly_leave_min")
+  lateReasonCode String?   @map("late_reason_code") // Personelin bildirdiği gecikme gerekçesi (TRAFIK, SAGLIK_KENDI, DIGER...)
+  lateReasonNote String?   @map("late_reason_note") // "Diğer" seçildiyse serbest açıklama
+  lateExcuseStatus String  @default("NONE") @map("late_excuse_status") // NONE | PENDING | APPROVED | REJECTED
+  lateExcusedMin Int       @default(0) @map("late_excused_min") // Haklı bulunan ve gecikmeden düşülen dakika
+  lateReviewedBy String?   @map("late_reviewed_by")
+  lateReviewedAtUtc DateTime? @map("late_reviewed_at_utc") @db.Timestamptz(3)
   distanceMeters Float     @default(7.2) @map("distance_meters")
   status         String    @default("PRESENT") // PRESENT | LATE | LEAVE | ABSENT
   updatedAtUtc   DateTime  @updatedAt @map("updated_at_utc") @db.Timestamptz(3)
