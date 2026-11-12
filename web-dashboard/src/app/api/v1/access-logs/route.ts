@@ -1,4 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { errorDetail, requireUser, STAFF_ROLES } from "@/lib/api-guard";
+
+/** Geçiş simülatörü (kart/QR/geofence) yalnızca İK, BT ve Admin tarafından kullanılabilir. */
+const SIMULATOR_ROLES = ["HR", "IT", "ADMIN"] as const;
 import { prisma } from "@/lib/prisma";
 import {
   AccessLogCreateSchema,
@@ -36,6 +40,8 @@ function parseNearbyWifisJson(raw: string | null | undefined): Array<{
 }
 
 export async function GET(req: NextRequest) {
+  const guard = await requireUser(req, STAFF_ROLES);
+  if (!guard.ok) return guard.response;
   try {
     const { searchParams } = new URL(req.url);
     const empId = searchParams.get("employeeId");
@@ -80,13 +86,15 @@ export async function GET(req: NextRequest) {
     });
   } catch (err) {
     return NextResponse.json(
-      { status: "error", message: "AccessLogs kayıtları alınamadı.", detail: String(err) },
+      { status: "error", message: "AccessLogs kayıtları alınamadı.", detail: errorDetail(err) },
       { status: 500 }
     );
   }
 }
 
 export async function POST(req: NextRequest) {
+  const guard = await requireUser(req, SIMULATOR_ROLES);
+  if (!guard.ok) return guard.response;
   try {
     const body = await req.json();
     const parsed = AccessLogCreateSchema.safeParse(body);
@@ -427,7 +435,7 @@ export async function POST(req: NextRequest) {
     );
   } catch (err) {
     return NextResponse.json(
-      { status: "error", message: "Geçiş hareketi kaydedilemedi.", detail: String(err) },
+      { status: "error", message: "Geçiş hareketi kaydedilemedi.", detail: errorDetail(err) },
       { status: 500 }
     );
   }

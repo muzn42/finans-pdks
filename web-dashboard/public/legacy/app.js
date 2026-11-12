@@ -67,8 +67,27 @@
 
     function saveAccounts() {
         try {
-            localStorage.setItem('atf_portal_accounts', JSON.stringify(ACCOUNTS));
+            // Varsayılan demo hesapları dışındaki kullanıcıların parolası tarayıcıya yazılmaz.
+            const demoEmails = new Set(DEFAULT_ACCOUNTS.map(a => a.email));
+            const safe = ACCOUNTS.map(a => (demoEmails.has(a.email) ? a : Object.assign({}, a, { pass: undefined })));
+            localStorage.setItem('atf_portal_accounts', JSON.stringify(safe));
         } catch (_) {}
+    }
+
+    /* Admin hesap güncellemesini sunucuya yazar. Sunucuya ulaşılamazsa (çevrimdışı demo) yerelde devam eder. */
+    async function patchAccount(body) {
+        let res = null;
+        try {
+            res = await fetch('/api/v1/accounts', {
+                method: 'PATCH', credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                body: JSON.stringify(body)
+            });
+        } catch (_) { return true; }
+        if (res.ok) return true;
+        const d = await res.json().catch(() => null);
+        A.toast((d && d.message) || 'Kullanıcı güncellenemedi.', 'err');
+        return false;
     }
 
     const S = {
@@ -85,7 +104,7 @@
                 name: '',
                 title: '',
                 email: '',
-                pass: 'Albayrak!2026',
+                pass: tempPassword(),
                 branch: 'ALL',
                 perms: ['emp_view', 'emp_add', 'leave_manage', 'analytics_view', 'excel_export']
             },
@@ -4465,7 +4484,7 @@
             S.ui.adm.filter = el.dataset.v;
             draw(false);
         },
-        'adm-create-user': () => {
+        'adm-create-user': async () => {
             const u = S.ui.adm;
             const name = (u.name || '').trim();
             const title = (u.title || '').trim() || (u.role === 'HR' ? 'İK Uzmanı' : 'BT Sistem Uzmanı');
@@ -4474,33 +4493,42 @@
             if (name.length < 3) { A.toast('Lütfen kullanıcının ad ve soyadını girin.', 'err'); return; }
             if (!email || !email.includes('@')) { A.toast('Geçerli bir kurumsal e-posta adresi girin.', 'err'); return; }
             if (ACCOUNTS.some(a => a.email === email)) { A.toast('Bu e-posta adresiyle kayıtlı bir kullanıcı zaten var.', 'err'); return; }
-            if (pass.length < 6) { A.toast('Parola en az 6 karakter olmalıdır.', 'err'); return; }
+            if (pass.length < 8) { A.toast('Parola en az 8 karakter olmalıdır.', 'err'); return; }
             if (!u.perms.length) { A.toast('En az 1 modül yetkisi seçmelisiniz.', 'err'); return; }
 
-            const newAcc = {
-                email,
-                pass,
-                role: u.role,
-                name,
-                title,
-                branch: u.branch || 'ALL',
-                active: true,
-                perms: u.perms.slice()
-            };
+            const payload = { email, name, title, role: u.role, branch: u.branch || 'ALL', password: pass, perms: u.perms.slice() };
+            let res = null;
+            try {
+                res = await fetch('/api/v1/accounts', {
+                    method: 'POST', credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+            } catch (_) { res = null; }
+            if (res && !res.ok) {
+                const d = await res.json().catch(() => null);
+                A.toast((d && d.message) || 'Kullanıcı sunucuya kaydedilemedi.', 'err');
+                return;
+            }
+            // Parola yerel depoya YAZILMAZ; doğrulama sunucuda yapılır.
+            const newAcc = { email, role: u.role, name, title, branch: payload.branch, active: true, perms: payload.perms };
             ACCOUNTS.push(newAcc);
             saveAccounts();
             audit('Yeni ' + (u.role === 'HR' ? 'İK' : 'BT') + ' portal kullanıcısı oluşturuldu (' + name + ')', email, 'ACCOUNT');
             u.name = '';
             u.title = '';
             u.email = '';
-            u.pass = 'Albayrak!2026';
-            A.toast(name + ' (' + (u.role === 'HR' ? 'İK' : 'BT') + ') kullanıcısı ve yetkileri kaydedildi');
+            u.pass = tempPassword();
+            A.toast(name + ' (' + (u.role === 'HR' ? 'İK' : 'BT') + ') kullanıcısı ve yetkileri kaydedildi' + (res ? '' : ' · sunucuya ulaşılamadı, yalnızca bu tarayıcıda'), res ? undefined : 'err');
             draw(false);
         },
-        'adm-toggle-active': el => {
+        'adm-toggle-active': async el => {
             const acc = ACCOUNTS.find(a => a.email === el.dataset.email);
             if (!acc) return;
-            acc.active = acc.active === false ? true : false;
+            const nextActive = acc.active === false;
+            const ok = await patchAccount({ email: acc.email, active: nextActive });
+            if (!ok) return;
+            acc.active = nextActive;
             saveAccounts();
             audit('Kullanıcı durumu güncellendi (' + (acc.active ? 'AKTİF' : 'ASKIDA') + ')', acc.email, 'ACCOUNT');
             A.toast(acc.name + ' hesabı ' + (acc.active ? 'aktifleştirildi' : 'askıya alındı'));
@@ -4524,13 +4552,15 @@
                 </div>`;
             openModal('Yetkileri Düzenle · ' + acc.name, renderModalPerms(), '<button class="btn btn-primary" data-act="modal-close">Kaydet ve Kapat</button>');
         },
-        'adm-perm-modal-toggle': el => {
+        'adm-perm-modal-toggle': async el => {
             const acc = ACCOUNTS.find(a => a.email === el.dataset.email);
             if (!acc) return;
-            acc.perms = acc.perms || [];
             const k = el.dataset.k;
-            const idx = acc.perms.indexOf(k);
-            if (idx >= 0) acc.perms.splice(idx, 1); else acc.perms.push(k);
+            const current = acc.perms || [];
+            const nextPerms = current.includes(k) ? current.filter(p => p !== k) : current.concat(k);
+            const ok = await patchAccount({ email: acc.email, perms: nextPerms });
+            if (!ok) return;
+            acc.perms = nextPerms;
             saveAccounts();
             audit('Kullanıcı yetkileri güncellendi (' + acc.perms.length + ' yetki)', acc.email, 'ACCOUNT');
             acts['adm-edit-perms'](el);
@@ -5009,6 +5039,8 @@
         ensureLivePolling();
     }
     function logout(msg) {
+        // Sunucu tarafındaki httpOnly JWT çerezini de sil
+        try { fetch('/api/v1/auth', { method: 'DELETE', credentials: 'same-origin' }).catch(() => {}); } catch (_) {}
         if (A.closeCardPopover) A.closeCardPopover(true);
         document.documentElement.classList.remove('has-saved-session');
         sessionStorage.removeItem('atf_session'); sessionStorage.removeItem('atf_emp'); S.user = null; S.openEmpId = null; clearTimeout(idleTimer); closeDrawer(); closeModal();
@@ -5024,25 +5056,69 @@
         setTimeout(() => A.placeSeg($('#portalSeg')), 30); if (msg) A.toast(msg);
     }
     function armIdle() { clearTimeout(idleTimer); idleTimer = setTimeout(() => logout('Hareketsizlik nedeniyle oturum kapatıldı.'), 15 * 60 * 1000); }
-    function login(e) {
+    /* Sunucu rolü → arayüz portalı (Departman Müdürü İK portalını kullanır) */
+    const uiRoleOf = role => (role === 'DEPT_MANAGER' ? 'HR' : role);
+
+    function enterApp(u, offline) {
+        const role = uiRoleOf(u.role);
+        S.user = { email: u.email, role, name: u.name, title: u.title, branch: u.branch || 'ALL', perms: u.perms || [] };
+        sessionStorage.setItem('atf_session', JSON.stringify({ email: u.email, role, name: u.name, title: u.title, branch: S.user.branch, server: !offline }));
+        startApp();
+        A.toast('Hoş geldiniz, ' + u.name.split(' ')[0] + (offline ? ' · sunucuya ulaşılamadı, çevrimdışı demo modu' : ''));
+    }
+
+    /* Giriş: önce PostgreSQL sunucusu (/api/v1/auth, httpOnly JWT çerezi) doğrular.
+       Sunucuya hiç ulaşılamıyorsa (ağ hatası / 5xx) yalnızca yerel demo hesaplarıyla çevrimdışı demo açılır;
+       bu durumda API çağrıları oturumsuz olduğundan gerçek veri döndürmez. */
+    async function login(e) {
         e.preventDefault(); const err = $('#loginError'), btn = $('#loginBtn'); err.hidden = true;
-        if (Date.now() < lockUntil) { err.textContent = 'Çok fazla hatalı deneme. ' + Math.ceil((lockUntil - Date.now()) / 1000) + ' sn sonra tekrar deneyin.'; err.hidden = false; return; }
+        const showErr = msg => { err.textContent = msg; err.hidden = false; err.style.animation = 'none'; void err.offsetWidth; err.style.animation = ''; };
+        if (Date.now() < lockUntil) { showErr('Çok fazla hatalı deneme. ' + Math.ceil((lockUntil - Date.now()) / 1000) + ' sn sonra tekrar deneyin.'); return; }
         const email = $('#loginEmail').value.trim().toLowerCase(), pass = $('#loginPassword').value;
-        const acc = ACCOUNTS.find(a => a.email === email && a.pass === pass && a.role === S.portal);
-        if (!acc) {
-            fails++; if (fails >= 5) { lockUntil = Date.now() + 60000; fails = 0; }
-            err.textContent = 'E-posta veya parola hatalı ya da seçtiğiniz birim (' + (ROLE_PORTAL_NAME[S.portal] || S.portal) + ') için yetkiniz yok.'; err.hidden = false; err.style.animation = 'none'; void err.offsetWidth; err.style.animation = ''; return;
-        }
-        if (acc.active === false) {
-            err.textContent = 'Bu kullanıcı hesabı Sistem Yöneticisi tarafından askıya alınmıştır.'; err.hidden = false; return;
-        }
-        fails = 0; btn.disabled = true; btn.classList.add('is-busy'); btn.setAttribute('aria-busy', 'true');
+        if (!email || !pass) { showErr('E-posta ve parolanızı girin.'); return; }
+
+        btn.disabled = true; btn.classList.add('is-busy'); btn.setAttribute('aria-busy', 'true');
         btn.querySelector('span').textContent = 'Giriş yapılıyor…';
-        setTimeout(() => {
-            btn.disabled = false; btn.classList.remove('is-busy'); btn.removeAttribute('aria-busy');
-            btn.querySelector('span').textContent = 'Giriş yap';
-            S.user = { email: acc.email, role: acc.role, name: acc.name, title: acc.title, branch: acc.branch || 'ALL', perms: acc.perms || [] }; sessionStorage.setItem('atf_session', JSON.stringify({ email: acc.email, role: acc.role })); startApp(); A.toast('Hoş geldiniz, ' + acc.name.split(' ')[0]);
-        }, 450);
+        const resetBtn = () => { btn.disabled = false; btn.classList.remove('is-busy'); btn.removeAttribute('aria-busy'); btn.querySelector('span').textContent = 'Giriş yap'; };
+        const registerFail = () => { fails++; if (fails >= 5) { lockUntil = Date.now() + 60000; fails = 0; } };
+
+        let res = null;
+        try {
+            res = await fetch('/api/v1/auth', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                body: JSON.stringify({ email, password: pass, portal: S.portal })
+            });
+        } catch (_) { res = null; }
+
+        if (res && res.ok) {
+            const data = await res.json().catch(() => null);
+            resetBtn();
+            if (!data || !data.user) { showErr('Sunucu yanıtı okunamadı. Lütfen tekrar deneyin.'); return; }
+            fails = 0;
+            enterApp(data.user, false);
+            return;
+        }
+
+        if (res && res.status < 500) {
+            const data = await res.json().catch(() => null);
+            resetBtn(); registerFail();
+            showErr((data && data.message) || 'E-posta veya parola hatalı.');
+            return;
+        }
+
+        // Sunucu / veritabanı erişilemiyor → çevrimdışı demo (yerel demo hesapları)
+        resetBtn();
+        const acc = ACCOUNTS.find(a => a.email === email && a.pass && a.pass === pass && a.role === S.portal);
+        if (!acc) {
+            registerFail();
+            showErr('Sunucuya ulaşılamadı ve bu bilgiler çevrimdışı demo hesaplarıyla eşleşmedi.');
+            return;
+        }
+        if (acc.active === false) { showErr('Bu kullanıcı hesabı Sistem Yöneticisi tarafından askıya alınmıştır.'); return; }
+        fails = 0;
+        enterApp(acc, true);
     }
 
     /* ======================= Başlangıç ======================= */
@@ -5057,7 +5133,7 @@
         });
         $('#authLogo').style.color = '#fff'; $('#sideLogo').style.color = 'var(--charcoal)';
         syncTheme();
-        D.syncAllFromPostgres();
+        // Veri, oturum açıldıktan sonra startApp() içinde PostgreSQL'den çekilir (giriş öncesi veri sızıntısı yok).
         $('#themeBtn').onclick = () => { const t = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'; localStorage.setItem('atf_theme', t); syncTheme(); if (S.user) draw(false); };
 
         $('#portalSeg').addEventListener('click', e => { const b = e.target.closest('.seg-btn'); if (!b) return; $$('#portalSeg .seg-btn').forEach(x => { x.classList.toggle('is-active', x === b); x.setAttribute('aria-selected', x === b); }); S.portal = b.dataset.portal; A.placeSeg($('#portalSeg')); $('#loginError').hidden = true; });
@@ -5160,7 +5236,22 @@
         addEventListener('hashchange', () => { if (!S.user) return; const h = location.hash.replace('#/', ''); if (h && h !== S.page) go(h); });
         addEventListener('atf:sync', scheduleShiftsSyncDraw);
 
-        try { const s = JSON.parse(sessionStorage.getItem('atf_session') || 'null'), a = s && ACCOUNTS.find(x => x.email === s.email && x.role === s.role); if (a) { document.documentElement.classList.add('has-saved-session'); S.user = { email: a.email, role: a.role, name: a.name, title: a.title }; S.portal = a.role; startApp(); return; } } catch (e) { sessionStorage.removeItem('atf_session'); }
+        try {
+            const s = JSON.parse(sessionStorage.getItem('atf_session') || 'null');
+            const a = s && (s.server ? s : ACCOUNTS.find(x => x.email === s.email && x.role === s.role));
+            if (a && a.name && PAGES[a.role]) {
+                document.documentElement.classList.add('has-saved-session');
+                S.user = { email: a.email, role: a.role, name: a.name, title: a.title, branch: a.branch || 'ALL', perms: a.perms || [] }; S.portal = a.role; startApp();
+                // F5 sonrası sunucu oturumunu (JWT çerezi) doğrula; süresi dolmuşsa çıkış yap
+                if (s.server) {
+                    fetch('/api/v1/auth', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+                        .then(r => (r.ok ? r.json() : null))
+                        .then(d => { if (d && !d.user && S.user) logout('Oturum süresi doldu, lütfen tekrar giriş yapın.'); })
+                        .catch(() => {});
+                }
+                return;
+            }
+        } catch (e) { sessionStorage.removeItem('atf_session'); }
         requestAnimationFrame(() => A.placeSeg($('#portalSeg'))); if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => A.placeSeg($('#portalSeg')));
     }
     function closeSide() { $('#side').classList.remove('on'); $('#scrim').classList.remove('on'); }

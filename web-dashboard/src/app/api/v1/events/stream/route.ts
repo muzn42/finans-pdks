@@ -1,9 +1,12 @@
 import { NextRequest } from "next/server";
+import { requireUser, STAFF_ROLES } from "@/lib/api-guard";
 import { sseHub } from "@/lib/sse";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+  const guard = await requireUser(req, STAFF_ROLES);
+  if (!guard.ok) return guard.response;
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream({

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { errorDetail, HR_ROLES, requireUser } from "@/lib/api-guard";
 import { prisma } from "@/lib/prisma";
 import { ShiftUpdateSchema } from "@/lib/validators";
 import { minFromHhmm } from "@/lib/pdks-engine";
@@ -27,6 +28,8 @@ async function resolveAssignment(
 }
 
 export async function PATCH(req: NextRequest, context: Ctx) {
+  const guard = await requireUser(req, HR_ROLES);
+  if (!guard.ok) return guard.response;
   try {
     const { id } = await context.params;
     const shiftId = Number(id);
@@ -92,6 +95,8 @@ export async function PATCH(req: NextRequest, context: Ctx) {
 }
 
 export async function DELETE(req: NextRequest, context: Ctx) {
+  const guard = await requireUser(req, HR_ROLES);
+  if (!guard.ok) return guard.response;
   try {
     const { id } = await context.params;
     const shiftId = Number(id);
@@ -151,7 +156,7 @@ export async function DELETE(req: NextRequest, context: Ctx) {
     });
   } catch (err) {
     return NextResponse.json(
-      { status: "error", message: "Vardiya silinemedi.", detail: String(err) },
+      { status: "error", message: "Vardiya silinemedi.", detail: errorDetail(err) },
       { status: 500 }
     );
   }

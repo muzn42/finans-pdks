@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { errorDetail } from "@/lib/api-guard";
 import { POST as postAccessLog, GET as getAccessLogs } from "../access-logs/route";
 
 export const dynamic = "force-dynamic";
@@ -55,7 +56,7 @@ export async function POST(req: NextRequest) {
     return postAccessLog(proxyReq);
   } catch (err) {
     return NextResponse.json(
-      { status: "error", message: "Yoklama verisi işlenemedi.", detail: String(err) },
+      { status: "error", message: "Yoklama verisi işlenemedi.", detail: errorDetail(err) },
       { status: 500 }
     );
   }

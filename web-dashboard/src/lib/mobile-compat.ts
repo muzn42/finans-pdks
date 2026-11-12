@@ -7,6 +7,22 @@ import {
 import { calculateAttendanceMetrics, hhmmFromMin, minFromHhmm } from "@/lib/pdks-engine";
 import { toIstanbulDate, toIstanbulTime } from "@/lib/timezone";
 import { sseHub } from "@/lib/sse";
+import { haversineMeters, isValidCoord } from "@/lib/geo";
+
+/** Cihaz saatinin sunucu saatinden ileri olabileceği azami sapma. */
+const MAX_FUTURE_SKEW_MS = 2 * 60 * 1000;
+/** Bu süreden geç eşitlenen kayıtlar İK için not ile işaretlenir. */
+const LATE_SYNC_FLAG_MS = 10 * 60 * 1000;
+
+export interface IngestOptions {
+  broadcastSse?: boolean;
+  /**
+   * JWT'den gelen personel sicili. Verildiğinde istek gövdesindeki
+   * employeeId / employeeCode / employeeName alanları yok sayılır
+   * (personel başkası adına kayıt gönderemez).
+   */
+  boundSicil?: string | null;
+}
 
 const EVENT_LABELS: Record<string, string> = {
   CHECK_IN: "Sabah Giriş (Check-In)",
@@ -201,14 +217,16 @@ export async function resolveMobileBranch(
 
 export async function ingestMobileAttendanceRecord(
   raw: MobileRecordInput,
-  opts?: { broadcastSse?: boolean }
+  opts?: IngestOptions
 ) {
   const broadcastSse = opts?.broadcastSse ?? true;
-  const emp = await resolveMobileEmployee({
-    employeeId: raw.employeeId ?? raw.employee_id,
-    employeeCode: raw.employeeCode ?? raw.employee_code ?? raw.sicil,
-    employeeName: raw.employeeName ?? raw.employee_name
-  });
+  const emp = opts?.boundSicil
+    ? await resolveMobileEmployee({ employeeCode: opts.boundSicil })
+    : await resolveMobileEmployee({
+        employeeId: raw.employeeId ?? raw.employee_id,
+        employeeCode: raw.employeeCode ?? raw.employee_code ?? raw.sicil,
+        employeeName: raw.employeeName ?? raw.employee_name
+      });
 
   if (!emp) {
     return { status: "skipped" as const, reason: "Personel bulunamadı." };
@@ -228,9 +246,17 @@ export async function ingestMobileAttendanceRecord(
   const eventType = normalizeMobileEventType(
     raw.eventType ?? raw.recordType ?? raw.record_type
   );
-  const distanceMeters = Number(
-    raw.distanceMeters ?? raw.distance_meters ?? raw.distance_to_branch ?? 4.2
-  );
+  // Mesafe istemcinin bildirdiği değerden DEĞİL, sunucuda gelen koordinat ile
+  // şube merkezi arasında Haversine ile hesaplanır. Koordinat yoksa işlem reddedilir.
+  const userLat = Number(raw.userLatitude);
+  const userLng = Number(raw.userLongitude);
+  const hasUserCoords = isValidCoord(userLat, userLng);
+  const hasBranchCoords = Boolean(branch) && isValidCoord(branch?.lat, branch?.lng);
+  const isMissingLocation = !hasUserCoords || !hasBranchCoords;
+  const distanceMeters =
+    !isMissingLocation && branch
+      ? Number(haversineMeters(userLat, userLng, branch.lat, branch.lng).toFixed(2))
+      : 0;
   const hasExplicitAccuracy =
     raw.accuracyMeters != null || raw.accuracy_meters != null;
   const rawAccuracy = Number(raw.accuracyMeters ?? raw.accuracy_meters ?? 3.4521);
@@ -245,7 +271,7 @@ export async function ingestMobileAttendanceRecord(
     raw.isMockLocation ?? raw.isMockGps ?? raw.is_mock ?? false
   );
   const isOutOfGeofence =
-    raw.isWithin5Meters === false || distanceMeters > allowedRadius;
+    isMissingLocation || raw.isWithin5Meters === false || distanceMeters > allowedRadius;
 
   const rawWifis = Array.isArray(raw.nearbyWifis)
     ? raw.nearbyWifis
@@ -291,12 +317,20 @@ export async function ingestMobileAttendanceRecord(
     Boolean(primaryBssid || backupBssids.length > 0) &&
     !matchedBssid;
 
-  // Zaman damgasını belirle
+  // Zaman damgası: cihaz saati ileri alınmışsa sunucu saatine kırpılır;
+  // geç eşitlenen (çevrimdışı) kayıtlar İK'nın görmesi için not ile işaretlenir.
   const now = new Date();
-  let timestampUtc =
+  const clientTs =
     raw.timestamp && Number.isFinite(raw.timestamp) && raw.timestamp > 1_000_000_000_000
-      ? new Date(Number(raw.timestamp))
-      : now;
+      ? Number(raw.timestamp)
+      : null;
+  const timestampUtc = clientTs ? new Date(Math.min(clientTs, now.getTime())) : now;
+  let clockNote: string | null = null;
+  if (clientTs && clientTs - now.getTime() > MAX_FUTURE_SKEW_MS) {
+    clockNote = "Cihaz saati sunucudan ileri; sunucu saati esas alındı";
+  } else if (clientTs && now.getTime() - clientTs > LATE_SYNC_FLAG_MS) {
+    clockNote = `Gecikmeli eşitleme (+${Math.round((now.getTime() - clientTs) / 60000)} dk)`;
+  }
 
   // Çok eski demo seed kayıtlarını (bugünden 1 günden eski) sync sırasında canlı akışı kirletmemesi için kontrol et
   const ageMs = Math.abs(now.getTime() - timestampUtc.getTime());
@@ -306,7 +340,10 @@ export async function ingestMobileAttendanceRecord(
   if (isMockFlag || isFakeAccuracy || isOutOfGeofence || isStrictWifiMismatch) {
     let alertType = "30m sınır aşımı";
     let blockReason = `${distanceMeters.toFixed(1)}m (${targetBranchCode})`;
-    if (isMockFlag) {
+    if (isMissingLocation && !isMockFlag) {
+      alertType = "Konum doğrulanamadı";
+      blockReason = "Cihaz koordinatı gönderilmedi veya geçersiz; mesafe sunucuda hesaplanamadı.";
+    } else if (isMockFlag) {
       alertType = "Sahte GPS (Mock)";
       blockReason = "Sahte konum / Geliştirici Seçenekleri hilesi yakalandı.";
     } else if (isFakeAccuracy) {
@@ -421,19 +458,19 @@ export async function ingestMobileAttendanceRecord(
     return { status: "skipped_old" as const };
   }
 
-  const clockMin =
-    minFromHhmm(raw.formattedTime) ??
-    minFromHhmm(toIstanbulTime(timestampUtc)) ??
-    8 * 60 + 30;
+  // Giriş/çıkış dakikası istemcinin gönderdiği "formattedTime" metninden değil,
+  // doğrulanmış zaman damgasından türetilir.
+  const clockMin = minFromHhmm(toIstanbulTime(timestampUtc)) ?? 8 * 60 + 30;
 
   const deviceModel = String(
     raw.deviceModel ?? raw.device_model ?? emp.deviceModel ?? "Android Mobil İstemci"
   ).trim();
 
-  const noteText =
+  const baseNote =
     raw.note && String(raw.note).trim()
-      ? String(raw.note).trim()
+      ? String(raw.note).trim().slice(0, 300)
       : `${EVENT_LABELS[eventType] || eventType} · Mobil (${deviceModel})`;
+  const noteText = clockNote ? `${baseNote} · ${clockNote}` : baseNote;
 
   const { accessLog, updatedEmp, dailyRecord } = await prisma.$transaction(async (tx) => {
     const createdLog = await tx.accessLog.create({
@@ -613,14 +650,16 @@ export async function ingestMobileAttendanceRecord(
 
 export async function ingestMobileSecurityAlert(
   raw: MobileAlertInput,
-  opts?: { broadcastSse?: boolean }
+  opts?: IngestOptions
 ) {
   const broadcastSse = opts?.broadcastSse ?? true;
-  const emp = await resolveMobileEmployee({
-    employeeId: raw.employeeId ?? raw.employee_id,
-    employeeCode: raw.employeeCode,
-    employeeName: raw.employeeName ?? raw.employee_name
-  });
+  const emp = opts?.boundSicil
+    ? await resolveMobileEmployee({ employeeCode: opts.boundSicil })
+    : await resolveMobileEmployee({
+        employeeId: raw.employeeId ?? raw.employee_id,
+        employeeCode: raw.employeeCode,
+        employeeName: raw.employeeName ?? raw.employee_name
+      });
   if (!emp) return null;
 
   const branch = await resolveMobileBranch(

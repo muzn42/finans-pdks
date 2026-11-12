@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { ANY_ROLE, errorDetail, IT_ROLES, requireUser } from "@/lib/api-guard";
 import { prisma } from "@/lib/prisma";
 import { normalizeBssid, parseBssidList } from "@/lib/validators";
 import { z } from "zod";
@@ -78,9 +79,11 @@ function normalizeCode(raw: string) {
 }
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   context: { params: Promise<{ code: string }> }
 ) {
+  const guard = await requireUser(req, ANY_ROLE);
+  if (!guard.ok) return guard.response;
   try {
     const { code } = await context.params;
     const branch = await prisma.branch.findUnique({
@@ -101,7 +104,7 @@ export async function GET(
     });
   } catch (err) {
     return NextResponse.json(
-      { status: "error", message: "Şube okunamadı.", detail: String(err) },
+      { status: "error", message: "Şube okunamadı.", detail: errorDetail(err) },
       { status: 500 }
     );
   }
@@ -209,7 +212,7 @@ async function handleUpdate(
     });
   } catch (err) {
     return NextResponse.json(
-      { status: "error", message: "Şube güncellenemedi.", detail: String(err) },
+      { status: "error", message: "Şube güncellenemedi.", detail: errorDetail(err) },
       { status: 500 }
     );
   }
@@ -219,6 +222,8 @@ export async function PUT(
   req: NextRequest,
   context: { params: Promise<{ code: string }> }
 ) {
+  const guard = await requireUser(req, IT_ROLES);
+  if (!guard.ok) return guard.response;
   return handleUpdate(req, context);
 }
 
@@ -226,6 +231,8 @@ export async function PATCH(
   req: NextRequest,
   context: { params: Promise<{ code: string }> }
 ) {
+  const guard = await requireUser(req, IT_ROLES);
+  if (!guard.ok) return guard.response;
   return handleUpdate(req, context);
 }
 
@@ -233,6 +240,8 @@ export async function DELETE(
   req: NextRequest,
   context: { params: Promise<{ code: string }> }
 ) {
+  const guard = await requireUser(req, IT_ROLES);
+  if (!guard.ok) return guard.response;
   try {
     const { code } = await context.params;
     const branchCode = normalizeCode(code);
@@ -274,7 +283,7 @@ export async function DELETE(
     });
   } catch (err) {
     return NextResponse.json(
-      { status: "error", message: "Şube silinemedi.", detail: String(err) },
+      { status: "error", message: "Şube silinemedi.", detail: errorDetail(err) },
       { status: 500 }
     );
   }

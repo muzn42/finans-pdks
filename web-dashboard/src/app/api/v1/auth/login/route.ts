@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { signJwtToken } from "@/lib/auth";
+import { signJwtToken, timingSafeEqualStr, verifyPassword } from "@/lib/auth";
+import { errorDetail, isDemoMode } from "@/lib/api-guard";
+import {
+  clearFailures,
+  clientIp,
+  lockRemainingSeconds,
+  registerFailure
+} from "@/lib/rate-limit";
 import { sseHub } from "@/lib/sse";
 
 export const dynamic = "force-dynamic";
@@ -37,6 +44,20 @@ export async function POST(req: NextRequest) {
           message: "Lütfen sicil numaranızı ve parolanızı giriniz."
         },
         { status: 400 }
+      );
+    }
+
+    const ip = clientIp(req.headers);
+    const limitKeys = [`mob:ip:${ip}`, `mob:code:${rawCode.toUpperCase()}`];
+    const lockedFor = Math.max(...limitKeys.map((k) => lockRemainingSeconds(k)));
+    if (lockedFor > 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          status: "error",
+          message: `Çok fazla hatalı deneme. ${Math.ceil(lockedFor / 60)} dakika sonra tekrar deneyin.`
+        },
+        { status: 429, headers: { "Retry-After": String(lockedFor) } }
       );
     }
 
@@ -85,28 +106,53 @@ export async function POST(req: NextRequest) {
     }
 
     if (!emp) {
+      // Sicil var/yok bilgisi sızdırılmaz (kullanıcı adı tahminine karşı tek tip yanıt).
+      limitKeys.forEach((k) => registerFailure(k));
       return NextResponse.json(
         {
           success: false,
           status: "error",
-          message: `Personel sicil kaydı bulunamadı: ${rawCode}`
-        },
-        { status: 404 }
-      );
-    }
-
-    // Mobil personel test parolaları: 123, 1234, 123456 veya Per!2026demo
-    const validPasswords = new Set(["123", "1234", "123456", "Per!2026demo"]);
-    if (!validPasswords.has(rawPassword)) {
-      return NextResponse.json(
-        {
-          success: false,
-          status: "error",
-          message: "Hatalı parola girdiniz."
+          message: "Sicil numarası veya parola hatalı."
         },
         { status: 401 }
       );
     }
+
+    // 1) Personelin kendi portal hesabı (user_accounts.employee_sicil) varsa parolası doğrulanır.
+    // 2) Demo modunda (PDKS_DEMO_MODE != "false") ortak test parolaları da kabul edilir.
+    const personalAccount = await prisma.userAccount.findFirst({
+      where: { employeeSicil: emp.sicil, active: true }
+    });
+    const accountOk = personalAccount
+      ? await verifyPassword(rawPassword, personalAccount.passwordHash)
+      : false;
+    const DEMO_PASSWORDS = ["123", "1234", "123456", "Per!2026demo"];
+    const demoOk = isDemoMode() && DEMO_PASSWORDS.some((p) => timingSafeEqualStr(p, rawPassword));
+
+    if (!accountOk && !demoOk) {
+      limitKeys.forEach((k) => registerFailure(k));
+      await prisma.auditLog
+        .create({
+          data: {
+            actorName: `${emp.name} (${emp.sicil})`,
+            actorRole: "PERSONNEL",
+            action: "Mobil uygulamada başarısız oturum açma denemesi",
+            target: deviceModel || "MOBILE_AUTH",
+            ipAddress: ip
+          }
+        })
+        .catch(() => {});
+      return NextResponse.json(
+        {
+          success: false,
+          status: "error",
+          message: "Sicil numarası veya parola hatalı."
+        },
+        { status: 401 }
+      );
+    }
+
+    limitKeys.forEach((k) => clearFailures(k));
 
     // Cihaz modeli gönderildiyse personelin aktif cihaz bilgisini güncelle
     if (deviceModel && deviceModel !== emp.deviceModel) {
@@ -137,7 +183,7 @@ export async function POST(req: NextRequest) {
           actorRole: "PERSONNEL",
           action: "Mobil uygulamadan oturum açıldı",
           target: `${emp.branchCode}${deviceModel ? ` · ${deviceModel}` : ""}`,
-          ipAddress: req.headers.get("x-forwarded-for") || "127.0.0.1"
+          ipAddress: ip
         }
       })
       .catch(() => {});
@@ -193,7 +239,7 @@ export async function POST(req: NextRequest) {
         success: false,
         status: "error",
         message: "Mobil oturum açma sırasında sunucu hatası oluştu.",
-        detail: String(err)
+        detail: errorDetail(err)
       },
       { status: 500 }
     );

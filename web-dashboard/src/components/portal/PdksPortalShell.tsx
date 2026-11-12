@@ -18,7 +18,7 @@ import { ThreeStudioEnhancer } from "@/components/three/ThreeStudioEnhancer";
 const PDKS_SCRIPTS = [
   "/core-xlsx.js?v=9.35",
   "/legacy/data.js?v=9.35",
-  "/legacy/app.js?v=9.35",
+  "/legacy/app.js?v=9.36",
   "/legacy/landing.js?v=9.35"
 ] as const;
 
@@ -93,34 +93,8 @@ function loadPdksScripts(): Promise<void> {
 }
 
 export function PdksPortalShell() {
-  useEffect(() => {
-    const onFormSubmit = async (e: Event) => {
-      const form = e.target as HTMLFormElement | null;
-      if (!form || form.id !== "loginForm") return;
-      const emailEl = document.getElementById("loginEmail") as HTMLInputElement | null;
-      const passEl = document.getElementById("loginPassword") as HTMLInputElement | null;
-      const activePortalBtn = document.querySelector("#portalSeg .seg-btn.is-active") as HTMLElement | null;
-      if (!emailEl?.value || !passEl?.value) return;
-
-      try {
-        await fetch("/api/v1/auth", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            email: emailEl.value.trim(),
-            password: passEl.value,
-            portal: activePortalBtn?.dataset.portal || "HR"
-          })
-        });
-      } catch {
-        // İstemci oturumu devam eder
-      }
-    };
-
-    document.addEventListener("submit", onFormSubmit, true);
-    return () => document.removeEventListener("submit", onFormSubmit, true);
-  }, []);
-
+  // Oturum açma /legacy/app.js içindeki login() tarafından /api/v1/auth üzerinden yapılır
+  // (httpOnly JWT çerezi); burada ikinci bir giriş isteği gönderilmez.
   useEffect(() => {
     applyBootProgress(0.12);
     const failsafe = window.setTimeout(finishBoot, 2800);

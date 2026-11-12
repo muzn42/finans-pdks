@@ -485,6 +485,33 @@ async function main() {
       employeeSicil: allEmployees[0]?.sicil || "FN-1001",
       active: true,
       permsJson: JSON.stringify(["self_view"])
+    },
+    // Web panelindeki yerel demo hesaplarıyla birebir (sunucu doğrulamalı giriş için)
+    {
+      code: "ACC-6",
+      email: "elif.demir@albayrakfinans.com.tr",
+      passwordHash: "Ik!2026uzman",
+      role: "HR",
+      name: "Elif Demir",
+      title: "İşe Alım ve Özlük Uzmanı",
+      branchCode: "ŞB-001",
+      managedDept: null,
+      employeeSicil: null,
+      active: true,
+      permsJson: JSON.stringify(["emp_view", "emp_add", "leave_manage"])
+    },
+    {
+      code: "ACC-7",
+      email: "kerem.kaya@albayrakfinans.com.tr",
+      passwordHash: "Bt!2026destek",
+      role: "IT",
+      name: "Kerem Kaya",
+      title: "BT Sistem Destek Uzmanı",
+      branchCode: "ALL",
+      managedDept: null,
+      employeeSicil: null,
+      active: true,
+      permsJson: JSON.stringify(["sec_radar", "device_manage", "support_reset"])
     }
   ];
 

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { ANY_ROLE, errorDetail, IT_ROLES, requireUser } from "@/lib/api-guard";
 import { prisma } from "@/lib/prisma";
 import { normalizeBssid, parseBssidList } from "@/lib/validators";
 import { z } from "zod";
@@ -32,6 +33,9 @@ const BranchCreateSchema = z.object({
 });
 
 export async function GET(req: NextRequest) {
+  // Mobil uygulama (PERSONNEL) şube koordinatlarını okuyabilmeli.
+  const guard = await requireUser(req, ANY_ROLE);
+  if (!guard.ok) return guard.response;
   try {
     const rows = await prisma.branch.findMany({ orderBy: { code: "asc" } });
     const mapped = rows.map((b, idx) => {
@@ -81,13 +85,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(mapped);
   } catch (err) {
     return NextResponse.json(
-      { status: "error", message: "Şube listesi alınamadı.", detail: String(err) },
+      { status: "error", message: "Şube listesi alınamadı.", detail: errorDetail(err) },
       { status: 500 }
     );
   }
 }
 
 export async function POST(req: NextRequest) {
+  const guard = await requireUser(req, IT_ROLES);
+  if (!guard.ok) return guard.response;
   try {
     const body = await req.json();
     const parsed = BranchCreateSchema.safeParse(body);
@@ -185,7 +191,7 @@ export async function POST(req: NextRequest) {
     );
   } catch (err) {
     return NextResponse.json(
-      { status: "error", message: "Şube kaydedilemedi.", detail: String(err) },
+      { status: "error", message: "Şube kaydedilemedi.", detail: errorDetail(err) },
       { status: 500 }
     );
   }

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { errorDetail, HR_APPROVER_ROLES, requireUser, STAFF_ROLES } from "@/lib/api-guard";
 import { prisma } from "@/lib/prisma";
 import { LeaveDecisionSchema, LeaveRequestCreateSchema } from "@/lib/validators";
 import { calculateAttendanceMetrics, minFromHhmm } from "@/lib/pdks-engine";
@@ -8,6 +9,8 @@ import { sseHub } from "@/lib/sse";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+  const guard = await requireUser(req, STAFF_ROLES);
+  if (!guard.ok) return guard.response;
   try {
     const { searchParams } = new URL(req.url);
     const status = searchParams.get("status") || "ALL";
@@ -51,13 +54,15 @@ export async function GET(req: NextRequest) {
     });
   } catch (err) {
     return NextResponse.json(
-      { status: "error", message: "İzin talepleri alınamadı.", detail: String(err) },
+      { status: "error", message: "İzin talepleri alınamadı.", detail: errorDetail(err) },
       { status: 500 }
     );
   }
 }
 
 export async function POST(req: NextRequest) {
+  const guard = await requireUser(req, HR_APPROVER_ROLES);
+  if (!guard.ok) return guard.response;
   try {
     const body = await req.json();
     const parsed = LeaveRequestCreateSchema.safeParse(body);
@@ -160,13 +165,15 @@ export async function POST(req: NextRequest) {
     );
   } catch (err) {
     return NextResponse.json(
-      { status: "error", message: "İzin talebi oluşturulamadı.", detail: String(err) },
+      { status: "error", message: "İzin talebi oluşturulamadı.", detail: errorDetail(err) },
       { status: 500 }
     );
   }
 }
 
 export async function PATCH(req: NextRequest) {
+  const guard = await requireUser(req, HR_APPROVER_ROLES);
+  if (!guard.ok) return guard.response;
   try {
     const body = await req.json();
     const code = String(body.code || body.id || "").trim();
@@ -265,7 +272,7 @@ export async function PATCH(req: NextRequest) {
     });
   } catch (err) {
     return NextResponse.json(
-      { status: "error", message: "İzin durumu güncellenemedi.", detail: String(err) },
+      { status: "error", message: "İzin durumu güncellenemedi.", detail: errorDetail(err) },
       { status: 500 }
     );
   }

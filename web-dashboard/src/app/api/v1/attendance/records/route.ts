@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { buildDailyLogsForEmployee } from "@/lib/pdks-engine";
 import { resolveMobileEmployee } from "@/lib/mobile-compat";
 import { toIstanbulDate, toIstanbulTime } from "@/lib/timezone";
+import { ANY_ROLE, errorDetail, requireUser } from "@/lib/api-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,8 @@ function parseDmyAndTimeToMillis(dateDmy: string, timeHhmm: string): number {
  * PostgreSQL'deki gerçek AccessLog kayıtlarını ve deterministik 30 günlük puantaj geçmişini birleştirir.
  */
 export async function GET(req: NextRequest) {
+  const guard = await requireUser(req, ANY_ROLE);
+  if (!guard.ok) return guard.response;
   try {
     const { searchParams } = new URL(req.url);
     const empParam =
@@ -29,10 +32,20 @@ export async function GET(req: NextRequest) {
       searchParams.get("sicil") ||
       "501";
 
-    const emp = await resolveMobileEmployee({
-      employeeId: /^\d+$/.test(empParam) ? Number(empParam) : null,
-      employeeCode: empParam
-    });
+    // Personel yalnızca kendi kayıtlarını görebilir; sorgu parametresi yok sayılır.
+    const isPersonnel = guard.user.role === "PERSONNEL";
+    if (isPersonnel && !guard.user.employeeSicil) {
+      return NextResponse.json(
+        { status: "error", message: "Oturumda personel sicili bulunamadı." },
+        { status: 403 }
+      );
+    }
+    const emp = isPersonnel
+      ? await resolveMobileEmployee({ employeeCode: guard.user.employeeSicil })
+      : await resolveMobileEmployee({
+          employeeId: /^\d+$/.test(empParam) ? Number(empParam) : null,
+          employeeCode: empParam
+        });
 
     if (!emp) {
       return NextResponse.json([]);
@@ -191,7 +204,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(out);
   } catch (err) {
     return NextResponse.json(
-      { status: "error", message: "Personel devam kayıtları alınamadı.", detail: String(err) },
+      { status: "error", message: "Personel devam kayıtları alınamadı.", detail: errorDetail(err) },
       { status: 500 }
     );
   }

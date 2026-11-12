@@ -100,8 +100,14 @@ object ApiClient {
     }
 
     private val okHttpClient: OkHttpClient by lazy {
+        // BODY seviyesi parola ve oturum anahtarını logcat'e yazar; yalnızca debug derlemede açık.
         val logging = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
+            level = if (com.example.BuildConfig.DEBUG) {
+                HttpLoggingInterceptor.Level.BODY
+            } else {
+                HttpLoggingInterceptor.Level.NONE
+            }
+            redactHeader("Authorization")
         }
 
         OkHttpClient.Builder()

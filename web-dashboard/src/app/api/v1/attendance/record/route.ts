@@ -3,20 +3,34 @@ import {
   ingestMobileAttendanceRecord,
   MobileRecordInput
 } from "@/lib/mobile-compat";
+import { errorDetail, requireUser } from "@/lib/api-guard";
 
 export const dynamic = "force-dynamic";
 
 /**
  * Mobil Android Uygulaması Tekil Anlık Giriş/Çıkış Uyum Katmanı:
  * POST /api/v1/attendance/record
- * İstek: AttendanceRecordDto
+ * İstek: AttendanceRecordDto  (Authorization: Bearer <personel JWT>)
  * Yanıt: SyncBatchResponseDto ({ success, syncedCount, serverTimestamp, message })
+ *
+ * Personel kimliği istek gövdesinden değil JWT'den alınır.
  */
 export async function POST(req: NextRequest) {
+  const guard = await requireUser(req, ["PERSONNEL"]);
+  if (!guard.ok) return guard.response;
+  const boundSicil = guard.user.employeeSicil;
+  if (!boundSicil) {
+    return NextResponse.json(
+      { success: false, status: "ERROR", message: "Oturumda personel sicili bulunamadı." },
+      { status: 403 }
+    );
+  }
+
   try {
     const body = (await req.json()) as MobileRecordInput;
     const result = await ingestMobileAttendanceRecord(body, {
-      broadcastSse: true
+      broadcastSse: true,
+      boundSicil
     });
 
     const nowMs = Date.now();
@@ -32,6 +46,21 @@ export async function POST(req: NextRequest) {
           message: result.message
         },
         { status: 403 }
+      );
+    }
+
+    if (result.status === "skipped") {
+      return NextResponse.json(
+        {
+          success: false,
+          syncedCount: 0,
+          synced_count: 0,
+          serverTimestamp: nowMs,
+          server_timestamp: nowMs,
+          status: "ERROR",
+          message: result.reason
+        },
+        { status: 404 }
       );
     }
 
@@ -57,7 +86,7 @@ export async function POST(req: NextRequest) {
         server_timestamp: Date.now(),
         status: "ERROR",
         message: "Mobil yoklama kaydı işlenemedi.",
-        detail: String(err)
+        detail: errorDetail(err)
       },
       { status: 500 }
     );

@@ -6,6 +6,7 @@ import {
   MobileRecordInput
 } from "@/lib/mobile-compat";
 import { sseHub } from "@/lib/sse";
+import { errorDetail, requireUser } from "@/lib/api-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,16 @@ export const dynamic = "force-dynamic";
  * Yanıt: SyncBatchResponseDto ({ success, syncedCount, serverTimestamp, message })
  */
 export async function POST(req: NextRequest) {
+  const guard = await requireUser(req, ["PERSONNEL"]);
+  if (!guard.ok) return guard.response;
+  const boundSicil = guard.user.employeeSicil;
+  if (!boundSicil) {
+    return NextResponse.json(
+      { success: false, status: "ERROR", message: "Oturumda personel sicili bulunamadı." },
+      { status: 403 }
+    );
+  }
+
   try {
     const body = await req.json();
     const rawRecords: MobileRecordInput[] = Array.isArray(body.records)
@@ -40,7 +51,8 @@ export async function POST(req: NextRequest) {
     let duplicateCount = 0;
     for (const rec of recentRecords) {
       const res = await ingestMobileAttendanceRecord(rec, {
-        broadcastSse: recentRecords.length <= 3
+        broadcastSse: recentRecords.length <= 3,
+        boundSicil
       });
       if (res.status === "created") createdCount++;
       else if (res.status === "duplicate") duplicateCount++;
@@ -49,7 +61,8 @@ export async function POST(req: NextRequest) {
     let alertCreatedCount = 0;
     for (const al of recentAlerts) {
       const created = await ingestMobileSecurityAlert(al, {
-        broadcastSse: recentAlerts.length <= 3
+        broadcastSse: recentAlerts.length <= 3,
+        boundSicil
       });
       if (created) alertCreatedCount++;
     }
@@ -90,7 +103,7 @@ export async function POST(req: NextRequest) {
         server_timestamp: Date.now(),
         status: "ERROR",
         message: "Mobil toplu eşitleme sırasında sunucu hatası oluştu.",
-        detail: String(err)
+        detail: errorDetail(err)
       },
       { status: 500 }
     );

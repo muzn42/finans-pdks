@@ -1,30 +1,51 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyJwtToken, AUTH_COOKIE_NAME } from "@/lib/auth";
+import { getRequestUser } from "@/lib/auth";
+
+/**
+ * Oturum gerektirmeyen API uçları (yöntem + yol).
+ * Buraya eklenmeyen her /api/v1/* isteği geçerli JWT olmadan reddedilir
+ * (varsayılan olarak kapalı / deny-by-default). Rol kontrolü her rotada ayrıca yapılır.
+ */
+const PUBLIC_API: ReadonlyArray<{ method: string; path: string }> = [
+  { method: "GET", path: "/api/v1/auth" },
+  { method: "POST", path: "/api/v1/auth" },
+  { method: "DELETE", path: "/api/v1/auth" },
+  { method: "POST", path: "/api/v1/auth/login" }
+];
+
+function isPublicApi(method: string, pathname: string): boolean {
+  const normalized = pathname.replace(/\/+$/, "");
+  return PUBLIC_API.some((r) => r.method === method && r.path === normalized);
+}
+
+function withSecurityHeaders(res: NextResponse): NextResponse {
+  res.headers.set("X-Frame-Options", "DENY");
+  res.headers.set("X-Content-Type-Options", "nosniff");
+  res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=(self)");
+  return res;
+}
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // Güvenlik ve Cloudflare Tunnel uyumluluk başlıkları
-  const res = NextResponse.next();
-  res.headers.set("X-Frame-Options", "DENY");
-  res.headers.set("X-Content-Type-Options", "nosniff");
-  res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-
-  // /api/v1/admin/* gibi korumalı rotalarda JWT doğrulaması
-  if (pathname.startsWith("/api/v1/admin")) {
-    const token =
-      req.cookies.get(AUTH_COOKIE_NAME)?.value ||
-      req.headers.get("authorization")?.replace("Bearer ", "");
-    const user = token ? await verifyJwtToken(token) : null;
-    if (!user || user.role !== "ADMIN") {
-      return NextResponse.json(
-        { status: "error", message: "Yetkisiz erişim (RBAC Guard)." },
-        { status: 403 }
+  if (
+    pathname.startsWith("/api/v1/") &&
+    req.method !== "OPTIONS" &&
+    !isPublicApi(req.method, pathname)
+  ) {
+    const user = await getRequestUser(req);
+    if (!user) {
+      return withSecurityHeaders(
+        NextResponse.json(
+          { status: "error", success: false, message: "Oturum açmanız gerekiyor." },
+          { status: 401 }
+        )
       );
     }
   }
 
-  return res;
+  return withSecurityHeaders(NextResponse.next());
 }
 
 export const config = {

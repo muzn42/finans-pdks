@@ -155,11 +155,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         deviceModel = emp.deviceId
                     )
                 )
-                if (resp.isSuccessful) {
-                    resp.body()?.let { dto ->
-                        ApiClient.authToken = dto.token
-                    }
-                }
+                // Önceki oturumun anahtarı başarısız girişte de kullanılmasın
+                ApiClient.authToken = if (resp.isSuccessful) resp.body()?.token else null
             }
             syncWithServerDatabase()
         }
@@ -167,6 +164,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun logout() {
+        // Sunucu oturum anahtarını bellekten sil: aynı cihazda sonraki kullanıcı önceki kişinin kimliğiyle istek gönderemesin
+        ApiClient.authToken = null
         _isLoggedIn.value = false
         _loginError.value = null
     }

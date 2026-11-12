@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { errorDetail, IT_ROLES, requireUser } from "@/lib/api-guard";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { prisma } from "@/lib/prisma";
@@ -104,6 +105,8 @@ function nextCodeFrom(existingCodes: Set<string>): () => string {
 }
 
 export async function POST(req: NextRequest) {
+  const guard = await requireUser(req, IT_ROLES);
+  if (!guard.ok) return guard.response;
   let rawBranches: RawBranch[];
   try {
     const res = await fetch(SOURCE_URL, {
@@ -124,7 +127,7 @@ export async function POST(req: NextRequest) {
         status: "error",
         message:
           "Canlı şube kaynağına ulaşılamadı. Mevcut PostgreSQL kayıtları değiştirilmedi.",
-        detail: String(err)
+        detail: errorDetail(err)
       },
       { status: 502 }
     );
@@ -304,7 +307,7 @@ export async function POST(req: NextRequest) {
       {
         status: "error",
         message: "Şube senkronizasyonu tamamlanamadı; mevcut kayıtlar korundu.",
-        detail: String(err)
+        detail: errorDetail(err)
       },
       { status: 500 }
     );

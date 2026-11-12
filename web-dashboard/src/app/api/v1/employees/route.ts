@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { errorDetail, HR_ROLES, requireUser, STAFF_ROLES } from "@/lib/api-guard";
 import { prisma } from "@/lib/prisma";
 import { EmployeeCreateSchema } from "@/lib/validators";
 import { calculateAttendanceMetrics, hhmmFromMin, minFromHhmm } from "@/lib/pdks-engine";
@@ -78,6 +79,8 @@ function serializeEmployee(e: {
 }
 
 export async function GET(req: NextRequest) {
+  const guard = await requireUser(req, STAFF_ROLES);
+  if (!guard.ok) return guard.response;
   try {
     const { searchParams } = new URL(req.url);
     const q = searchParams.get("q")?.trim() || "";
@@ -132,13 +135,15 @@ export async function GET(req: NextRequest) {
     });
   } catch (err) {
     return NextResponse.json(
-      { status: "error", message: "Personel listesi alınamadı.", detail: String(err) },
+      { status: "error", message: "Personel listesi alınamadı.", detail: errorDetail(err) },
       { status: 500 }
     );
   }
 }
 
 export async function POST(req: NextRequest) {
+  const guard = await requireUser(req, HR_ROLES);
+  if (!guard.ok) return guard.response;
   try {
     const body = await req.json();
     const parsed = EmployeeCreateSchema.safeParse(body);
@@ -259,7 +264,7 @@ export async function POST(req: NextRequest) {
     );
   } catch (err) {
     return NextResponse.json(
-      { status: "error", message: "Personel oluşturulamadı.", detail: String(err) },
+      { status: "error", message: "Personel oluşturulamadı.", detail: errorDetail(err) },
       { status: 500 }
     );
   }

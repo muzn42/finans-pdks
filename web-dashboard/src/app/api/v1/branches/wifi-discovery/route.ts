@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { errorDetail, IT_ROLES, requireUser } from "@/lib/api-guard";
 import { prisma } from "@/lib/prisma";
 import { normalizeBssid, parseBssidList } from "@/lib/validators";
 import { computeBranchWifiDiscovery } from "@/lib/wifi-discovery";
@@ -16,6 +17,8 @@ const AssignWifiSchema = z.object({
 });
 
 export async function GET(req: NextRequest) {
+  const guard = await requireUser(req, IT_ROLES);
+  if (!guard.ok) return guard.response;
   try {
     const { searchParams } = new URL(req.url);
     const branchCode = searchParams.get("branchCode")?.trim().toUpperCase();
@@ -31,13 +34,15 @@ export async function GET(req: NextRequest) {
     });
   } catch (err) {
     return NextResponse.json(
-      { status: "error", message: "Ortak Wi-Fi BSSID keşif listesi alınamadı.", detail: String(err) },
+      { status: "error", message: "Ortak Wi-Fi BSSID keşif listesi alınamadı.", detail: errorDetail(err) },
       { status: 500 }
     );
   }
 }
 
 export async function POST(req: NextRequest) {
+  const guard = await requireUser(req, IT_ROLES);
+  if (!guard.ok) return guard.response;
   try {
     const body = await req.json();
     const parsed = AssignWifiSchema.safeParse(body);
@@ -153,7 +158,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     return NextResponse.json(
-      { status: "error", message: "BSSID şubeye atanamadı.", detail: String(err) },
+      { status: "error", message: "BSSID şubeye atanamadı.", detail: errorDetail(err) },
       { status: 500 }
     );
   }

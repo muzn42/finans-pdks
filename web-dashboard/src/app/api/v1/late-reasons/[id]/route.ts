@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { errorDetail, HR_APPROVER_ROLES, requireUser } from "@/lib/api-guard";
 import { prisma } from "@/lib/prisma";
 import { sseHub } from "@/lib/sse";
 
@@ -12,6 +13,8 @@ function todayIsoIstanbul(): string {
 }
 
 export async function PATCH(req: NextRequest, context: Ctx) {
+  const guard = await requireUser(req, HR_APPROVER_ROLES);
+  if (!guard.ok) return guard.response;
   try {
     const { id } = await context.params;
     const recordId = Number(id);
@@ -124,7 +127,7 @@ export async function PATCH(req: NextRequest, context: Ctx) {
     });
   } catch (err) {
     return NextResponse.json(
-      { status: "error", message: "Gecikme gerekçesi değerlendirilemedi.", detail: String(err) },
+      { status: "error", message: "Gecikme gerekçesi değerlendirilemedi.", detail: errorDetail(err) },
       { status: 500 }
     );
   }

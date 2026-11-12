@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { errorDetail, requireUser, STAFF_ROLES } from "@/lib/api-guard";
 import { parseBssidList } from "@/lib/validators";
 import { toIstanbulDate, toIstanbulDateTime, toIstanbulTime, hhmmFromMin } from "@/lib/timezone";
 import { sseHub } from "@/lib/sse";
@@ -7,7 +8,9 @@ import { computeBranchWifiDiscovery } from "@/lib/wifi-discovery";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const guard = await requireUser(req, STAFF_ROLES);
+  if (!guard.ok) return guard.response;
   try {
     const todayIso = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Istanbul" }).format(new Date());
     const [
@@ -261,7 +264,7 @@ export async function GET() {
       {
         status: "error",
         message: "PostgreSQL veritabanı başlangıç verileri alınamadı.",
-        detail: String(err)
+        detail: errorDetail(err)
       },
       { status: 500 }
     );
